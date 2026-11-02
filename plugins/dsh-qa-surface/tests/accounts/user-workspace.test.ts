@@ -203,7 +203,11 @@ describe("per-user QA workspace", () => {
         arguments: { command: "view", path: stored },
       },
     ]) {
-      expect(qaUserWorkspaceDenial(execution, root, store)).toBeUndefined();
+      expect(
+        qaUserWorkspaceDenial(execution, root, store, {
+          attachmentFiles: [stored],
+        }),
+      ).toBeUndefined();
     }
 
     // Without the store root the fence stays closed, and it never opens for
@@ -226,6 +230,58 @@ describe("per-user QA workspace", () => {
     ]) {
       expect(qaUserWorkspaceDenial(execution, root, store)).toMatch(/outside/u);
     }
+  });
+
+  it("does not turn an attachment grant into a directory or sibling grant", () => {
+    const base = mkdtempSync(path.join(tmpdir(), "qa-attachment-grants-"));
+    const root = prepareQaUserWorkspace(base, USER_ID);
+    const store = path.join(base, "attachments");
+    mkdirSync(store);
+    const own = path.join(store, "own.txt");
+    const foreign = path.join(store, "another.txt");
+    writeFileSync(own, "own upload");
+    writeFileSync(foreign, "another account upload");
+    for (const requested of [store, foreign, `${own}.sibling`]) {
+      expect(
+        qaUserWorkspaceDenial(
+          {
+            name: "str_replace_editor",
+            arguments: { command: "view", path: requested },
+          },
+          root,
+          store,
+          { attachmentFiles: [own] },
+        ),
+      ).toMatch(/outside/u);
+    }
+    expect(
+      qaUserWorkspaceDenial(
+        { name: "read", arguments: { file_path: own } },
+        root,
+        store,
+      ),
+    ).toMatch(/outside/u);
+  });
+
+  it("counts editor create file_text toward per-write and remaining storage quotas", () => {
+    const base = mkdtempSync(path.join(tmpdir(), "qa-editor-quota-"));
+    const root = prepareQaUserWorkspace(base, USER_ID);
+    const create = (file_text: string) =>
+      qaUserWorkspaceDenial(
+        {
+          name: "str_replace_editor",
+          arguments: { command: "create", path: "new.txt", file_text },
+        },
+        root,
+      );
+    expect(
+      create("я".repeat(QA_USER_WORKSPACE_MAX_WRITE_BYTES / 2 + 1)),
+    ).toMatch(/quota/u);
+    const occupied = path.join(root, "occupied.bin");
+    writeFileSync(occupied, "");
+    truncateSync(occupied, QA_USER_WORKSPACE_MAX_BYTES - 2);
+    expect(create("abc")).toMatch(/quota/u);
+    expect(create("ab")).toBeUndefined();
   });
 
   it("caps one model-controlled write", () => {

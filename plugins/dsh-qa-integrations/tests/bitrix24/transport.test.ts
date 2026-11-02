@@ -31,6 +31,24 @@ function readProfile(provider: Bitrix24Provider): Promise<unknown> {
 }
 
 describe("bitrix24 transport", () => {
+  it("cancels a failed body that never ends", async () => {
+    let cancelled = false;
+    const provider = providerFor(
+      () =>
+        new Response(
+          new ReadableStream({
+            cancel() {
+              cancelled = true;
+            },
+          }),
+          { status: 503 },
+        ),
+    );
+    await expect(readProfile(provider)).rejects.toMatchObject({
+      code: "ProviderUnavailable",
+    });
+    expect(cancelled).toBe(true);
+  });
   it("reads one bounded body through the shared reader", async () => {
     const provider = providerFor(
       () =>

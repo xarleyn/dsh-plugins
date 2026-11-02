@@ -56,10 +56,9 @@ describe("ChannelQuarantine", () => {
   it("clamps a snapshot to the window without dropping the pending head", () => {
     const quarantine = new ChannelQuarantine(options);
     quarantine.append("pending".repeat(30), 0);
-    // A buffer wider than the window spends the window on coverage, not on
-    // context: the head is what the next flush would release.
+    // A full pending window still reserves the overlap at its leading seam.
     expect(quarantine.snapshotText("r".repeat(32))).toBe(
-      "pending".repeat(30).slice(0, options.windowChars),
+      "r".repeat(32) + "pending".repeat(30).slice(0, 32),
     );
   });
 
@@ -99,12 +98,31 @@ describe("ChannelQuarantine", () => {
     // The next window re-reads the released seam in front of the rest, so the
     // two windows leave no range unchecked between them.
     expect(quarantine.snapshotText("a".repeat(64))).toBe(
-      "a".repeat(28) + "b".repeat(36),
+      "a".repeat(32) + "b".repeat(32),
     );
     quarantine.markChecked(0);
-    expect(quarantine.flush().texts).toEqual(["b".repeat(36)]);
+    expect(quarantine.flush().texts).toEqual(["b".repeat(32)]);
+    expect(quarantine.size).toBe(4);
+    expect(quarantine.snapshotText("b".repeat(32))).toBe("b".repeat(36));
+    quarantine.markChecked(0);
+    expect(quarantine.flush().texts).toEqual(["b".repeat(4)]);
     expect(quarantine.hasPending).toBe(false);
   });
+
+  it.each([0, 64, 128])(
+    "makes progress with lookbehind size %i",
+    (lookbehindChars) => {
+      const quarantine = new ChannelQuarantine({ ...options, lookbehindChars });
+      quarantine.append("abc", 0);
+      expect(
+        quarantine.snapshotText("r".repeat(128)).length,
+      ).toBeLessThanOrEqual(64);
+      quarantine.markChecked(0);
+      const flushed = quarantine.flush().texts.join("");
+      expect(flushed.length).toBeGreaterThan(0);
+      expect("abc".startsWith(flushed)).toBe(true);
+    },
+  );
 });
 
 describe("PassThroughMonitor", () => {
@@ -133,6 +151,20 @@ describe("PassThroughMonitor", () => {
 });
 
 describe("ReleasedTail", () => {
+  it.each([0, 8, 128])(
+    "bounds retained context after repeated flushes with lookbehind %i",
+    (lookbehind) => {
+      const tail = new ReleasedTail(lookbehind);
+      for (let index = 0; index < 100; index += 1) {
+        const chunk = String(index % 10).repeat(1000);
+        tail.append(chunk);
+        expect(tail.tail()).toBe(
+          lookbehind === 0 ? "" : chunk.slice(-lookbehind),
+        );
+      }
+    },
+  );
+
   it("keeps the lookbehind tail", () => {
     const tail = new ReleasedTail(8);
     tail.append("1234567890");

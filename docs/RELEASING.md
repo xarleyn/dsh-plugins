@@ -15,7 +15,8 @@ again in the release workflow.
    `.github/workflows/release.yml` as the Trusted Publisher for every public
    package.
 4. Ensure GitHub Actions can create releases and push the release commit and
-   tags. The workflow requests only `contents: write` and `id-token: write`.
+   tags. The default permission is `contents: read`; only the publish job
+   requests `contents: write` and `id-token: write`.
 
 Never add an npm automation token to this workflow. Trusted Publishing uses
 GitHub OIDC, and npm generates provenance automatically for supported public
@@ -26,7 +27,7 @@ packages and repositories.
 Trusted Publishing cannot create a package name. A Trusted Publisher is
 registered on a package that already exists, so the registry rejects a
 workflow's very first publish of an unknown name with a misleading `404`. The
-release workflow stops on that before it versions anything, and prints the
+release workflow stops on that before package validation and publication, and prints the
 recovery. Publish the first version once, from a maintainer's machine:
 
 ```bash
@@ -38,7 +39,9 @@ The `.tgz` is the `npm-tarballs` artifact of that run, or `pnpm --dir
 plugins/dsh-<name> pack`. Then add this repository and workflow as the
 package's Trusted Publisher, and rerun the release workflow: it publishes
 nothing for the version you just uploaded and handles every later version
-through OIDC.
+through OIDC. Keep the uploaded tarball: adopting that version requires matching
+its exact bytes. If a rebuild differs, recover the original tarball or release
+a new version.
 
 ## Contributor flow
 
@@ -111,39 +114,50 @@ removes the consumed version plans outside that commit, so the workflow stages
 the workspace and folds the removal into the release commit before that commit
 leaves the prepare job. It then selects the released packages, checks that every
 one of them already exists on npm — reporting any version npm has ahead of the
-repository, which the wave adopts rather than republishes — and that every
-dependency range the wave would publish resolves to a version this wave
+repository — and that every dependency range the wave would publish resolves to a version this wave
 publishes or npm already has, and fans the validation out: one runner per
 released package verifies it, packs its tarball and installs that tarball into a
-clean npm environment, while a second job runs the repository-wide gates and an
-Nx sweep over every project the release does not publish. Between them the two
+clean npm environment. The gate exports that exact verified tarball for
+publication, together with a provenance record of its source tree and byte
+digests. A second job runs the repository-wide gates and an Nx sweep over every
+project the release does not publish. Between them the two
 jobs verify the whole workspace exactly once. Only once every job has passed
 does one runner publish the versioned projects through npm OIDC in dependency
 order — a package whose dependency did not publish is held back instead of
 published broken — and only once npm has every version, and each of them
-installs from the registry, does it tag the release wave with one
+installs from the registry and has the expected tarball integrity, does it tag
+the release wave with one
 `release/<date>` tag, push the release commit and the tag, and create one
 GitHub Release for the whole wave, with every `.tgz` attached and each package's
 changelog entry in the notes.
 
-The release commit exists only on the prepare runner, so the jobs below it work
-on a fresh checkout of the released ref plus a patch of that commit — every
-commit Nx created since the ref, replayed with `git am`, message and authorship
-included. Packing, tarball verification and publication therefore all read the
-same commit the push records.
+The release commit exists only on the prepare runner, so the jobs below it
+check out the immutable dispatch commit SHA and replay every commit Nx created
+since that base with `git am`. The hashed release plan records the expected
+tree, base SHA, full ref and selected versions. Each job verifies the replayed
+tree and ancestry; publication also verifies the exact set of tarballs and
+their digests. Commit timestamps may differ on replay, but source content must
+match. Advancing the branch while jobs run cannot change what they build.
 
-The order is the point: the branch never advances to a state the registry does
-not already reflect. A release that fails at any step before the push leaves
-the branch exactly as it was, version plans included, so it is fixed by
-rerunning the workflow rather than by hand-publishing versions and repairing
-tags afterwards. A publish that stops partway is finished by the same rerun:
-versions npm already has are adopted, and nothing is published that installs
-from a package npm is missing.
+Before npm publication, the selected remote ref must still identify the
+dispatch commit. Existing versions, including versions adopted from npm, must
+have exactly the same SHA-512 tarball integrity as the verified artifact.
+Only an explicit metadata `404` means the version is absent; authentication,
+transport and other registry errors stop the run. After publication, the
+workflow verifies integrity again, with bounded retries for metadata replication.
+
+The remote ref is checked again before the wave tag is created. The final
+branch and tag push is atomic and uses an explicit lease on the original base,
+after verifying that the release commit descends from that base. A concurrent
+branch update therefore prevents this workflow from pushing either ref.
+npm publication and Git updates are separate operations: a failed or raced
+push can leave packages published while the release commit remains local to
+the run. Preserve the verified artifacts and follow the recovery steps below.
 
 ## Test releases from a branch
 
-The workflow releases whatever ref it was dispatched on, so a branch can
-produce test versions without touching `main`. That release consumes the
+Normal releases require a branch ref, so a branch can produce test versions
+without touching `main`. That release consumes the
 branch's version plans, exactly like a release on `main` — plans and the wave
 tag move only once npm has every version:
 
@@ -166,6 +180,9 @@ runner yet:
   its runner. Because validation is fanned out per package, re-running the
   failed jobs retries only the packages that failed instead of the whole
   workspace.
+- If **Refuse a stale release before publication** fails, no packages have
+  been published by this run. Dispatch a new release from the intended branch
+  revision; the failed run's prepared tree is not substituted onto the new head.
 - If the **Publish to npm with OIDC** step fails, it reports every package npm
   rejected plus every package it held back because one of their dependencies
   did not publish, and nothing was pushed. A package the registry does not know
@@ -173,8 +190,10 @@ runner yet:
   first publish* above. A `404` for a package that exists means the workflow is
   not one of its publishers: register this repository and workflow as that
   package's Trusted Publisher, or publish that tarball once by hand with a
-  token that covers the name. Then rerun the workflow — it resolves the same
-  versions, adopts what npm already has, and publishes the rest.
+  token that covers the name. Rerunning the failed publish job reuses its
+  prepared plan and verified tarballs; versions already on npm are adopted
+  only after their integrity matches. Rerunning the entire workflow can rebuild
+  tarballs, which must pass the same integrity comparison.
 - If **Verify the published versions install** fails, the wave reached npm but
   a consumer cannot resolve it: the message names the range npm could not
   satisfy and says whether the polling ran out. A range the wave itself
@@ -184,29 +203,49 @@ runner yet:
   first, rerun the failed job only once the registry serves it, and treat a
   second refusal as a real failure. Any other range is a manifest mistake, and
   those versions stay published, so fix the manifest and release again — the
-  rerun adopts the versions npm has and publishes the fix as the next version.
+  new release publishes the fix as the next version.
+- If **Verify published artifact integrity** reports missing metadata after
+  its bounded retries, keep the run's artifacts and retry the failed publish
+  job once npm serves the version. A different integrity value is a conflict,
+  not replication lag: use the original verified tarball or issue a new version.
 
 Publication succeeded but the branch did not move, which is the one state that
 needs an explicit decision:
 
-- If the **Push release commit and tags** step failed, rerun the workflow
-  without changing the branch. The versions are already on npm and skipped; the
-  release commit and the wave tag are recreated and pushed. Changing the
-  branch first would let a package whose version npm already has keep a fixed
-  source unpublished, because the skip assumes the tarball matches what was
-  published.
+- If **Refuse branch or tag drift after publication** or **Push release commit
+  and tags** fails, inspect the remote branch and tag before retrying. A failed
+  network acknowledgement does not prove that the atomic push had no effect.
+  If the branch still identifies the original base and no wave tag was pushed,
+  rerun the failed publish job with the same retained artifacts. If the branch
+  advanced, the lease refuses the push; recover the exact prepared tree and
+  original verified tarballs deliberately, or issue a new version from the
+  intended source. Do not move another contributor's branch backwards or
+  create a tag on a newer tree for the already-published bytes.
+  If the atomic push did succeed, use `publish_only=true` on its exact wave tag
+  for the remaining GitHub Release work.
 - If **Create the release-wave GitHub Release** failed, rerun with
-  `publish_only=true` and `create_github_releases=true`: already published npm
-  versions are skipped, and the missing release is created from the wave tag
-  on the pushed release commit with freshly verified tarballs. A single
+  `publish_only=true` and `create_github_releases=true` on the exact pushed
+  release tag. Already published npm versions are skipped only after byte
+  integrity matches, and the missing release is created from that tag. A single
   missing tarball can also be attached with `gh release upload` on the wave
   tag.
-- `publish_only=true` publishes the versions of an already-pushed release
-  commit and nothing else: it packs the branch it runs on, so run it while the
-  branch still carries that release commit — its wave tag, or, for a release
-  made before the wave scheme, every package's per-project tag — not after
-  further work has been merged. `git diff` the tag against the branch first
-  when in doubt.
+- `publish_only=true` selects only versions tagged at the dispatched commit.
+  For a wave tag, the selected set is the package manifests changed in that
+  release commit. For older per-project tags, it selects exact name/version
+  tags at that commit. Versions tagged elsewhere are excluded with a diagnostic;
+  recover those versions from their own release tags. Lightweight and annotated
+  tags are supported. A branch is also accepted when its HEAD is the exact
+  tagged release commit, and the remote branch and recovery tags must remain
+  at that commit through publication. Recovery never creates a new wave tag
+  or pushes a branch. `dry_run=true` retains its nonpublishing behavior.
+
+Keep the run's `release-plan`, `release-commit` (normal release), package
+artifacts and combined `npm-tarballs` artifact together; retention is 30 days.
+The provenance sidecars travel with the tarballs. A build can produce different
+archive bytes even from identical source, so a fresh build is not sufficient
+evidence for adopting an existing npm version. The integrity guard deliberately
+fails closed: use the original verified tarball or a new version instead of
+weakening the comparison to name and version alone.
 
 Publication is not ready until npm Trusted Publishers have been configured
 externally for the `@yadsh` packages.

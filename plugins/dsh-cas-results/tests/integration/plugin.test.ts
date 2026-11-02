@@ -106,7 +106,9 @@ describe("post-execute interception (AC1)", () => {
       .content;
     expect(content).toHaveLength(1);
     const text = content?.[0]?.text ?? "";
-    expect(isCasMarkerText(text.split("\n")[0] ?? "")).toBe(true);
+    const rendered = JSON.parse(text) as { stdout: string; stderr: string };
+    expect(isCasMarkerText(rendered.stdout)).toBe(true);
+    expect(rendered.stderr).toBe("");
     expect(text).toContain("dsh_cas_retrieve");
     // The original value survives untouched and its payload is in the store.
     const hash = /sha256:([a-f0-9]{64})/.exec(text)?.[1] ?? "";
@@ -138,6 +140,103 @@ describe("post-execute interception (AC1)", () => {
 });
 
 describe("failure safety (SPEC §26, AC7)", () => {
+  it("retains structured metadata and labels when several fields are offloaded", async () => {
+    const { listener } = await harness();
+    const original = {
+      stdout: makeText(4096),
+      stderr: "synthetic command failed",
+      exitCode: 2,
+      complete: false,
+      nextPage: "synthetic-next-page",
+      nullable: null,
+      nested: [{ log: makeLog(4096), status: "failed", attempts: 0 }],
+    };
+    const decision = await listener(
+      fakeExec("bash"),
+      successResult(original),
+      async () => accept,
+    );
+    if (decision.kind !== "accept") throw new Error("expected accept");
+    const block = decision.content?.[0];
+    const rendered = JSON.parse(
+      block?.type === "text" ? block.text : "",
+    ) as typeof original;
+    expect(rendered).toMatchObject({
+      stderr: original.stderr,
+      exitCode: 2,
+      complete: false,
+      nextPage: original.nextPage,
+      nullable: null,
+      nested: [{ status: "failed", attempts: 0 }],
+    });
+    expect(isCasMarkerText(rendered.stdout)).toBe(true);
+    expect(isCasMarkerText(rendered.nested[0]!.log)).toBe(true);
+    expect(original.stdout).not.toContain("dsh-cas-results");
+  });
+
+  it.each([null, false, 0, "", { reviewed: true }])(
+    "leaves accepted value %j to the Host renderer",
+    async (value) => {
+      const { listener, counters } = await harness();
+      const downstream: PostToolDecision = {
+        kind: "accept",
+        value,
+        additionalContexts: [],
+      };
+      const decision = await listener(
+        fakeExec("bash"),
+        successResult({ stdout: makeText(4096) }),
+        async () => downstream,
+      );
+      expect(decision).toBe(downstream);
+      expect(counters.snapshot().resultsScanned).toBe(0);
+    },
+  );
+
+  it("offloads only downstream projected text and preserves adjacent blocks and contexts", async () => {
+    const { listener, store } = await harness();
+    const projected = makeText(4096, "projected");
+    const downstream: PostToolDecision = {
+      kind: "accept",
+      additionalContexts: [],
+      content: [
+        { type: "text", text: projected },
+        { type: "text", text: "exitCode=2" },
+      ],
+    };
+    const decision = await listener(
+      fakeExec("bash"),
+      successResult({ stdout: makeText(4096, "original-only") }),
+      async () => downstream,
+    );
+    if (decision.kind !== "accept") throw new Error("expected accept");
+    expect(decision.additionalContexts).toBe(downstream.additionalContexts);
+    expect(decision.content?.[1]).toBe(downstream.content?.[1]);
+    const block = decision.content?.[0];
+    const text = block?.type === "text" ? block.text : "";
+    const hash = /sha256:([a-f0-9]{64})/.exec(text)?.[1] ?? "";
+    expect(Buffer.from((await store.read(hash)).bytes).toString()).toBe(
+      projected,
+    );
+    expect(text).not.toContain("original-only");
+  });
+
+  it("keeps an empty downstream content replacement instead of resurrecting the original", async () => {
+    const { listener } = await harness();
+    const downstream: PostToolDecision = {
+      kind: "accept",
+      content: [],
+      additionalContexts: [],
+    };
+    expect(
+      await listener(
+        fakeExec("bash"),
+        successResult({ stdout: makeText(4096) }),
+        async () => downstream,
+      ),
+    ).toBe(downstream);
+  });
+
   it("passes the original result through when the store is unwritable", async () => {
     const root = await tempRoot();
     const blocked = join(root, "occupied");
@@ -172,6 +271,29 @@ describe("failure safety (SPEC §26, AC7)", () => {
 });
 
 describe("error results (SPEC AC8)", () => {
+  it("retains small error blocks when another block is offloaded", async () => {
+    const { listener } = await harness({ includeErrors: true });
+    const failure = {
+      isError: true,
+      error: { message: "synthetic failure" },
+      content: [
+        { type: "text", text: makeText(4096) },
+        { type: "text", text: "exitCode=2" },
+      ],
+    } as unknown as ToolExecutionResult;
+    const downstream: PostToolDecision = {
+      kind: "accept",
+      additionalContexts: [],
+    };
+    const decision = await listener(
+      fakeExec("bash"),
+      failure,
+      async () => downstream,
+    );
+    if (decision.kind !== "accept") throw new Error("expected accept");
+    expect(decision.content?.[1]).toBe(failure.content[1]);
+    expect(decision.additionalContexts).toBe(downstream.additionalContexts);
+  });
   it("never touches failed results by default", async () => {
     const { listener, counters } = await harness();
     const failure = {

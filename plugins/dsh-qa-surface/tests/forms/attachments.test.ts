@@ -34,9 +34,11 @@ function setup() {
     fileHostPath: (file) =>
       `${process.platform === "win32" ? "C:" : ""}/attachments/${file.attachmentId.slice(7)}/${file.name}`,
   };
+  const grant = vi.fn();
   const adapter = new QaFormAttachmentAdapter(
     () => f.service,
     () => host,
+    grant,
   );
   const record = f.service.create("chat-a", "intake", intake);
   const begin = (
@@ -78,7 +80,18 @@ function setup() {
     adapter.claim("chat-a", u.id);
     return complete(u.id, data);
   };
-  return { ...f, f, record, adapter, bytes, host, begin, complete, upload };
+  return {
+    ...f,
+    f,
+    record,
+    adapter,
+    bytes,
+    host,
+    begin,
+    complete,
+    upload,
+    grant,
+  };
 }
 
 describe("form attachment protocol", () => {
@@ -111,13 +124,25 @@ describe("form attachment protocol", () => {
     expect(snapshot.empty_optional_item_ids).toEqual(["additional"]);
     f.restart();
     t.bytes.clear();
-    const projected = await t.adapter.readable(snapshot);
+    await expect(t.adapter.readable(snapshot, "chat-b")).rejects.toThrow(
+      /access/iu,
+    );
+    const projected = await t.adapter.readable(
+      { ...snapshot, items: [] },
+      "chat-a",
+    );
     const resource = projected.resources[0]!;
     expect(resource.read_path).toContain("/attachments/");
     const current = snapshot.items[0]!.files[0]!;
     expect(t.bytes.get(`sha256:${current.sha256}`)?.toString()).toBe(
       "new document",
     );
+    expect(t.grant).toHaveBeenCalledWith("chat-a", resource.read_path);
+    t.grant.mockClear();
+    await t.adapter.restore("chat-b");
+    expect(t.grant).not.toHaveBeenCalled();
+    await t.adapter.restore("chat-a");
+    expect(t.grant).toHaveBeenCalledWith("chat-a", resource.read_path);
   });
   it("keeps v1 after failed replacement; unresolved failure blocks submit until explicitly removed", async () => {
     const t = setup(),

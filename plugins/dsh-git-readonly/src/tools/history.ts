@@ -17,7 +17,6 @@ import {
 import type { GitRunner } from "../git/repo.js";
 import { resolveToolRepository, type ToolExec } from "../git/repo.js";
 import {
-  escapeRegExpLiteral,
   validateRepoRelativePath,
   validateSearchLiteral,
 } from "../git/validate.js";
@@ -209,8 +208,9 @@ export function createGitHistoryTool(deps: GitToolDeps) {
       if (args["author"] !== undefined && args["author"] !== null) {
         const author = validateSearchLiteral(args["author"], "author");
         authorFilters = [
+          "--fixed-strings",
           "--regexp-ignore-case",
-          `--author=${escapeRegExpLiteral(author)}`,
+          `--author=${author}`,
         ];
       }
 

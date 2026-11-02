@@ -10,6 +10,7 @@
  */
 
 import { stat } from "node:fs/promises";
+import { sha256OfFile } from "../artifacts/store.js";
 
 import type { ResolvedDocumentsConfig } from "../config.js";
 import type { ArtifactStore } from "../artifacts/store.js";
@@ -27,10 +28,15 @@ import {
   pipelineFingerprint,
   probeProviderVersion,
   type DocumentCacheEntry,
+  type DocumentCacheAsset,
   type DocumentCacheOutput,
   type DocumentCacheProvider,
 } from "./key.js";
-import { materializeCacheHit, type MaterializedHit } from "./materialize.js";
+import {
+  discardBundle,
+  materializeCacheHit,
+  type MaterializedHit,
+} from "./materialize.js";
 import { CacheStore } from "./store.js";
 
 export {
@@ -115,6 +121,11 @@ export interface StoreOutputSpec {
   readonly sha256: string;
 }
 
+export type StoreAssetSpec = Pick<
+  StoreOutputSpec,
+  "artifactId" | "outputName" | "path" | "mediaType"
+>;
+
 /** A request whose key has been resolved, ready to look up and to record. */
 export interface CacheHandle {
   readonly key: string;
@@ -126,6 +137,7 @@ export interface CacheHandle {
   /** Record a successful run under this key. */
   remember(options: {
     readonly outputs: readonly StoreOutputSpec[];
+    readonly assets?: readonly StoreAssetSpec[];
     readonly warnings: readonly DocumentWarning[];
     readonly backends: Readonly<Record<string, { provider: string }>>;
     readonly extras?: Readonly<Record<string, unknown>>;
@@ -215,6 +227,7 @@ export class ConversionCache {
     key: string,
     options: {
       readonly outputs: readonly StoreOutputSpec[];
+      readonly assets?: readonly StoreAssetSpec[];
       readonly warnings: readonly DocumentWarning[];
       readonly backends: Readonly<Record<string, { provider: string }>>;
       readonly extras?: Readonly<Record<string, unknown>>;
@@ -236,6 +249,17 @@ export class ConversionCache {
         });
       }
       const existing = await cache.get(key);
+      const assets: DocumentCacheAsset[] = [];
+      for (const asset of options.assets ?? []) {
+        const details = await stat(asset.path);
+        assets.push({
+          artifactId: asset.artifactId,
+          outputName: asset.outputName,
+          mediaType: asset.mediaType,
+          size: details.size,
+          sha256: await sha256OfFile(asset.path),
+        });
+      }
       const now = this.now().toISOString();
       const entry: DocumentCacheEntry = {
         version: CACHE_ENTRY_VERSION,
@@ -244,8 +268,12 @@ export class ConversionCache {
         createdAt: existing?.createdAt ?? now,
         accessedAt: now,
         hitCount: existing?.hitCount ?? 0,
-        bytes: stored.reduce((total, output) => total + output.size, 0),
+        bytes: [...stored, ...assets].reduce(
+          (total, output) => total + output.size,
+          0,
+        ),
         outputs: stored,
+        assets,
         backends: uniqueProviders(
           options.outputs.map((output) => ({
             role: output.role,
@@ -289,6 +317,7 @@ export class ConversionCache {
       outputName,
     });
     if (materialized === undefined) {
+      await discardBundle(this.store, artifactId);
       this.logger.warn("documents.cache.stale", { key });
       return undefined;
     }

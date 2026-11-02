@@ -32,6 +32,9 @@ export interface DocumentCacheOutput {
   readonly sha256: string;
 }
 
+/** A companion file whose relative path is preserved inside the bundle. */
+export type DocumentCacheAsset = Omit<DocumentCacheOutput, "format">;
+
 /**
  * What one backend lookup produced. `provider` is the name the provider
  * reports; `version` is read from the provider when it exposes one, and is
@@ -54,6 +57,7 @@ export interface DocumentCacheEntry {
   /** Bytes of all cached files, for the size budget. */
   readonly bytes: number;
   readonly outputs: readonly DocumentCacheOutput[];
+  readonly assets: readonly DocumentCacheAsset[];
   readonly backends: readonly DocumentCacheProvider[];
   readonly warnings: readonly {
     readonly code: string;
@@ -69,7 +73,7 @@ export interface DocumentCacheEntry {
 }
 
 /** Bump when the meaning of a stored entry changes; old entries are ignored. */
-export const CACHE_ENTRY_VERSION = 1 as const;
+export const CACHE_ENTRY_VERSION = 2 as const;
 
 /** Directory, inside the artifact root, the entries live in. */
 export const CACHE_DIRECTORY = ".cache";

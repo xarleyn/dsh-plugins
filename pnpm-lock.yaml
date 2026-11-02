@@ -42,8 +42,8 @@ catalogs:
       specifier: ^26.4.0
       version: 26.6.3
     '@vitest/coverage-v8':
-      specifier: ^4.1.8
-      version: 4.1.11
+      specifier: ^4.1.12
+      version: 4.1.12
     eslint:
       specifier: 10.9.1
       version: 10.9.1
@@ -75,13 +75,14 @@ catalogs:
       specifier: 8.68.0
       version: 8.68.0
     vitest:
-      specifier: ^4.1.11
-      version: 4.1.11
+      specifier: ^4.1.12
+      version: 4.1.12
 
 overrides:
   '@deepseek-ai/cordis': 4.0.5
   '@deepseek-ai/cordis-plugin-loader': 1.0.6
   '@deepseek-ai/dsh-agent': 0.2.1-rc.3
+  '@deepseek-ai/dsh-agent-loop': 0.2.1-rc.3
   '@deepseek-ai/dsh-agent-default-model': 0.2.1-rc.3
   '@deepseek-ai/dsh-agent-preset-registry': 0.2.1-rc.3
   '@deepseek-ai/dsh-api-gateway': 0.2.1-rc.3
@@ -170,7 +171,7 @@ overrides:
   smol-toml: 1.9.0
   source-map-js: 1.2.2
   zod: 4.6.6
-  follow-redirects: 1.16.1
+  follow-redirects: 1.16.2
   vite: 8.3.3
   undici: 8.12.2
 
@@ -208,6 +209,9 @@ importers:
       '@deepseek-ai/dsh-invariants':
         specifier: 0.2.0-rc.2
         version: 0.2.0-rc.2(@deepseek-ai/cordis@4.0.5)
+      '@deepseek-ai/dsh-llm':
+        specifier: 0.2.1-rc.3
+        version: 0.2.1-rc.3(@deepseek-ai/cordis@4.0.5)
       '@deepseek-ai/dsh-llm-retry':
         specifier: 0.2.1-rc.3
         version: 0.2.1-rc.3(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-agent@0.2.1-rc.3(02d0f40b432df75e85918e266882ca13))(@deepseek-ai/dsh-brand@0.2.1-rc.3(@deepseek-ai/cordis@4.0.5))(@deepseek-ai/dsh-llm@0.2.1-rc.3(@deepseek-ai/cordis@4.0.5))(@deepseek-ai/dsh-session-projection@0.2.1-rc.3(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-session@0.2.1-rc.3(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-scope@0.2.1-rc.3(@deepseek-ai/cordis@4.0.5))))(@deepseek-ai/dsh-session@0.2.1-rc.3(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-scope@0.2.1-rc.3(@deepseek-ai/cordis@4.0.5)))(@deepseek-ai/dsh-timeout@0.2.1-rc.3(@deepseek-ai/cordis@4.0.5))
@@ -271,12 +275,21 @@ importers:
       '@swc/core':
         specifier: catalog:tooling
         version: 1.16.2
+      '@yadsh/dsh-cas-results':
+        specifier: workspace:^
+        version: link:plugins/dsh-cas-results
+      '@yadsh/dsh-jev-compaction':
+        specifier: workspace:^
+        version: link:plugins/dsh-jev-compaction
       '@yadsh/dsh-plugin-generator':
         specifier: workspace:*
         version: link:tooling/generators/dsh-plugin
       '@yadsh/dsh-plugin-scripts':
         specifier: workspace:^
         version: link:packages/plugin-scripts
+      '@yadsh/dsh-tool-offload':
+        specifier: workspace:^
+        version: link:plugins/dsh-tool-offload
       eslint:
         specifier: catalog:tooling
         version: 10.9.1
@@ -300,7 +313,7 @@ importers:
         version: 8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1)
       vitest:
         specifier: catalog:tooling
-        version: 4.1.11(@types/node@26.6.3)(@vitest/coverage-v8@4.1.11)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 4.1.12(@types/node@26.6.3)(@vitest/coverage-v8@4.1.12)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
 
   packages/audit-core:
     devDependencies:
@@ -309,7 +322,7 @@ importers:
         version: 26.6.3
       '@vitest/coverage-v8':
         specifier: catalog:tooling
-        version: 4.1.11(vitest@4.1.11)
+        version: 4.1.12(vitest@4.1.12)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../config
@@ -324,7 +337,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: catalog:tooling
-        version: 4.1.11(@types/node@26.6.3)(@vitest/coverage-v8@4.1.11)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 4.1.12(@types/node@26.6.3)(@vitest/coverage-v8@4.1.12)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
 
   packages/audit-ui:
     dependencies:
@@ -349,7 +362,7 @@ importers:
         version: 18.3.7(@types/react@18.3.28)
       '@vitest/coverage-v8':
         specifier: catalog:tooling
-        version: 4.1.11(vitest@4.1.11)
+        version: 4.1.12(vitest@4.1.12)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../config
@@ -373,7 +386,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: catalog:tooling
-        version: 4.1.11(@types/node@26.6.3)(@vitest/coverage-v8@4.1.11)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 4.1.12(@types/node@26.6.3)(@vitest/coverage-v8@4.1.12)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
 
   packages/config:
     devDependencies:
@@ -385,7 +398,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: catalog:tooling
-        version: 4.1.11(@types/node@26.6.3)(@vitest/coverage-v8@4.1.11)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 4.1.12(@types/node@26.6.3)(@vitest/coverage-v8@4.1.12)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
 
   packages/plugin-kit:
     dependencies:
@@ -410,7 +423,7 @@ importers:
         version: 18.3.7(@types/react@18.3.28)
       '@vitest/coverage-v8':
         specifier: catalog:tooling
-        version: 4.1.11(vitest@4.1.11)
+        version: 4.1.12(vitest@4.1.12)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../config
@@ -434,7 +447,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: catalog:tooling
-        version: 4.1.11(@types/node@26.6.3)(@vitest/coverage-v8@4.1.11)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 4.1.12(@types/node@26.6.3)(@vitest/coverage-v8@4.1.12)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
 
   packages/plugin-log:
     dependencies:
@@ -450,7 +463,7 @@ importers:
         version: 26.6.3
       '@vitest/coverage-v8':
         specifier: catalog:tooling
-        version: 4.1.11(vitest@4.1.11)
+        version: 4.1.12(vitest@4.1.12)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../config
@@ -468,7 +481,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: catalog:tooling
-        version: 4.1.11(@types/node@26.6.3)(@vitest/coverage-v8@4.1.11)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 4.1.12(@types/node@26.6.3)(@vitest/coverage-v8@4.1.12)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
 
   packages/plugin-scripts:
     devDependencies:
@@ -486,7 +499,7 @@ importers:
         version: 26.6.3
       '@vitest/coverage-v8':
         specifier: catalog:tooling
-        version: 4.1.11(vitest@4.1.11)
+        version: 4.1.12(vitest@4.1.12)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../config
@@ -498,7 +511,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: catalog:tooling
-        version: 4.1.11(@types/node@26.6.3)(@vitest/coverage-v8@4.1.11)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 4.1.12(@types/node@26.6.3)(@vitest/coverage-v8@4.1.12)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
 
   plugins/dsh-answer-review-gate:
     dependencies:
@@ -526,7 +539,7 @@ importers:
         version: 26.6.3
       '@vitest/coverage-v8':
         specifier: catalog:tooling
-        version: 4.1.11(vitest@4.1.11)
+        version: 4.1.12(vitest@4.1.12)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -544,10 +557,13 @@ importers:
         version: 5.9.3
       vitest:
         specifier: catalog:tooling
-        version: 4.1.11(@types/node@26.6.3)(@vitest/coverage-v8@4.1.11)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 4.1.12(@types/node@26.6.3)(@vitest/coverage-v8@4.1.12)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
 
   plugins/dsh-cas-results:
     dependencies:
+      '@yadsh/dsh-plugin-kit':
+        specifier: workspace:^
+        version: link:../../packages/plugin-kit
       '@yadsh/dsh-plugin-log':
         specifier: workspace:^
         version: link:../../packages/plugin-log
@@ -566,7 +582,7 @@ importers:
         version: 26.6.3
       '@vitest/coverage-v8':
         specifier: catalog:tooling
-        version: 4.1.11(vitest@4.1.11)
+        version: 4.1.12(vitest@4.1.12)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -584,7 +600,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: catalog:tooling
-        version: 4.1.11(@types/node@26.6.3)(@vitest/coverage-v8@4.1.11)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 4.1.12(@types/node@26.6.3)(@vitest/coverage-v8@4.1.12)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
 
   plugins/dsh-decision-tools:
     dependencies:
@@ -606,7 +622,7 @@ importers:
         version: 26.6.3
       '@vitest/coverage-v8':
         specifier: catalog:tooling
-        version: 4.1.11(vitest@4.1.11)
+        version: 4.1.12(vitest@4.1.12)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -624,7 +640,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: catalog:tooling
-        version: 4.1.11(@types/node@26.6.3)(@vitest/coverage-v8@4.1.11)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 4.1.12(@types/node@26.6.3)(@vitest/coverage-v8@4.1.12)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
 
   plugins/dsh-doc-impact:
     dependencies:
@@ -676,7 +692,7 @@ importers:
         version: 18.3.28
       '@vitest/coverage-v8':
         specifier: catalog:tooling
-        version: 4.1.11(vitest@4.1.11)
+        version: 4.1.12(vitest@4.1.12)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -700,16 +716,19 @@ importers:
         version: 7.0.2
       vitest:
         specifier: catalog:tooling
-        version: 4.1.11(@types/node@26.6.3)(@vitest/coverage-v8@4.1.11)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 4.1.12(@types/node@26.6.3)(@vitest/coverage-v8@4.1.12)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
 
   plugins/dsh-documents:
     dependencies:
+      '@yadsh/dsh-plugin-kit':
+        specifier: workspace:^
+        version: link:../../packages/plugin-kit
       '@yadsh/dsh-plugin-log':
         specifier: workspace:^
         version: link:../../packages/plugin-log
       csv-parse:
-        specifier: 6.1.0
-        version: 6.1.0
+        specifier: 7.0.2
+        version: 7.0.2
       csv-stringify:
         specifier: 6.6.0
         version: 6.6.0
@@ -773,13 +792,10 @@ importers:
         version: 18.3.7(@types/react@18.3.28)
       '@vitest/coverage-v8':
         specifier: catalog:tooling
-        version: 4.1.11(vitest@4.1.11)
+        version: 4.1.12(vitest@4.1.12)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
-      '@yadsh/dsh-plugin-kit':
-        specifier: workspace:^
-        version: link:../../packages/plugin-kit
       eslint:
         specifier: catalog:tooling
         version: 10.9.1
@@ -800,7 +816,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: catalog:tooling
-        version: 4.1.11(@types/node@26.6.3)(@vitest/coverage-v8@4.1.11)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 4.1.12(@types/node@26.6.3)(@vitest/coverage-v8@4.1.12)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
 
   plugins/dsh-domain-experts:
     dependencies:
@@ -873,7 +889,7 @@ importers:
         version: 18.3.7(@types/react@18.3.28)
       '@vitest/coverage-v8':
         specifier: catalog:tooling
-        version: 4.1.11(vitest@4.1.11)
+        version: 4.1.12(vitest@4.1.12)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -903,7 +919,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: catalog:tooling
-        version: 4.1.11(@types/node@26.6.3)(@vitest/coverage-v8@4.1.11)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 4.1.12(@types/node@26.6.3)(@vitest/coverage-v8@4.1.12)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
 
   plugins/dsh-draft-sessions:
     dependencies:
@@ -970,7 +986,7 @@ importers:
         version: 18.3.7(@types/react@18.3.28)
       '@vitest/coverage-v8':
         specifier: catalog:tooling
-        version: 4.1.11(vitest@4.1.11)
+        version: 4.1.12(vitest@4.1.12)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -997,7 +1013,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: catalog:tooling
-        version: 4.1.11(@types/node@26.6.3)(@vitest/coverage-v8@4.1.11)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 4.1.12(@types/node@26.6.3)(@vitest/coverage-v8@4.1.12)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
 
   plugins/dsh-git-readonly:
     dependencies:
@@ -1016,7 +1032,7 @@ importers:
         version: 26.6.3
       '@vitest/coverage-v8':
         specifier: catalog:tooling
-        version: 4.1.11(vitest@4.1.11)
+        version: 4.1.12(vitest@4.1.12)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -1034,7 +1050,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: catalog:tooling
-        version: 4.1.11(@types/node@26.6.3)(@vitest/coverage-v8@4.1.11)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 4.1.12(@types/node@26.6.3)(@vitest/coverage-v8@4.1.12)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
 
   plugins/dsh-humanizer:
     dependencies:
@@ -1056,7 +1072,7 @@ importers:
         version: 26.6.3
       '@vitest/coverage-v8':
         specifier: catalog:tooling
-        version: 4.1.11(vitest@4.1.11)
+        version: 4.1.12(vitest@4.1.12)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -1074,7 +1090,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: catalog:tooling
-        version: 4.1.11(@types/node@26.6.3)(@vitest/coverage-v8@4.1.11)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 4.1.12(@types/node@26.6.3)(@vitest/coverage-v8@4.1.12)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
 
   plugins/dsh-jev-compaction:
     dependencies:
@@ -1144,7 +1160,7 @@ importers:
         version: 18.3.7(@types/react@18.3.28)
       '@vitest/coverage-v8':
         specifier: catalog:tooling
-        version: 4.1.11(vitest@4.1.11)
+        version: 4.1.12(vitest@4.1.12)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -1174,7 +1190,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: catalog:tooling
-        version: 4.1.11(@types/node@26.6.3)(@vitest/coverage-v8@4.1.11)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 4.1.12(@types/node@26.6.3)(@vitest/coverage-v8@4.1.12)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
 
   plugins/dsh-kv-persist:
     dependencies:
@@ -1196,7 +1212,7 @@ importers:
         version: 26.6.3
       '@vitest/coverage-v8':
         specifier: catalog:tooling
-        version: 4.1.11(vitest@4.1.11)
+        version: 4.1.12(vitest@4.1.12)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -1211,7 +1227,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: catalog:tooling
-        version: 4.1.11(@types/node@26.6.3)(@vitest/coverage-v8@4.1.11)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 4.1.12(@types/node@26.6.3)(@vitest/coverage-v8@4.1.12)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
 
   plugins/dsh-l10n-overrides:
     dependencies:
@@ -1230,7 +1246,7 @@ importers:
         version: 26.6.3
       '@vitest/coverage-v8':
         specifier: catalog:tooling
-        version: 4.1.11(vitest@4.1.11)
+        version: 4.1.12(vitest@4.1.12)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -1251,7 +1267,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: catalog:tooling
-        version: 4.1.11(@types/node@26.6.3)(@vitest/coverage-v8@4.1.11)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 4.1.12(@types/node@26.6.3)(@vitest/coverage-v8@4.1.12)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
 
   plugins/dsh-lightrag:
     dependencies:
@@ -1270,7 +1286,7 @@ importers:
         version: 26.6.3
       '@vitest/coverage-v8':
         specifier: catalog:tooling
-        version: 4.1.11(vitest@4.1.11)
+        version: 4.1.12(vitest@4.1.12)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -1288,7 +1304,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: catalog:tooling
-        version: 4.1.11(@types/node@26.6.3)(@vitest/coverage-v8@4.1.11)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 4.1.12(@types/node@26.6.3)(@vitest/coverage-v8@4.1.12)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
 
   plugins/dsh-llm-provider-extended:
     dependencies:
@@ -1367,7 +1383,7 @@ importers:
         version: 18.3.28
       '@vitest/coverage-v8':
         specifier: catalog:tooling
-        version: 4.1.11(vitest@4.1.11)
+        version: 4.1.12(vitest@4.1.12)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -1397,7 +1413,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: catalog:tooling
-        version: 4.1.11(@types/node@26.6.3)(@vitest/coverage-v8@4.1.11)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 4.1.12(@types/node@26.6.3)(@vitest/coverage-v8@4.1.12)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
 
   plugins/dsh-model-safety-gate:
     dependencies:
@@ -1467,7 +1483,7 @@ importers:
         version: 18.3.7(@types/react@18.3.28)
       '@vitest/coverage-v8':
         specifier: catalog:tooling
-        version: 4.1.11(vitest@4.1.11)
+        version: 4.1.12(vitest@4.1.12)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -1497,7 +1513,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: catalog:tooling
-        version: 4.1.11(@types/node@26.6.3)(@vitest/coverage-v8@4.1.11)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 4.1.12(@types/node@26.6.3)(@vitest/coverage-v8@4.1.12)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
 
   plugins/dsh-openviking-memory:
     dependencies:
@@ -1582,7 +1598,7 @@ importers:
         version: 18.3.7(@types/react@18.3.28)
       '@vitest/coverage-v8':
         specifier: catalog:tooling
-        version: 4.1.11(vitest@4.1.11)
+        version: 4.1.12(vitest@4.1.12)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -1615,7 +1631,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: catalog:tooling
-        version: 4.1.11(@types/node@26.6.3)(@vitest/coverage-v8@4.1.11)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 4.1.12(@types/node@26.6.3)(@vitest/coverage-v8@4.1.12)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
       yaml:
         specifier: ^2.8.1
         version: 2.9.1
@@ -1679,7 +1695,7 @@ importers:
         version: 18.3.7(@types/react@18.3.28)
       '@vitest/coverage-v8':
         specifier: catalog:tooling
-        version: 4.1.11(vitest@4.1.11)
+        version: 4.1.12(vitest@4.1.12)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -1712,7 +1728,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: catalog:tooling
-        version: 4.1.11(@types/node@26.6.3)(@vitest/coverage-v8@4.1.11)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 4.1.12(@types/node@26.6.3)(@vitest/coverage-v8@4.1.12)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
 
   plugins/dsh-preset-persona-editor:
     dependencies:
@@ -1767,7 +1783,7 @@ importers:
         version: 18.3.7(@types/react@18.3.28)
       '@vitest/coverage-v8':
         specifier: catalog:tooling
-        version: 4.1.11(vitest@4.1.11)
+        version: 4.1.12(vitest@4.1.12)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -1800,7 +1816,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: catalog:tooling
-        version: 4.1.11(@types/node@26.6.3)(@vitest/coverage-v8@4.1.11)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 4.1.12(@types/node@26.6.3)(@vitest/coverage-v8@4.1.12)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
 
   plugins/dsh-prompt-firewall:
     dependencies:
@@ -1858,7 +1874,7 @@ importers:
         version: 18.3.7(@types/react@18.3.28)
       '@vitest/coverage-v8':
         specifier: catalog:tooling
-        version: 4.1.11(vitest@4.1.11)
+        version: 4.1.12(vitest@4.1.12)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -1888,7 +1904,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: catalog:tooling
-        version: 4.1.11(@types/node@26.6.3)(@vitest/coverage-v8@4.1.11)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 4.1.12(@types/node@26.6.3)(@vitest/coverage-v8@4.1.12)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
 
   plugins/dsh-qa-browser:
     dependencies:
@@ -1952,7 +1968,7 @@ importers:
         version: 18.3.7(@types/react@18.3.28)
       '@vitest/coverage-v8':
         specifier: catalog:tooling
-        version: 4.1.11(vitest@4.1.11)
+        version: 4.1.12(vitest@4.1.12)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -1976,7 +1992,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: catalog:tooling
-        version: 4.1.11(@types/node@26.6.3)(@vitest/coverage-v8@4.1.11)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 4.1.12(@types/node@26.6.3)(@vitest/coverage-v8@4.1.12)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
 
   plugins/dsh-qa-integrations:
     dependencies:
@@ -2037,7 +2053,7 @@ importers:
         version: 18.3.7(@types/react@18.3.28)
       '@vitest/coverage-v8':
         specifier: catalog:tooling
-        version: 4.1.11(vitest@4.1.11)
+        version: 4.1.12(vitest@4.1.12)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -2067,7 +2083,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: catalog:tooling
-        version: 4.1.11(@types/node@26.6.3)(@vitest/coverage-v8@4.1.11)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 4.1.12(@types/node@26.6.3)(@vitest/coverage-v8@4.1.12)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
 
   plugins/dsh-qa-surface:
     dependencies:
@@ -2102,6 +2118,9 @@ importers:
       '@deepseek-ai/dsh-agent':
         specifier: 0.2.1-rc.3
         version: 0.2.1-rc.3(02d0f40b432df75e85918e266882ca13)
+      '@deepseek-ai/dsh-agent-loop':
+        specifier: 0.2.1-rc.3
+        version: 0.2.1-rc.3(0d0ff72c43b29173830704164054fa51)
       '@deepseek-ai/dsh-agent-preset-registry':
         specifier: 0.2.1-rc.3
         version: 0.2.1-rc.3(d47ed3fc7fd76e6cdb7afaa5a0fc8a58)
@@ -2156,6 +2175,9 @@ importers:
       '@deepseek-ai/dsh-session':
         specifier: 0.2.1-rc.3
         version: 0.2.1-rc.3(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-scope@0.2.1-rc.3(@deepseek-ai/cordis@4.0.5))
+      '@deepseek-ai/dsh-session-projection':
+        specifier: 0.2.1-rc.3
+        version: 0.2.1-rc.3(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-session@0.2.1-rc.3(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-scope@0.2.1-rc.3(@deepseek-ai/cordis@4.0.5)))
       '@deepseek-ai/dsh-settings':
         specifier: 0.2.1-rc.3
         version: 0.2.1-rc.3(@deepseek-ai/cordis-plugin-include@1.0.9)(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-app-boot@0.2.1-rc.3(@deepseek-ai/cordis-plugin-group@1.0.4(@deepseek-ai/cordis-plugin-loader@1.0.6)(@deepseek-ai/cordis@4.0.5))(@deepseek-ai/cordis-plugin-include@1.0.9)(@deepseek-ai/cordis-plugin-loader@1.0.6)(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-home-paths@0.2.1-rc.3(@deepseek-ai/cordis@4.0.5))(@deepseek-ai/dsh-launch-environment@0.2.1-rc.3(@deepseek-ai/cordis@4.0.5)))(@deepseek-ai/dsh-brand@0.2.1-rc.3(@deepseek-ai/cordis@4.0.5))(@deepseek-ai/dsh-session@0.2.1-rc.3(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-scope@0.2.1-rc.3(@deepseek-ai/cordis@4.0.5)))(@deepseek-ai/schemastery@3.18.5)(node-addon-require-builtin@0.1.9)
@@ -2197,7 +2219,7 @@ importers:
         version: 18.3.7(@types/react@18.3.28)
       '@vitest/coverage-v8':
         specifier: catalog:tooling
-        version: 4.1.11(vitest@4.1.11)
+        version: 4.1.12(vitest@4.1.12)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -2230,7 +2252,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: catalog:tooling
-        version: 4.1.11(@types/node@26.6.3)(@vitest/coverage-v8@4.1.11)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 4.1.12(@types/node@26.6.3)(@vitest/coverage-v8@4.1.12)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
 
   plugins/dsh-session-audit:
     dependencies:
@@ -2294,7 +2316,7 @@ importers:
         version: 18.3.7(@types/react@18.3.28)
       '@vitest/coverage-v8':
         specifier: catalog:tooling
-        version: 4.1.11(vitest@4.1.11)
+        version: 4.1.12(vitest@4.1.12)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -2327,7 +2349,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: catalog:tooling
-        version: 4.1.11(@types/node@26.6.3)(@vitest/coverage-v8@4.1.11)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 4.1.12(@types/node@26.6.3)(@vitest/coverage-v8@4.1.12)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
 
   plugins/dsh-session-scope:
     dependencies:
@@ -2361,7 +2383,7 @@ importers:
         version: 18.3.7(@types/react@18.3.28)
       '@vitest/coverage-v8':
         specifier: catalog:tooling
-        version: 4.1.11(vitest@4.1.11)
+        version: 4.1.12(vitest@4.1.12)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -2388,7 +2410,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: catalog:tooling
-        version: 4.1.11(@types/node@26.6.3)(@vitest/coverage-v8@4.1.11)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 4.1.12(@types/node@26.6.3)(@vitest/coverage-v8@4.1.12)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
 
   plugins/dsh-sleev:
     dependencies:
@@ -2437,7 +2459,7 @@ importers:
         version: 18.3.28
       '@vitest/coverage-v8':
         specifier: catalog:tooling
-        version: 4.1.11(vitest@4.1.11)
+        version: 4.1.12(vitest@4.1.12)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -2464,10 +2486,13 @@ importers:
         version: 7.0.2
       vitest:
         specifier: catalog:tooling
-        version: 4.1.11(@types/node@26.6.3)(@vitest/coverage-v8@4.1.11)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 4.1.12(@types/node@26.6.3)(@vitest/coverage-v8@4.1.12)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
 
   plugins/dsh-tool-offload:
     dependencies:
+      '@yadsh/dsh-plugin-kit':
+        specifier: workspace:^
+        version: link:../../packages/plugin-kit
       '@yadsh/dsh-plugin-log':
         specifier: workspace:^
         version: link:../../packages/plugin-log
@@ -2489,7 +2514,7 @@ importers:
         version: 26.6.3
       '@vitest/coverage-v8':
         specifier: catalog:tooling
-        version: 4.1.11(vitest@4.1.11)
+        version: 4.1.12(vitest@4.1.12)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -2504,7 +2529,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: catalog:tooling
-        version: 4.1.11(@types/node@26.6.3)(@vitest/coverage-v8@4.1.11)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 4.1.12(@types/node@26.6.3)(@vitest/coverage-v8@4.1.12)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
 
   plugins/dsh-ui-repair:
     dependencies:
@@ -2547,7 +2572,7 @@ importers:
         version: 18.3.7(@types/react@18.3.28)
       '@vitest/coverage-v8':
         specifier: catalog:tooling
-        version: 4.1.11(vitest@4.1.11)
+        version: 4.1.12(vitest@4.1.12)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -2580,7 +2605,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: catalog:tooling
-        version: 4.1.11(@types/node@26.6.3)(@vitest/coverage-v8@4.1.11)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 4.1.12(@types/node@26.6.3)(@vitest/coverage-v8@4.1.12)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
 
   plugins/dsh-user-correction-miner:
     dependencies:
@@ -2614,7 +2639,7 @@ importers:
         version: 26.6.3
       '@vitest/coverage-v8':
         specifier: catalog:tooling
-        version: 4.1.11(vitest@4.1.11)
+        version: 4.1.12(vitest@4.1.12)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -2632,10 +2657,13 @@ importers:
         version: 5.9.3
       vitest:
         specifier: catalog:tooling
-        version: 4.1.11(@types/node@26.6.3)(@vitest/coverage-v8@4.1.11)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 4.1.12(@types/node@26.6.3)(@vitest/coverage-v8@4.1.12)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
 
   plugins/dsh-web-fetch-authenticated:
     dependencies:
+      '@yadsh/dsh-plugin-kit':
+        specifier: workspace:^
+        version: link:../../packages/plugin-kit
       '@yadsh/dsh-plugin-log':
         specifier: workspace:^
         version: link:../../packages/plugin-log
@@ -2705,13 +2733,10 @@ importers:
         version: 18.3.7(@types/react@18.3.28)
       '@vitest/coverage-v8':
         specifier: catalog:tooling
-        version: 4.1.11(vitest@4.1.11)
+        version: 4.1.12(vitest@4.1.12)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
-      '@yadsh/dsh-plugin-kit':
-        specifier: workspace:^
-        version: link:../../packages/plugin-kit
       '@yadsh/dsh-plugin-scripts':
         specifier: workspace:^
         version: link:../../packages/plugin-scripts
@@ -2735,7 +2760,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: catalog:tooling
-        version: 4.1.11(@types/node@26.6.3)(@vitest/coverage-v8@4.1.11)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 4.1.12(@types/node@26.6.3)(@vitest/coverage-v8@4.1.12)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
 
   tooling/generators/dsh-plugin:
     dependencies:
@@ -2748,7 +2773,7 @@ importers:
         version: 26.6.3
       '@vitest/coverage-v8':
         specifier: catalog:tooling
-        version: 4.1.11(vitest@4.1.11)
+        version: 4.1.12(vitest@4.1.12)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../../packages/config
@@ -2760,7 +2785,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: catalog:tooling
-        version: 4.1.11(@types/node@26.6.3)(@vitest/coverage-v8@4.1.11)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+        version: 4.1.12(@types/node@26.6.3)(@vitest/coverage-v8@4.1.12)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
 
 packages:
 
@@ -3507,6 +3532,19 @@ packages:
       '@deepseek-ai/cordis': 4.0.5
       '@deepseek-ai/dsh-agent': 0.2.1-rc.3
       '@deepseek-ai/dsh-llm': 0.2.1-rc.3
+
+  '@deepseek-ai/dsh-agent-loop@0.2.1-rc.3':
+    resolution: {integrity: sha512-H9fuiuaBv/IBvw2Ja3G+EZmUC+nwvOEXUH2BJtQNVs4bSEtb2L+f/eqFsX2pWXGFR6ptUQBteJzGLFzEQJgFSg==}
+    peerDependencies:
+      '@deepseek-ai/cordis': 4.0.5
+      '@deepseek-ai/dsh-agent': 0.2.1-rc.3
+      '@deepseek-ai/dsh-llm': 0.2.1-rc.3
+      '@deepseek-ai/dsh-scope': 0.2.1-rc.3
+      '@deepseek-ai/dsh-session': 0.2.1-rc.3
+      '@deepseek-ai/dsh-session-persistence': 0.2.1-rc.3
+      '@deepseek-ai/dsh-session-projection': 0.2.1-rc.3
+      '@deepseek-ai/dsh-system-prompt': 0.2.1-rc.3
+      '@deepseek-ai/dsh-tools': 0.2.1-rc.3
 
   '@deepseek-ai/dsh-agent-preset-registry@0.2.1-rc.3':
     resolution: {integrity: sha512-o6DLIkZXKk20dE9Zk3PqAzjRPssHNtsXgg7uVzsmTSA7K4fe3IDU+S8qolVAA/nyE7/TeawRsHPbo0dvvdKaDg==}
@@ -5304,20 +5342,20 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@vitest/coverage-v8@4.1.11':
-    resolution: {integrity: sha512-8MVGEFnJIcdGjcbfKmeq8z0pZHH0JlVtoVZH9Q/qwUp6wyFnEJUBMrw9DCaj+ra3vShGmhavjalMIhPNxZAUcw==}
+  '@vitest/coverage-v8@4.1.12':
+    resolution: {integrity: sha512-6S7/iVknKglLAxMFxQGNppBI0iqJS2NgM6FBxavitj7KaDq/vywOWGf6dGu7F2L1Qy0G6S3uTp7aGshHrzK8JA==}
     peerDependencies:
-      '@vitest/browser': 4.1.11
-      vitest: 4.1.11
+      '@vitest/browser': 4.1.12
+      vitest: 4.1.12
     peerDependenciesMeta:
       '@vitest/browser':
         optional: true
 
-  '@vitest/expect@4.1.11':
-    resolution: {integrity: sha512-VX2x5vNJXET47KAFzwERI+KRMtTTCSWTfSMKsW7JsUsXV4psq++e3DvZpuTDOpHcxytiDs6p2nhVb2tVDiiUYw==}
+  '@vitest/expect@4.1.12':
+    resolution: {integrity: sha512-vFlTt+YEu9WBpNjdGayNmlMVzrWPi1+sv853/7t2FU7hpO5gAFBKHzQmkCq5Xjpr+evegF2994LQT3hF3mRlqQ==}
 
-  '@vitest/mocker@4.1.11':
-    resolution: {integrity: sha512-2XJVD55d1o5AZous5CCGKS74g/riOj9odEt2bQpCVZeblHyHdnMeFl4jl0XjU21stf4mbjUkew2eXQZt65g5CQ==}
+  '@vitest/mocker@4.1.12':
+    resolution: {integrity: sha512-fKShNpKZzupWZuY0z7egydvL0sqW4INEZBEExMBMAa6izlENEVHwoXgdaTCaBZ5fwlr4xf2o1wXC83n9RpO+NA==}
     peerDependencies:
       msw: ^2.4.9
       vite: 8.3.3
@@ -5327,20 +5365,20 @@ packages:
       vite:
         optional: true
 
-  '@vitest/pretty-format@4.1.11':
-    resolution: {integrity: sha512-yiZzPbGTS9Sr/JpFl8zHrcIkAofNbFV6k21vIgQN/cY/oxZeXhJv5sc/MBJ5jFKWmWs+oJHw0UXLZjmf931+Vw==}
+  '@vitest/pretty-format@4.1.12':
+    resolution: {integrity: sha512-XW9O8+Mxx4VpCtkYdMJLZQQwsVryP9wk7cPKDxtXFfwSak6yRh5+2fep/Y0XF/ElBvJHq8bcYdi6aeuai0opZA==}
 
-  '@vitest/runner@4.1.11':
-    resolution: {integrity: sha512-LztvUgdwMNJMIkj3hQnnxiC2Xy1zNxq928W/xhjCLaNCzqTZOudjwbQf6v9IntZGPw132i2Lq2rgTRZHD3JHNw==}
+  '@vitest/runner@4.1.12':
+    resolution: {integrity: sha512-NKlVKCr5QnCe8jijdMnmkpHHU+WTqiLFR6G0pHji9uRjXK9xJl1k1nTw6F3pOOj2PDcsDt2GKQMI7wIsaT491w==}
 
-  '@vitest/snapshot@4.1.11':
-    resolution: {integrity: sha512-pN7ikn1ON7h8ee4gIAp4AzyK+zBtJPzVbqOgu5LCEh4VaJVbPQcgYQYJIMGQPXVeJJq1fnfazis7a5pFNPahog==}
+  '@vitest/snapshot@4.1.12':
+    resolution: {integrity: sha512-ko1y1Qgb/slzQ9mr+b89Cuqud8WG1TKtsPD8r7ZUBdvVOGt85Af2HwCqHujrhwJq95hs/9RM7fcAPg57o1vlzw==}
 
-  '@vitest/spy@4.1.11':
-    resolution: {integrity: sha512-apNa/prQy2qCeywhnixOHPRCgGNhvg7T4Dapfl1GahLp/R+uhBm5cPyFoNVyqsNd2h1nJxL6BqqdIjiABL60YA==}
+  '@vitest/spy@4.1.12':
+    resolution: {integrity: sha512-RGq9x4JNGNTZHEJxvN0oSiJjeSCExm0n2gZKKJZHY9cX5AVA6M7VJILBT3ZJ/tJ/0J9uWT7fETV9/btoi//vSg==}
 
-  '@vitest/utils@4.1.11':
-    resolution: {integrity: sha512-zTCVGpyFsGWBhllOyKlTw/vnr6D9qxsfSDyfbyZmTyjHw5N/VuvzHpHoQjm2ZJzn4RJgx5w4r7V0er69CmLgPQ==}
+  '@vitest/utils@4.1.12':
+    resolution: {integrity: sha512-Q3awXrwOfEV+qc3WmO5ONyE0yO7Q1gQ9/oyHxGLZ/pl7N3NO/ZztqQwKLuwMkV+CA1JYSIeO3gkHnRDIo4AVaA==}
 
   '@yarnpkg/lockfile@1.1.0':
     resolution: {integrity: sha512-GpSwvyXOcOOlV70vbnzjj4fW5xW/FdUF6nQEt1ENy7m4ZCczi1+/buVUPAqmGfqznsORNFzUMjctTIp8a9tuCQ==}
@@ -5810,8 +5848,8 @@ packages:
   csstype@3.2.3:
     resolution: {integrity: sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==}
 
-  csv-parse@6.1.0:
-    resolution: {integrity: sha512-CEE+jwpgLn+MmtCpVcPtiCZpVtB6Z2OKPTr34pycYYoL7sxdOkXDdQ4lRiw6ioC0q6BLqhc6cKweCVvral8yhw==}
+  csv-parse@7.0.2:
+    resolution: {integrity: sha512-uKZghv9UmPkMVLYy//KZ9HFAIJsl7wkhoEdIL0+rhuSY9pZQlhaeGEDPIe+/w7eh81MOql8Q/9+inAGWG6ZHYA==}
 
   csv-stringify@6.6.0:
     resolution: {integrity: sha512-YW32lKOmIBgbxtu3g5SaiqWNwa/9ISQt2EcgOq0+RAIFufFp9is6tqNnKahqE5kuKvrnYAzs28r+s6pXJR8Vcw==}
@@ -6137,8 +6175,8 @@ packages:
   flatted@3.4.4:
     resolution: {integrity: sha512-5+ybhBZANEJxaH3X5evAFatUxLfEHSr7n6kYJ+1Qd0mUqr4eu9gIf6GDbWHf8RJijHrjjO8G+la14SlL2SeS1Q==}
 
-  follow-redirects@1.16.1:
-    resolution: {integrity: sha512-FNvFGzoMLWmE6Yj9spb/zjd7yiNCHiAW9/Tg9CXrQ8wuu32HtlJOwWO11OJafl5FfY3DxTdQ0vj42zU1kvv5jg==}
+  follow-redirects@1.16.2:
+    resolution: {integrity: sha512-/kVP2U8z596Ia0gwFrwyIeo74ta5aVmSeU1FfAUMAmcEP5EP7zydmag3SLiN64NaRKef3lxsq7i/g7ltJQDGow==}
     engines: {node: '>=4.0'}
     peerDependencies:
       debug: '*'
@@ -7718,20 +7756,20 @@ packages:
       yaml:
         optional: true
 
-  vitest@4.1.11:
-    resolution: {integrity: sha512-fhACrNXUidIbGSBr5FlbuBkO7VWC1ZyLl0DO4CU2DrQoAPxX84Ysxs+HeGQpii5lZWV1Q4gBZTTu49mF+A6Edw==}
+  vitest@4.1.12:
+    resolution: {integrity: sha512-5eWdz2yb3ajxWF3C8C4TjkXl7FGm3n2E/VlazALrQHzK7nYMSGFnCZto0bbPNl77AwkOZVLk0YnBAejUu0NiWA==}
     engines: {node: ^20.0.0 || ^22.0.0 || >=24.0.0}
     hasBin: true
     peerDependencies:
       '@edge-runtime/vm': '*'
       '@opentelemetry/api': ^1.9.0
       '@types/node': ^20.0.0 || ^22.0.0 || >=24.0.0
-      '@vitest/browser-playwright': 4.1.11
-      '@vitest/browser-preview': 4.1.11
-      '@vitest/browser-webdriverio': 4.1.11
-      '@vitest/coverage-istanbul': 4.1.11
-      '@vitest/coverage-v8': 4.1.11
-      '@vitest/ui': 4.1.11
+      '@vitest/browser-playwright': 4.1.12
+      '@vitest/browser-preview': 4.1.12
+      '@vitest/browser-webdriverio': ^4.1.11
+      '@vitest/coverage-istanbul': 4.1.12
+      '@vitest/coverage-v8': 4.1.12
+      '@vitest/ui': 4.1.12
       happy-dom: '*'
       jsdom: '*'
       vite: 8.3.3
@@ -8945,6 +8983,22 @@ snapshots:
       - '@deepseek-ai/cordis-plugin-loader'
       - '@deepseek-ai/dsh-app-boot'
       - '@deepseek-ai/dsh-hmr'
+
+  '@deepseek-ai/dsh-agent-loop@0.2.1-rc.3(0d0ff72c43b29173830704164054fa51)':
+    dependencies:
+      '@deepseek-ai/cordis': 4.0.5(@deepseek-ai/cordis-plugin-include@1.0.9(@deepseek-ai/cordis-plugin-loader@1.0.6)(@deepseek-ai/cordis@4.0.5))(@deepseek-ai/cordis-plugin-loader@1.0.6)
+      '@deepseek-ai/dsh-agent': 0.2.1-rc.3(02d0f40b432df75e85918e266882ca13)
+      '@deepseek-ai/dsh-brand': 0.2.1-rc.3(@deepseek-ai/cordis@4.0.5)
+      '@deepseek-ai/dsh-llm': 0.2.1-rc.3(@deepseek-ai/cordis@4.0.5)
+      '@deepseek-ai/dsh-scope': 0.2.1-rc.3(@deepseek-ai/cordis@4.0.5)
+      '@deepseek-ai/dsh-session': 0.2.1-rc.3(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-scope@0.2.1-rc.3(@deepseek-ai/cordis@4.0.5))
+      '@deepseek-ai/dsh-session-persistence': 0.2.1-rc.3(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-brand@0.2.1-rc.3(@deepseek-ai/cordis@4.0.5))(@deepseek-ai/dsh-session@0.2.1-rc.3(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-scope@0.2.1-rc.3(@deepseek-ai/cordis@4.0.5)))(@deepseek-ai/dsh-timeout@0.2.1-rc.3(@deepseek-ai/cordis@4.0.5))
+      '@deepseek-ai/dsh-session-projection': 0.2.1-rc.3(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-session@0.2.1-rc.3(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-scope@0.2.1-rc.3(@deepseek-ai/cordis@4.0.5)))
+      '@deepseek-ai/dsh-system-prompt': 0.2.1-rc.3(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-llm@0.2.1-rc.3(@deepseek-ai/cordis@4.0.5))(@deepseek-ai/dsh-scope@0.2.1-rc.3(@deepseek-ai/cordis@4.0.5))
+      '@deepseek-ai/dsh-tools': 0.2.1-rc.3(216a232736cc22d421973382c4e97320)
+      '@deepseek-ai/dsh-util-values': 0.2.1-rc.3(@deepseek-ai/cordis@4.0.5)
+      '@deepseek-ai/schemastery': 3.18.5
+      zod: 4.6.6
 
   '@deepseek-ai/dsh-agent-preset-registry@0.2.1-rc.3(d47ed3fc7fd76e6cdb7afaa5a0fc8a58)':
     dependencies:
@@ -10641,10 +10695,10 @@ snapshots:
   '@typescript/typescript-win32-x64@7.0.2':
     optional: true
 
-  '@vitest/coverage-v8@4.1.11(vitest@4.1.11)':
+  '@vitest/coverage-v8@4.1.12(vitest@4.1.12)':
     dependencies:
       '@bcoe/v8-coverage': 1.0.2
-      '@vitest/utils': 4.1.11
+      '@vitest/utils': 4.1.12
       ast-v8-to-istanbul: 1.0.7
       istanbul-lib-coverage: 3.2.2
       istanbul-lib-report: 3.0.1
@@ -10653,46 +10707,46 @@ snapshots:
       obug: 2.2.1
       std-env: 4.2.0
       tinyrainbow: 3.1.1
-      vitest: 4.1.11(@types/node@26.6.3)(@vitest/coverage-v8@4.1.11)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+      vitest: 4.1.12(@types/node@26.6.3)(@vitest/coverage-v8@4.1.12)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
 
-  '@vitest/expect@4.1.11':
+  '@vitest/expect@4.1.12':
     dependencies:
       '@standard-schema/spec': 1.1.0
       '@types/chai': 5.2.3
-      '@vitest/spy': 4.1.11
-      '@vitest/utils': 4.1.11
+      '@vitest/spy': 4.1.12
+      '@vitest/utils': 4.1.12
       chai: 6.2.2
       tinyrainbow: 3.1.1
 
-  '@vitest/mocker@4.1.11(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))':
+  '@vitest/mocker@4.1.12(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))':
     dependencies:
-      '@vitest/spy': 4.1.11
+      '@vitest/spy': 4.1.12
       estree-walker: 3.0.3
       magic-string: 0.30.21
     optionalDependencies:
       vite: 8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1)
 
-  '@vitest/pretty-format@4.1.11':
+  '@vitest/pretty-format@4.1.12':
     dependencies:
       tinyrainbow: 3.1.1
 
-  '@vitest/runner@4.1.11':
+  '@vitest/runner@4.1.12':
     dependencies:
-      '@vitest/utils': 4.1.11
+      '@vitest/utils': 4.1.12
       pathe: 2.0.3
 
-  '@vitest/snapshot@4.1.11':
+  '@vitest/snapshot@4.1.12':
     dependencies:
-      '@vitest/pretty-format': 4.1.11
-      '@vitest/utils': 4.1.11
+      '@vitest/pretty-format': 4.1.12
+      '@vitest/utils': 4.1.12
       magic-string: 0.30.21
       pathe: 2.0.3
 
-  '@vitest/spy@4.1.11': {}
+  '@vitest/spy@4.1.12': {}
 
-  '@vitest/utils@4.1.11':
+  '@vitest/utils@4.1.12':
     dependencies:
-      '@vitest/pretty-format': 4.1.11
+      '@vitest/pretty-format': 4.1.12
       convert-source-map: 2.0.0
       tinyrainbow: 3.1.1
 
@@ -10899,7 +10953,7 @@ snapshots:
 
   axios@1.20.0(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0):
     dependencies:
-      follow-redirects: 1.16.1(debug@4.4.3(supports-color@7.2.0))
+      follow-redirects: 1.16.2(debug@4.4.3(supports-color@7.2.0))
       form-data: 4.0.6
       https-proxy-agent: 5.0.1(supports-color@7.2.0)
       proxy-from-env: 2.1.0
@@ -11152,7 +11206,7 @@ snapshots:
 
   csstype@3.2.3: {}
 
-  csv-parse@6.1.0: {}
+  csv-parse@7.0.2: {}
 
   csv-stringify@6.6.0: {}
 
@@ -11553,7 +11607,7 @@ snapshots:
 
   flatted@3.4.4: {}
 
-  follow-redirects@1.16.1(debug@4.4.3(supports-color@7.2.0)):
+  follow-redirects@1.16.2(debug@4.4.3(supports-color@7.2.0)):
     optionalDependencies:
       debug: 4.4.3(supports-color@7.2.0)
 
@@ -12355,7 +12409,7 @@ snapshots:
       escape-string-regexp: 1.0.5
       figures: 3.2.0
       flat: 5.0.2
-      follow-redirects: 1.16.1(debug@4.4.3(supports-color@7.2.0))
+      follow-redirects: 1.16.2(debug@4.4.3(supports-color@7.2.0))
       form-data: 4.0.6
       fs-constants: 1.0.0
       function-bind: 1.1.2
@@ -13302,15 +13356,15 @@ snapshots:
       tsx: 4.23.15
       yaml: 2.9.1
 
-  vitest@4.1.11(@types/node@26.6.3)(@vitest/coverage-v8@4.1.11)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1)):
+  vitest@4.1.12(@types/node@26.6.3)(@vitest/coverage-v8@4.1.12)(jsdom@26.1.0)(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1)):
     dependencies:
-      '@vitest/expect': 4.1.11
-      '@vitest/mocker': 4.1.11(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
-      '@vitest/pretty-format': 4.1.11
-      '@vitest/runner': 4.1.11
-      '@vitest/snapshot': 4.1.11
-      '@vitest/spy': 4.1.11
-      '@vitest/utils': 4.1.11
+      '@vitest/expect': 4.1.12
+      '@vitest/mocker': 4.1.12(vite@8.3.3(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+      '@vitest/pretty-format': 4.1.12
+      '@vitest/runner': 4.1.12
+      '@vitest/snapshot': 4.1.12
+      '@vitest/spy': 4.1.12
+      '@vitest/utils': 4.1.12
       es-module-lexer: 2.3.2
       expect-type: 1.4.0
       magic-string: 0.30.21
@@ -13326,7 +13380,7 @@ snapshots:
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 26.6.3
-      '@vitest/coverage-v8': 4.1.11(vitest@4.1.11)
+      '@vitest/coverage-v8': 4.1.12(vitest@4.1.12)
       jsdom: 26.1.0
     transitivePeerDependencies:
       - msw

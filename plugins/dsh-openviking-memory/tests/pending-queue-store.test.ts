@@ -136,7 +136,8 @@ describe("claims", () => {
     const filename = queued.path!;
 
     const claimed = await claimForReplay(filename);
-    expect(claimed).toBe(filename.replace(/\.json$/, ".processing"));
+    expect(claimed?.startsWith(filename.replace(/\.json$/, "."))).toBe(true);
+    expect(claimed?.endsWith(".processing")).toBe(true);
     expect(await readdir(dir)).toEqual([claimed]);
 
     // The original name is gone, and a claimed file is not claimable again.

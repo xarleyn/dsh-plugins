@@ -89,6 +89,7 @@ export function describeFailure(failure: Failure): string {
 export class PersonaPageController {
   private state: PersonaPageSnapshot = INITIAL_STATE;
   private readonly listeners = new Set<() => void>();
+  private openGeneration = 0;
 
   constructor(private readonly face: PersonaFace) {}
 
@@ -146,11 +147,15 @@ export class PersonaPageController {
 
   /** Open one preset's persona for reading. */
   async open(id: string): Promise<void> {
+    const generation = ++this.openGeneration;
     this.set({
       open: { id, status: "loading", error: "", document: null },
       notice: null,
     });
     const result = await this.face.read(id);
+    // The same preset may have been closed and reopened while this read was
+    // pending. An id guard alone cannot distinguish those two selections.
+    if (generation !== this.openGeneration) return;
     if (!result.ok) {
       if (result.error.code === "preset-persona/not-found") {
         this.set({ open: null, notice: { kind: "warn", text: strings.gone } });
@@ -168,6 +173,7 @@ export class PersonaPageController {
 
   /** Leave the reader. */
   close(): void {
+    this.openGeneration += 1;
     this.set({ open: null, notice: null });
   }
 

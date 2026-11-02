@@ -710,7 +710,7 @@ describe("release workflow fan-out", () => {
 
     assert.match(
       workflow,
-      /name: npm-tarball-\$\{\{ matrix\.slug \}\}\s+path: \$\{\{ github\.workspace \}\}\/tarballs\/\*\.tgz/u,
+      /name: npm-tarball-\$\{\{ matrix\.slug \}\}\s+path: \$\{\{ github\.workspace \}\}\/tarballs\/\*/u,
     );
     assert.match(
       workflow,
@@ -720,7 +720,7 @@ describe("release workflow fan-out", () => {
     // to replace its own without this.
     assert.equal(
       (workflow.match(/overwrite: true/gu) ?? []).length,
-      3,
+      4,
       "every artifact upload must be able to replace itself on a rerun",
     );
   });

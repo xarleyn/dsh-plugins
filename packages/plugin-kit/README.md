@@ -9,6 +9,19 @@ bundle, which keeps published browser bundles self-contained.
 ## Features
 
 - Configuration validation (`validateConfig`)
+- `./http` subpath for host request lifetimes: `createRequestDeadline` combines
+  the caller's cancellation with a timeout; always dispose it in `finally`.
+  `withinDeadline` also bounds work that ignores cancellation.
+  `readResponseBytes` retains a bounded byte prefix, reports truncation and
+  releases the body reader; `cancelResponseBody` discards an unused body without
+  waiting for an unresponsive source. Providers keep their own status,
+  authentication and retry policies.
+- `./post-execute` subpath: `resolvePostExecuteContent` preserves the downstream
+  decision when composing tool-result processors. Refusals and replacement
+  values pass through for the Host to handle. For a content projection, transform
+  the effective content and spread the returned accepted decision so additional
+  contexts survive. The helper uses structural types and imports no Host tools
+  or LLM implementation.
 - Credential help metadata: the `CredentialHelp` contract a provider declares
   for the field that asks for a token or key — the credential mechanism
   (`kind`), where the credential is obtained, which documentation describes the

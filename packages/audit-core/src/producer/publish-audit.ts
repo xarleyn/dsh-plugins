@@ -93,15 +93,33 @@ async function writeAndSync(path: string, contents: string): Promise<void> {
   }
 }
 
-/** The first free `<name>`, `<name>-2`, `<name>-3`, … */
-async function uniqueDirectoryName(
+/** Publish under the first available name; another producer may win each race. */
+async function publishUniqueDirectory(
+  staging: string,
   root: string,
   name: string,
-): Promise<string> {
+): Promise<PublishAuditResult> {
   for (let suffix = 1; suffix < 1_000; suffix += 1) {
     const candidate = suffix === 1 ? name : `${name}-${suffix}`;
     const path = auditDirectoryPath(root, candidate);
-    if (!(await pathExists(path))) return candidate;
+    if (await pathExists(path)) continue;
+    try {
+      await rename(staging, path);
+      return { directory: path, auditId: candidate };
+    } catch (error) {
+      // Windows reports EPERM for an occupied directory; POSIX uses
+      // EEXIST/ENOTEMPTY. Retry only a collision that now exists, never an
+      // arbitrary permission or device failure. The complete staging directory
+      // survives the failed rename and can be published under the next name.
+      const code = (error as NodeJS.ErrnoException).code;
+      if (
+        code !== undefined &&
+        ["EEXIST", "ENOTEMPTY", "EPERM", "EACCES", "ENOTDIR"].includes(code) &&
+        (await pathExists(path))
+      )
+        continue;
+      throw error;
+    }
   }
   throw new AuditPublishError(
     `cannot find a free audit directory name for ${JSON.stringify(name)}`,
@@ -120,8 +138,9 @@ async function pathExists(path: string): Promise<boolean> {
     // lstat, not stat: a dangling symlink still occupies the name.
     await lstat(path);
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
   }
 }
 
@@ -188,18 +207,22 @@ export async function publishAudit(
     await writeAndSync(join(staging, AUDIT_ANALYSIS_FILENAME), analysisText);
     await writeAndSync(join(staging, AUDIT_REPORT_FILENAME), request.report);
 
-    const targetName =
-      conflict === "replace"
-        ? name
-        : await uniqueDirectoryName(request.auditRoot, name);
+    if (conflict === "unique") {
+      const published = await publishUniqueDirectory(
+        staging,
+        request.auditRoot,
+        name,
+      );
+      staging = undefined;
+      return published;
+    }
+    const targetName = name;
     const target = auditDirectoryPath(request.auditRoot, targetName);
 
     let displaced: string | undefined;
     if (conflict === "replace" && (await pathExists(target))) {
       // Move the incumbent out of the way first. The name must not exist:
-      // `rename` onto an existing directory fails outright on Windows and
-      // merges into it on POSIX, and a merge would leave a directory holding
-      // half of each audit.
+      // `rename` cannot replace a non-empty directory on either platform.
       displaced = await freeStagingPath(incomingRoot);
       await rename(target, displaced);
     }

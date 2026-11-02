@@ -9,6 +9,8 @@ import {
   remoteMethods,
 } from "@deepseek-ai/dsh-typert-protocol";
 import { QA_SURFACE_SETTINGS_NAMESPACE, QaSurface } from "../../src/index.js";
+import { QaAttestationError } from "../../src/attestation.js";
+import type { QaIntegrationPrincipalBindings } from "../../src/integration-principals.js";
 
 /**
  * Wiring under a real Cordis context.
@@ -43,9 +45,20 @@ interface Route {
   readonly kind: string;
   readonly path: string;
 }
+const mirrors = new WeakMap<Context, { errors: string[]; levels: string[] }>();
 
 async function world(entry: Record<string, unknown> = {}) {
   const ctx = new Context();
+  const mirror = { errors: [] as string[], levels: [] as string[] };
+  mirrors.set(ctx, mirror);
+  const host = ctx.logger;
+  host.warn = ((message: unknown) => {
+    mirror.levels.push(`warn ${String(message)}`);
+  }) as typeof host.warn;
+  host.error = ((message: unknown) => {
+    mirror.errors.push(String(message));
+    mirror.levels.push(`error ${String(message)}`);
+  }) as typeof host.error;
   const agents = new Map<string, Record<string, unknown>>();
   /**
    * The chats the harness holds live right now, split the way the Host splits
@@ -100,6 +113,7 @@ async function world(entry: Record<string, unknown> = {}) {
     list: () => [...agents.values()].map((agent) => agent.session),
   } as never);
   ctx.provide("agentPresets", {
+    resolve: async () => undefined,
     standingKeyFor: async () => undefined,
     composedPreset: () => "",
   } as never);
@@ -124,14 +138,31 @@ async function world(entry: Record<string, unknown> = {}) {
   ctx.provide("systemPrompt", {} as never);
   ctx.provide("workspaceRegistry", {
     get: (id: unknown) =>
-      String(id) === "ws-1" ? { id, path: WORKSPACE } : undefined,
+      String(id) === "ws-1"
+        ? {
+            id,
+            path: WORKSPACE,
+            attachSession: async () => undefined,
+            detachSession: async () => undefined,
+          }
+        : undefined,
   } as never);
   ctx.provide("sessionController", {
     create: async (input: Record<string, unknown>) => {
       created.push(input);
       const sessionId = String(input.sessionId);
       hostSessions.add(sessionId);
-      return { sessionId };
+      const agent = chat(sessionId, String(input.cwd));
+      try {
+        await ctx.serial("agent/created", {
+          agent: agent as never,
+          source: "startup",
+        });
+        return { sessionId };
+      } catch (error) {
+        agents.delete(sessionId);
+        throw error;
+      }
     },
     selectModel: async (input: Record<string, unknown>) => {
       modelChoices.push(input);
@@ -142,6 +173,9 @@ async function world(entry: Record<string, unknown> = {}) {
         model: input.model,
         reasoningEffort: input.reasoningEffort,
       });
+      const live = agents.get(String(input.sessionId));
+      if (live !== undefined)
+        live.options = selected.get(String(input.sessionId));
     },
     // The policy's pair is checked against this before the Host is asked to
     // select it, so a stand that names a model nobody offers refuses the chat
@@ -460,7 +494,7 @@ describe("wiring: the config reaches the host", () => {
     await dispose();
   });
 
-  it("maps the session config onto the Host create and selectModel calls", async () => {
+  it("creates a native Host agent and admits its configured model during publication", async () => {
     const { surface, created, modelChoices, dispose } = await world({
       session: {
         workspaceId: "ws-1",
@@ -470,7 +504,7 @@ describe("wiring: the config reaches the host", () => {
       },
     });
     const sessionId = await surface.createSession("", null, false);
-    expect(created).toEqual([{ sessionId, workspaceId: "ws-1" }]);
+    expect(created).toEqual([{ sessionId, cwd: WORKSPACE }]);
     expect(modelChoices).toEqual([
       {
         sessionId,
@@ -571,13 +605,47 @@ describe("wiring: agent lookup and refusal reasons", () => {
   });
 
   it("folds the reason of a failed create into the message the browser reads", async () => {
-    const { surface, created, stopResuming, dispose } = await world();
-    stopResuming();
+    const { surface, created, dispose } = await world();
+    const admission = (
+      surface as unknown as { admission: { secureSession(): Promise<unknown> } }
+    ).admission;
+    vi.spyOn(admission, "secureSession").mockRejectedValue(
+      new QaAttestationError(
+        "composition-mismatch",
+        "synthetic policy refusal",
+      ),
+    );
     await expect(
       refusalReason(surface.createSession("", null, false)),
-    ).resolves.toBe("agent-unavailable");
-    // The session was created and then refused, so the reservation went with it.
+    ).resolves.toBe("composition-mismatch");
     expect(created).toHaveLength(1);
+    await dispose();
+  });
+
+  it("revokes a transient principal proof when native publication fails", async () => {
+    const { surface, dispose } = await world();
+    const runtime = surface as unknown as {
+      admission: { secureSession(token: string, id: string): Promise<unknown> };
+      integrationPrincipals: QaIntegrationPrincipalBindings;
+    };
+    let failedId = "";
+    vi.spyOn(runtime.admission, "secureSession").mockImplementation(
+      async (_token, id) => {
+        failedId = id;
+        runtime.integrationPrincipals.attest(
+          id,
+          "account-demo",
+          "account-demo",
+        );
+        throw new Error("synthetic publication failure");
+      },
+    );
+    await expect(surface.createSession("", null, false)).rejects.toThrow(
+      "Unable to create",
+    );
+    expect(
+      runtime.integrationPrincipals.resolve(failedId, "account-demo"),
+    ).toBeUndefined();
     await dispose();
   });
 });
@@ -592,25 +660,15 @@ describe("wiring: the failed turn reaches the operator's log", () => {
    * listener — show up as a wrong or missing line.
    */
   function mirrorErrors(ctx: Context): string[] {
-    const lines: string[] = [];
-    const host = ctx.logger;
-    host.error = ((message: unknown) => {
-      lines.push(String(message));
-    }) as typeof host.error;
+    const lines = mirrors.get(ctx)!.errors;
+    lines.length = 0;
     return lines;
   }
 
   /** The same mirror, with each line tagged by the level it was written at. */
   function mirrorLevels(ctx: Context): string[] {
-    const lines: string[] = [];
-    const host = ctx.logger;
-    const at =
-      (level: string) =>
-      (message: unknown): void => {
-        lines.push(`${level} ${String(message)}`);
-      };
-    host.warn = at("warn") as typeof host.warn;
-    host.error = at("error") as typeof host.error;
+    const lines = mirrors.get(ctx)!.levels;
+    lines.length = 0;
     return lines;
   }
 

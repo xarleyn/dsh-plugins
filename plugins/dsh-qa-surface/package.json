@@ -162,6 +162,7 @@
   "devDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh-dev",
     "@deepseek-ai/dsh-agent": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-agent-loop": "catalog:dsh-dev",
     "@deepseek-ai/dsh-agent-preset-registry": "catalog:dsh-dev",
     "@deepseek-ai/dsh-api-gateway": "catalog:dsh-dev",
     "@deepseek-ai/dsh-api-session-controller": "catalog:dsh-dev",
@@ -180,6 +181,7 @@
     "@deepseek-ai/dsh-permission-presets": "catalog:dsh-dev",
     "@deepseek-ai/dsh-scope": "catalog:dsh-dev",
     "@deepseek-ai/dsh-session": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-session-projection": "catalog:dsh-dev",
     "@deepseek-ai/dsh-settings": "catalog:dsh-dev",
     "@deepseek-ai/dsh-skill": "catalog:dsh-dev",
     "@deepseek-ai/dsh-system-prompt": "catalog:dsh-dev",

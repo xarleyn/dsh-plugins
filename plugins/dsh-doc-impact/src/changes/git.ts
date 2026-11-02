@@ -84,6 +84,9 @@ function splitNul(buffer: Buffer): string[] {
 
 /** `git status --porcelain=v1 -z --untracked-files=all`; never mutates the index. */
 export async function statusEntries(cwd: string): Promise<GitStatusEntry[]> {
+  const prefix = (await runGit(cwd, ["rev-parse", "--show-prefix"]))
+    .toString("utf8")
+    .trimEnd();
   const out = await runGit(cwd, [
     "--no-optional-locks",
     "status",
@@ -113,7 +116,14 @@ export async function statusEntries(cwd: string): Promise<GitStatusEntry[]> {
       entries.push({ x, y, paths: [first] });
     }
   }
-  return entries;
+  // Porcelain is always repository-relative; every detector consumer works
+  // in the session cwd, like ls-files and the snapshot fallback.
+  return entries.flatMap((entry) => {
+    const paths = entry.paths
+      .filter((path) => path.startsWith(prefix))
+      .map((path) => path.slice(prefix.length));
+    return paths.length === 0 ? [] : [{ ...entry, paths }];
+  });
 }
 
 /** `git diff --name-status -z` between two commits (rename detection on). */
@@ -124,6 +134,7 @@ export async function nameStatusRange(
 ): Promise<GitNameStatusEntry[]> {
   const out = await runGit(cwd, [
     "diff",
+    "--relative",
     "--name-status",
     "-z",
     "-M",
@@ -145,7 +156,8 @@ export async function nameStatusRange(
       index += 1;
       entries.push({
         status: kind,
-        paths: second === undefined ? [first] : [first, second],
+        // Unlike porcelain -z, diff --name-status -z emits old then new.
+        paths: second === undefined ? [first] : [second, first],
       });
     } else {
       entries.push({ status: kind, paths: [first] });

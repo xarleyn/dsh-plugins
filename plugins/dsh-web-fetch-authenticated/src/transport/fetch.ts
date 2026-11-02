@@ -13,6 +13,10 @@
 
 import http from "node:http";
 import https from "node:https";
+import {
+  createRequestDeadline,
+  withinDeadline,
+} from "@yadsh/dsh-plugin-kit/http";
 import type { IncomingMessage } from "node:http";
 import type { WebFetchResult } from "@deepseek-ai/dsh-web";
 import {
@@ -200,11 +204,11 @@ async function runAuthenticatedFetch<T>(
   // Fuse caller cancellation with the rule's timeout. AbortSignal.timeout
   // aborts with a `TimeoutError` reason, which translateTransportError maps to
   // AUTH_FETCH_TIMEOUT; any other abort is the caller's cancellation.
-  const timeoutSignal = AbortSignal.timeout(options.rule.limits.timeoutMs);
-  const signal =
-    options.signal === undefined
-      ? timeoutSignal
-      : AbortSignal.any([options.signal, timeoutSignal]);
+  const deadline = createRequestDeadline({
+    timeoutMs: options.rule.limits.timeoutMs,
+    ...(options.signal === undefined ? {} : { signal: options.signal }),
+  });
+  const { signal } = deadline;
   const outerAborted = (): boolean => options.signal?.aborted === true;
 
   let currentUrl = options.url;
@@ -215,112 +219,142 @@ async function runAuthenticatedFetch<T>(
   // rules resolves the new rule's references before any auth is built.
   const secretCache = new Map<string, ResolvedAuthSecrets>();
 
-  for (;;) {
-    // Network approval happens BEFORE any credential work (invariant 3).
-    let approved: readonly ApprovedAddress[];
-    try {
-      approved = (
-        await resolveApprovedAddresses(
-          currentUrl.hostname,
-          currentRule.networkPolicy,
-          options.resolveAddresses,
-        )
-      ).approved;
-    } catch (error: unknown) {
-      if (error instanceof AddressPolicyDeniedError)
-        throw errors.networkDenied(errors.sanitizedDetail(error));
-      if (error instanceof AddressResolutionError)
-        throw errors.dnsResolutionFailed(errors.sanitizedDetail(error));
-      throw errors.providerError(errors.sanitizedDetail(error), error);
-    }
-
-    let secrets = secretCache.get(currentRule.source.id);
-    if (secrets === undefined) {
-      secrets = await options.resolveSecrets(currentRule);
-      secretCache.set(currentRule.source.id, secrets);
-    }
-    let authHeaders: Record<string, string>;
-    try {
-      authHeaders = buildAuthHeaders(currentRule, secrets) ?? {};
-    } catch (error: unknown) {
-      throw errors.credentialMissing(
-        errors.sanitizedDetail(error),
-        currentRule.source.id,
-      );
-    }
-
-    const response = await requestOnce(
-      currentUrl,
-      {
-        "user-agent": options.globals.userAgent,
-        accept,
-        ...authHeaders,
-      },
-      approved,
-      signal,
-      outerAborted,
-    );
-
-    if (isRedirectStatus(response.statusCode ?? 0)) {
-      const location = response.headers.location;
-      const status = response.statusCode ?? 0;
-      if (location === undefined || Array.isArray(location)) {
-        consume(response);
-        throw errors.redirectDenied(
-          `redirect response (HTTP ${status}) without a usable Location header`,
-        );
-      }
-      if (redirectsFollowed >= currentRule.redirects.maxRedirects) {
-        consume(response);
-        throw errors.redirectDenied(
-          `exceeded the maximum of ${currentRule.redirects.maxRedirects} redirects`,
-        );
-      }
-      let target: URL;
+  try {
+    for (;;) {
+      signal.throwIfAborted();
+      // Network approval happens BEFORE any credential work (invariant 3).
+      let approved: readonly ApprovedAddress[];
       try {
-        target = validateFetchUrl(
-          new URL(location, currentUrl).toString(),
-          options.globals.maxUrlLength,
-        );
+        approved = (
+          await withinDeadline(
+            resolveApprovedAddresses(
+              currentUrl.hostname,
+              currentRule.networkPolicy,
+              options.resolveAddresses,
+            ),
+            signal,
+          )
+        ).approved;
       } catch (error: unknown) {
-        consume(response);
-        if (error instanceof InvalidUrlError)
-          throw errors.redirectDenied(
-            `redirect target is invalid: ${error.message}`,
-          );
-        throw error;
+        if (signal.aborted)
+          throw translateTransportError(error, signal, outerAborted);
+        if (error instanceof AddressPolicyDeniedError)
+          throw errors.networkDenied(errors.sanitizedDetail(error));
+        if (error instanceof AddressResolutionError)
+          throw errors.dnsResolutionFailed(errors.sanitizedDetail(error));
+        throw errors.providerError(errors.sanitizedDetail(error), error);
       }
-      const sameRule = ruleMatchesUrl(currentRule.source, target);
-      const someRule = matchRules(options.rules, target);
-      const decision = decideRedirect(
-        currentRule.redirects,
-        currentUrl,
-        target,
-        sameRule,
-        someRule.length > 0,
-      );
-      if (decision.action === "deny") {
-        consume(response);
-        throw errors.redirectDenied(decision.reason);
-      }
-      options.onRedirect?.(currentUrl, target);
-      consume(response);
-      if (!decision.sameRule) {
-        const nextRule = someRule[0];
-        if (nextRule !== undefined) currentRule = nextRule;
-      }
-      currentUrl = target;
-      redirectsFollowed += 1;
-      continue;
-    }
 
-    options.onMetrics?.({ redirectCount: redirectsFollowed });
-    return await read({
-      response,
-      finalUrl: currentUrl,
-      rule: currentRule,
-      signal,
-    });
+      let secrets = secretCache.get(currentRule.source.id);
+      if (secrets === undefined) {
+        try {
+          secrets = await withinDeadline(
+            options.resolveSecrets(currentRule),
+            signal,
+          );
+        } catch (error) {
+          if (signal.aborted)
+            throw translateTransportError(error, signal, outerAborted);
+          throw error;
+        }
+        secretCache.set(currentRule.source.id, secrets);
+      }
+      let authHeaders: Record<string, string>;
+      try {
+        authHeaders = buildAuthHeaders(currentRule, secrets) ?? {};
+      } catch (error: unknown) {
+        throw errors.credentialMissing(
+          errors.sanitizedDetail(error),
+          currentRule.source.id,
+        );
+      }
+
+      const response = await requestOnce(
+        currentUrl,
+        {
+          "user-agent": options.globals.userAgent,
+          accept,
+          ...authHeaders,
+        },
+        approved,
+        signal,
+        outerAborted,
+      );
+
+      if (isRedirectStatus(response.statusCode ?? 0)) {
+        const location = response.headers.location;
+        const status = response.statusCode ?? 0;
+        if (location === undefined || Array.isArray(location)) {
+          consume(response);
+          throw errors.redirectDenied(
+            `redirect response (HTTP ${status}) without a usable Location header`,
+          );
+        }
+        if (redirectsFollowed >= currentRule.redirects.maxRedirects) {
+          consume(response);
+          throw errors.redirectDenied(
+            `exceeded the maximum of ${currentRule.redirects.maxRedirects} redirects`,
+          );
+        }
+        let target: URL;
+        try {
+          target = validateFetchUrl(
+            new URL(location, currentUrl).toString(),
+            options.globals.maxUrlLength,
+          );
+        } catch (error: unknown) {
+          consume(response);
+          if (error instanceof InvalidUrlError)
+            throw errors.redirectDenied(
+              `redirect target is invalid: ${error.message}`,
+            );
+          throw error;
+        }
+        const sameRule = ruleMatchesUrl(currentRule.source, target);
+        const someRule = matchRules(options.rules, target);
+        if (someRule.length > 1) {
+          consume(response);
+          throw errors.ambiguousMatch(
+            target.toString(),
+            someRule.map((rule) => rule.source.id),
+          );
+        }
+        const decision = decideRedirect(
+          currentRule.redirects,
+          currentUrl,
+          target,
+          sameRule,
+          someRule.length > 0,
+        );
+        if (decision.action === "deny") {
+          consume(response);
+          throw errors.redirectDenied(decision.reason);
+        }
+        options.onRedirect?.(currentUrl, target);
+        consume(response);
+        if (!decision.sameRule) {
+          const nextRule = someRule[0];
+          if (nextRule !== undefined) currentRule = nextRule;
+        }
+        currentUrl = target;
+        redirectsFollowed += 1;
+        continue;
+      }
+
+      options.onMetrics?.({ redirectCount: redirectsFollowed });
+      return await read({
+        response,
+        finalUrl: currentUrl,
+        rule: currentRule,
+        signal,
+      });
+    }
+  } catch (error) {
+    if (signal.aborted)
+      throw translateTransportError(error, signal, outerAborted);
+    throw error;
+  } finally {
+    deadline.dispose();
   }
 }
 

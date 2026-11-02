@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { OperatorCard } from "../../src/client/operator-card.js";
 import type { OperatorCardFace } from "../../src/client/operator-card.js";
 import type { ComponentType } from "react";
@@ -49,7 +49,14 @@ describe("operator service operation catalog loading", () => {
         <Card settingsForm={form as never} loadServiceOperations={loader} />,
       );
     });
-    const control = screen.getByLabelText("Читать лог сборки (builds.log)");
+    // The full card contains every provider's controls. Keep label matching in
+    // the profiles whose catalog and whole-profile save this test exercises.
+    const profiles = screen.getByTestId(
+      "qa-integrations-service-access-profiles",
+    );
+    const control = within(profiles).getByLabelText(
+      "Читать лог сборки (builds.log)",
+    );
     fireEvent.change(control, { target: { value: "allow" } });
     expect(form.mutate).toHaveBeenCalledWith([
       expect.objectContaining({

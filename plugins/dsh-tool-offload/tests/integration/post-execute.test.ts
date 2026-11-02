@@ -62,6 +62,69 @@ function harness(
 }
 
 describe("offload happy path (SPEC §39 AC1-AC8)", () => {
+  it.each([null, false, 0, "", { reviewed: true }])(
+    "preserves accepted value %j for rendering",
+    async (value) => {
+      const { listener, runner } = harness();
+      const downstream: PostToolDecision = {
+        kind: "accept",
+        value,
+        additionalContexts: [],
+      };
+      expect(
+        await listener(
+          fakeExec("read", { agent: fakeAgent() }),
+          successResult(makeText(4096)),
+          async () => downstream,
+        ),
+      ).toBe(downstream);
+      expect(runner.requests).toHaveLength(0);
+    },
+  );
+
+  it.each(["completed", "original", "truncate", "error"] as const)(
+    "uses downstream content and contexts on %s",
+    async (mode) => {
+      const runner = new FakeRunner();
+      if (mode !== "completed")
+        runner.respond({ kind: "failed", detail: "synthetic failure" });
+      const { listener } = harness(
+        { fallback: { mode: mode === "completed" ? "original" : mode } },
+        runner,
+      );
+      const projected = `projected-only\n${makeText(4096)}`;
+      const downstream: PostToolDecision = {
+        kind: "accept",
+        additionalContexts: [],
+        content: [{ type: "text", text: projected }],
+      };
+      const decision = await listener(
+        fakeExec("read", { agent: fakeAgent() }),
+        successResult(`original-only\n${makeText(4096)}`),
+        async () => downstream,
+      );
+      if (decision.kind !== "accept") throw new Error("expected accept");
+      expect(decision.additionalContexts).toBe(downstream.additionalContexts);
+      expect(runner.requests[0]?.prompt).toContain("projected-only");
+      expect(runner.requests[0]?.prompt).not.toContain("original-only");
+      expect(JSON.stringify(decision.content)).not.toContain("original-only");
+      if (mode === "original") expect(decision).toBe(downstream);
+    },
+  );
+
+  it("preserves an empty accepted projection", async () => {
+    const { listener, runner } = harness();
+    const downstream: PostToolDecision = { kind: "accept", content: [] };
+    expect(
+      await listener(
+        fakeExec("read", { agent: fakeAgent() }),
+        successResult(makeText(4096)),
+        async () => downstream,
+      ),
+    ).toBe(downstream);
+    expect(runner.requests).toHaveLength(0);
+  });
+
   it("replaces the model-facing content with the worker's compact answer", async () => {
     const { listener, runner, counters } = harness();
     const raw = makeText(4_096);

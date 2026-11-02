@@ -36,6 +36,16 @@ function makeTool(overrides: Record<string, unknown> = {}) {
 }
 
 describe("dsh_git_history", () => {
+  it("combines a literal email author with a literal message filter", async () => {
+    const author = (await repo.run(["log", "-1", "--format=%ae"])).trim();
+    const page = (await makeTool().execute(
+      { author, query: "c2: add" },
+      makeExec(repo.dir),
+    )) as GitHistoryResult;
+    expect(page.commits.map((commit) => commit.subject)).toEqual([
+      "c2: add cache constant",
+    ]);
+  });
   it("lists the newest commits first with structured fields", async () => {
     const tool = makeTool();
     const page = (await tool.execute(

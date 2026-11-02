@@ -403,6 +403,25 @@ describe("generated plugin matrix", { timeout: 600_000 }, () => {
     }
   });
 
+  it("passes the repository package hygiene for every option set", () => {
+    for (const variant of variants) {
+      const result = spawn(
+        process.execPath,
+        [
+          "--input-type=module",
+          "--eval",
+          "const { validatePublishablePlugin } = await import(process.argv[1]); const errors = validatePublishablePlugin(process.argv[2]); if (errors.length) { console.error(errors.join('\\n')); process.exitCode = 1; }",
+          pathToFileURL(
+            path.join(repoRoot, "scripts", "verify-package-hygiene.mjs"),
+          ).href,
+          variant.packageDir,
+        ],
+        variant.packageDir,
+      );
+      expect(result.status, `${variant.label}: ${result.stderr}`).toBe(0);
+    }
+  });
+
   it("ships a browser bundle that registers the full package name", () => {
     for (const variant of variants) {
       const bundle = path.join(variant.packageDir, "lib", "client.js");

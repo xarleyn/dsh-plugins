@@ -21,6 +21,7 @@ export interface QaToolsSelfcheckDeps {
   readonly forms?: QaFormGate;
   readonly formProjection?: (
     submission: import("../forms/types.js").QaFormSubmission,
+    sessionId: string,
   ) => Promise<unknown>;
   readonly catalogVersion: string;
   readonly activationMode: string;

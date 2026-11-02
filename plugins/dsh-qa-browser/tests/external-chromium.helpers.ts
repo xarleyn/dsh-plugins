@@ -108,39 +108,131 @@ export async function startExternalChromium(
   }
 }
 
-/** Ask the browser to quit over its own protocol, then stop waiting if it did. */
+function hasExited(child: ChildProcess): boolean {
+  return child.exitCode !== null || child.signalCode !== null;
+}
+
+async function exitWithin(child: ChildProcess, ms: number): Promise<boolean> {
+  if (hasExited(child)) return true;
+  return new Promise((resolve) => {
+    const done = (exited: boolean) => {
+      clearTimeout(timer);
+      child.removeListener("exit", onExit);
+      resolve(exited);
+    };
+    const onExit = () => done(true);
+    const timer = setTimeout(() => done(hasExited(child)), ms);
+    child.once("exit", onExit);
+  });
+}
+
+async function requestBrowserClose(port: number): Promise<void> {
+  const response = await fetch(
+    `http://127.0.0.1:${String(port)}/json/version`,
+    {
+      signal: AbortSignal.timeout(2_000),
+    },
+  );
+  const version = (await response.json()) as { webSocketDebuggerUrl?: string };
+  if (version.webSocketDebuggerUrl === undefined)
+    throw new Error("No browser endpoint");
+  const socket = new WebSocket(version.webSocketDebuggerUrl);
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const finish = (error?: Error) => {
+        clearTimeout(timer);
+        socket.removeEventListener("open", opened);
+        socket.removeEventListener("message", answered);
+        socket.removeEventListener("close", closed);
+        socket.removeEventListener("error", failed);
+        if (error === undefined) resolve();
+        else reject(error);
+      };
+      const opened = () => {
+        try {
+          socket.send(JSON.stringify({ id: 1, method: "Browser.close" }));
+        } catch {
+          finish(new Error("Browser close could not be sent"));
+        }
+      };
+      const answered = (event: MessageEvent) => {
+        try {
+          if ((JSON.parse(String(event.data)) as { id?: number }).id === 1)
+            finish();
+        } catch {
+          /* Unrelated or malformed message is not an acknowledgement. */
+        }
+      };
+      const closed = () => finish();
+      const failed = () => finish(new Error("Browser close connection failed"));
+      const timer = setTimeout(
+        () => finish(new Error("Browser close timed out")),
+        2_000,
+      );
+      socket.addEventListener("open", opened);
+      socket.addEventListener("message", answered);
+      socket.addEventListener("close", closed);
+      socket.addEventListener("error", failed);
+    });
+  } finally {
+    socket.close();
+  }
+}
+
+/** Gracefully close only this fixture's process, then await its kill fallback. */
 export async function stopExternalChromium(
   child: ChildProcess,
   port: number,
 ): Promise<void> {
-  let closed = false;
+  if (hasExited(child)) return;
+  let requested = false;
   try {
-    const version = (await (
-      await fetch(`http://127.0.0.1:${String(port)}/json/version`)
-    ).json()) as { webSocketDebuggerUrl?: string };
-    if (version.webSocketDebuggerUrl !== undefined) {
-      const socket = new WebSocket(version.webSocketDebuggerUrl);
-      await new Promise<void>((resolve) =>
-        socket.addEventListener("open", () => resolve()),
-      );
-      socket.send(JSON.stringify({ id: 1, method: "Browser.close" }));
-      socket.close();
-      closed = true;
-    }
+    await requestBrowserClose(port);
+    requested = true;
   } catch {
-    // Already gone, or unreachable: the fallback below handles both.
+    /* Unreachable endpoint is handled by our owned-process fallback. */
   }
-  if (!closed) child.kill();
-  const exited = await Promise.race([
-    waitForExit(child).then(() => "exit" as const),
-    new Promise<"timeout">((resolve) =>
-      setTimeout(() => resolve("timeout"), 5_000),
-    ),
-  ]);
-  child.kill();
-  if (exited === "timeout") {
+  if (requested && (await exitWithin(child, 5_000))) return;
+  if (!hasExited(child)) child.kill();
+  if (!(await exitWithin(child, 5_000)))
     throw new Error("the external Chromium outlived its own teardown");
+}
+
+/** Always close independent fixtures and preserve primary and cleanup errors. */
+export async function withExternalChromium(
+  external: { child: ChildProcess; userDataDir: string },
+  port: number,
+  body: () => Promise<void>,
+  after: () => Promise<void> = async () => {},
+): Promise<void> {
+  const errors: unknown[] = [];
+  try {
+    await body();
+  } catch (error) {
+    errors.push(error);
   }
+  try {
+    await stopExternalChromium(external.child, port);
+  } catch (error) {
+    errors.push(error);
+  }
+  if (hasExited(external.child)) {
+    try {
+      await removeProfileDir(external.userDataDir);
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+  try {
+    await after();
+  } catch (error) {
+    errors.push(error);
+  }
+  if (errors.length === 1) throw errors[0];
+  if (errors.length > 1)
+    throw new AggregateError(errors, "Browser fixture and cleanup failures", {
+      cause: errors[0],
+    });
 }
 
 /**
@@ -249,10 +341,7 @@ export async function withAttachedChromium(
   const executable = discoverChromium();
   const debugPort = await freePort();
   const external = await startExternalChromium(executable, debugPort);
-  try {
-    await body(`http://127.0.0.1:${String(debugPort)}`);
-  } finally {
-    await stopExternalChromium(external.child, debugPort);
-    await removeProfileDir(external.userDataDir);
-  }
+  await withExternalChromium(external, debugPort, () =>
+    body(`http://127.0.0.1:${String(debugPort)}`),
+  );
 }

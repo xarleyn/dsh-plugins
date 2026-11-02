@@ -105,6 +105,7 @@ describe("tools: domain_expert", () => {
   it("refuses to exceed the parallel expert budget", async () => {
     const harness = harnessOf();
     for (const id of ["a", "b", "c"]) {
+      expect(harness.tracker.reserve("session-1", 3)).toBeTypeOf("function");
       harness.tracker.register({
         domainId: "payments",
         childSessionId: id,
