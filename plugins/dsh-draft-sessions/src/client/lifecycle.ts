@@ -128,42 +128,27 @@ export class DraftSessionLifecycle extends Service {
   }
 
   private observeReadyLists(ctx: Context): void {
-    let active = true,
-      queued = false,
-      dirty = false;
-    const ready = () => {
-      const snapshot = this.sessions.list.getSnapshot();
-      return snapshot.phase === "ready";
-    };
+    let active = true;
+    let queued = false;
+    const ready = () =>
+      active && this.sessions.list.getSnapshot().phase === "ready";
     const changed = () => {
-      if (!active || !ready()) return;
-      dirty = true;
-      if (queued) return;
+      if (queued || !ready()) return;
       queued = true;
-      // Share the status-event queue: a reconnect and running=true must not
-      // race to delete the same durable revision or flush its composer twice.
+      // While this pass reads, a new notification can reserve one later pass.
+      // The shared queue runs that pass even if this read or finalization fails.
       this.enqueueObservation(async () => {
-        try {
-          while (active && dirty && ready()) {
-            dirty = false;
-            const drafts = this.remoteValue(
-              await this.drafts.list({}),
-              "draft-list",
-            );
-            if (!active || !ready()) return;
-            for (const workspace of new Set(
-              drafts.map((draft) => draft.workspaceId),
-            )) {
-              if (!active || !ready()) return;
-              await this.reconcileWorkspace(
-                workspace,
-                false,
-                () => active && ready(),
-              );
-            }
-          }
-        } finally {
-          queued = false;
+        queued = false;
+        if (!ready()) return;
+        const drafts = this.remoteValue(
+          await this.drafts.list({}),
+          "draft-list",
+        );
+        for (const workspace of new Set(
+          drafts.map((draft) => draft.workspaceId),
+        )) {
+          if (!ready()) return;
+          await this.reconcileWorkspace(workspace, false, ready);
         }
       });
     };

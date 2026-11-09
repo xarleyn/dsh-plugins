@@ -360,6 +360,62 @@ describe("DraftSessionLifecycle", () => {
     await ctx.fiber.dispose();
   });
 
+  it("processes a newer ready-list notification after a failed pass and waits for changes after another failure", async () => {
+    const drafts = await store();
+    const draft = await drafts.create({
+      workspaceId: "workspace-a",
+      sessionId: "session-current",
+    });
+    const api = remote(drafts);
+    const first = Promise.withResolvers<never>();
+    const started = Promise.withResolvers<void>();
+    const list = vi
+      .fn(api.list)
+      .mockImplementationOnce(() => {
+        started.resolve();
+        return first.promise;
+      })
+      .mockRejectedValueOnce(new Error("still unavailable"));
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const ctx = new Context();
+    let notify = () => {};
+    try {
+      new DraftSessionLifecycle(ctx, {
+        drafts: { ...api, list },
+        sessions: sessions({
+          list: {
+            ...listStore({ "session-current": { blank: false, updatedAt: 1 } }),
+            subscribe: (listener) => {
+              notify = listener;
+              return () => {
+                notify = () => {};
+              };
+            },
+          },
+        }),
+        reconcileOnList: true,
+      });
+      await started.promise;
+      notify();
+      notify();
+      first.reject(new Error("first read unavailable"));
+      await vi.waitFor(() => expect(logged).toHaveBeenCalledTimes(2));
+      expect(list).toHaveBeenCalledTimes(2);
+      expect(await drafts.list()).toEqual([draft]);
+
+      notify();
+      await vi.waitFor(async () => expect(await drafts.list()).toEqual([]));
+      expect(
+        list.mock.calls.filter(
+          ([request]) => request.workspaceId === undefined,
+        ),
+      ).toHaveLength(3);
+    } finally {
+      await ctx.fiber.dispose();
+      logged.mockRestore();
+    }
+  });
+
   it("does not finalize after disposal while the ready-list reconciliation is waiting", async () => {
     const drafts = await store();
     const draft = await drafts.create({
