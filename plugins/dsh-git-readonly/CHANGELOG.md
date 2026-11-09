@@ -1,3 +1,21 @@
+## 0.2.8 (2026-11-09)
+
+### 🩹 Fixes
+
+- Retain queued writes when acknowledgement is uncertain and give every replay claim ([821a710c](https://github.com/xarleyn/dsh-plugins/commit/821a710c))
+  its own lease. Restore complete cached document bundles, combine cancellation and
+  request deadlines, bound response bytes and release unused response bodies.
+  Apply the same authentication rules to redirects and direct requests. Preserve
+  repository-relative path and literal search semantics in Git tools.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-log to 0.4.3
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.2.7 (2026-10-27)
 
 ### 🩹 Fixes

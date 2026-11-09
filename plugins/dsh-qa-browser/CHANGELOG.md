@@ -1,3 +1,21 @@
+## 0.4.4 (2026-11-09)
+
+### 🩹 Fixes
+
+- Scope attachment access to the current chat's confirmed files and apply workspace ([821a710c](https://github.com/xarleyn/dsh-plugins/commit/821a710c))
+  write limits consistently. Search within account-visible sessions, compensate
+  failed session creation. Coalesce
+  overlapping browser frame requests so slow responses can still update the panel.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-qa-surface to 0.19.0
+- Updated @yadsh/dsh-plugin-log to 0.4.3
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.4.3 (2026-10-27)
 
 ### 🩹 Fixes

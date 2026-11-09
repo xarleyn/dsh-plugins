@@ -1,3 +1,20 @@
+## 0.7.0 (2026-11-09)
+
+### 🚀 Features
+
+- Add host utilities for bounded HTTP lifetimes and composition of tool-result ([821a710c](https://github.com/xarleyn/dsh-plugins/commit/821a710c))
+  decisions. Keep logging available after asynchronous file failures, preserve
+  concurrent audit publications and render Markdown escape and fence boundaries
+  without losing report content.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-log to 0.4.3
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.6.0 (2026-10-24)
 
 ### 🚀 Features

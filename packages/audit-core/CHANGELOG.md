@@ -1,3 +1,16 @@
+## 0.1.3 (2026-11-09)
+
+### 🩹 Fixes
+
+- Add host utilities for bounded HTTP lifetimes and composition of tool-result ([821a710c](https://github.com/xarleyn/dsh-plugins/commit/821a710c))
+  decisions. Keep logging available after asynchronous file failures, preserve
+  concurrent audit publications and render Markdown escape and fence boundaries
+  without losing report content.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.1.2 (2026-10-11)
 
 ### 🩹 Fixes

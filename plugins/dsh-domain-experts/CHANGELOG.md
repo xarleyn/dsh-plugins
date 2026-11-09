@@ -1,3 +1,25 @@
+## 0.5.3 (2026-11-09)
+
+### 🩹 Fixes
+
+- Keep the resolved infrastructure tool filter when an expert has empty operator ([2305fa68](https://github.com/xarleyn/dsh-plugins/commit/2305fa68))
+  allow/deny lists, preventing the complete inherited catalog from consuming the
+  expert's context.
+
+- Preserve safety checks across stream boundaries and retain structured metadata and ([821a710c](https://github.com/xarleyn/dsh-plugins/commit/821a710c))
+  downstream decisions when processing tool results. Reserve delegation capacity
+  before asynchronous startup and release it on completion while retaining child
+  identity. Retire stale watchers and ignore obsolete editor responses.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-log to 0.4.3
+- Updated @yadsh/dsh-plugin-kit to 0.7.0
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.5.2 (2026-10-27)
 
 ### 🩹 Fixes

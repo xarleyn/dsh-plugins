@@ -1,3 +1,18 @@
+## 0.7.10 (2026-11-09)
+
+### 🩹 Fixes
+
+- Mount selected workspace directories with the requested access mode in Linux ([7a8cc72b](https://github.com/xarleyn/dsh-plugins/commit/7a8cc72b))
+  isolated sessions and keep their navigation directories read-only.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-log to 0.4.3
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.7.9 (2026-10-27)
 
 ### 🩹 Fixes

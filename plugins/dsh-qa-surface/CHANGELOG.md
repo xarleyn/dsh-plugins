@@ -1,3 +1,31 @@
+## 0.19.0 (2026-11-09)
+
+### 🚀 Features
+
+- Enforce the deployment chat concurrency limit with server-side FIFO admission, ([00e09b60](https://github.com/xarleyn/dsh-plugins/commit/00e09b60))
+  automatic dispatch, cancellation and an accessible waiting indicator with a
+  measured wait estimate.
+
+
+### 🩹 Fixes
+
+- Scope attachment access to the current chat's confirmed files and apply workspace ([821a710c](https://github.com/xarleyn/dsh-plugins/commit/821a710c))
+  write limits consistently. Search within account-visible sessions, compensate
+  failed session creation. Coalesce
+  overlapping browser frame requests so slow responses can still update the panel.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-documents to 0.8.2
+- Updated @yadsh/dsh-plugin-log to 0.4.3
+- Updated @yadsh/dsh-plugin-kit to 0.7.0
+- Updated @yadsh/dsh-audit-core to 0.1.3
+- Updated @yadsh/dsh-audit-ui to 0.1.4
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.18.0 (2026-10-27)
 
 ### 🚀 Features

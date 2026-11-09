@@ -1,3 +1,23 @@
+## 0.2.6 (2026-11-09)
+
+### 🩹 Fixes
+
+- Preserve safety checks across stream boundaries and retain structured metadata and ([821a710c](https://github.com/xarleyn/dsh-plugins/commit/821a710c))
+  downstream decisions when processing tool results. Reserve delegation capacity
+  before asynchronous startup and release it on completion while retaining child
+  identity. Retire stale watchers and ignore obsolete editor responses.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-log to 0.4.3
+- Updated @yadsh/dsh-plugin-kit to 0.7.0
+- Updated @yadsh/dsh-audit-core to 0.1.3
+- Updated @yadsh/dsh-audit-ui to 0.1.4
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.2.5 (2026-10-27)
 
 ### 🩹 Fixes

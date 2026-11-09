@@ -1,3 +1,18 @@
+## 0.3.9 (2026-11-09)
+
+### 🩹 Fixes
+
+- Reconcile durable drafts after session-list readiness and reconnect, and preserve ([ea5b05da](https://github.com/xarleyn/dsh-plugins/commit/ea5b05da))
+  the current revision when finalizing a draft after a composer flush.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-log to 0.4.3
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.3.8 (2026-10-27)
 
 ### 🩹 Fixes
