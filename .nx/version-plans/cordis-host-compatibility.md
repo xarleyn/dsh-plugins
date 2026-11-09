@@ -9,6 +9,7 @@
 "@yadsh/dsh-sleev": patch
 "@yadsh/dsh-ui-repair": patch
 "@yadsh/dsh-plugin-log-ui": patch
+"@yadsh/dsh-llm-provider-extended": patch
 ---
 
 Declare the compatible Cordis 4.0 host line so a clean installation selects a
