@@ -67,6 +67,7 @@ import type { QaFormApi } from "./forms.js";
 import { QaRequestQueue } from "./components/QaRequestQueue.js";
 import { QaComposer } from "./components/QaComposer.js";
 import { QaQueueDock } from "./components/QaQueueDock.js";
+import { QaRequestWait } from "./components/QaRequestWait.js";
 import { QaHeader, QaSubagentBanner } from "./components/QaHeader.js";
 import { QaThemeSwitcher } from "./components/QaThemeSwitcher.js";
 import { useQaThemePreference } from "./theme-preference.js";
@@ -560,7 +561,7 @@ export function QaSurface(props: QaSurfaceProps) {
       ...(props.slashApi === undefined ? {} : { slashApi: props.slashApi }),
       ...(props.queueStatus === undefined
         ? {}
-        : { queueStatus: props.queueStatus }),
+        : { queueStatus: props.queueStatus, requestStatus: props.queueStatus }),
       config,
       initialSubrole: selectedSubrole,
       adminPreview: previewing,
@@ -2168,6 +2169,7 @@ export function QaSurface(props: QaSurfaceProps) {
                       onSendNow={handleQueueSendNow}
                       onRemove={handleQueueRemove}
                     />
+                    <QaRequestWait status={state.requestQueue} />
                     {/* Keyed by chat: the composer's draft text is chat-local, so a
                     switch remounts it empty instead of carrying text across. The
                     identity is never reused — a controller rebuilt for another chat
@@ -2239,7 +2241,9 @@ export function QaSurface(props: QaSurfaceProps) {
           />
         ) : null}
         <QaRequestQueue
-          status={state.requestQueue}
+          status={
+            state.requestQueue?.managed === true ? null : state.requestQueue
+          }
           onClose={dismissRequestQueue}
         />
       </main>

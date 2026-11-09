@@ -320,7 +320,10 @@ interface QaPolicyRemote extends QaAccountsApi, QaAdminRemote {
     sessionId: string,
   ): Promise<RemoteResult<QaLockdownProof>>;
   describe(): Promise<RemoteResult<ResolvedQaSurfaceConfig>>;
-  queueStatus(): Promise<RemoteResult<QaQueueStatus>>;
+  queueStatus(
+    token?: string,
+    sessionId?: string,
+  ): Promise<RemoteResult<QaQueueStatus>>;
   sources(
     token: string,
     sessionId: string,
@@ -691,7 +694,10 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
         ) as unknown as ReturnType<QaSecureSession>;
       // The stand's live load, asked once per send. Only the Host can say it:
       // a browser sees its own chats and never the HTTP API's questions.
-      const queueStatus: QaQueueStatusRemote = () => policyRemote.queueStatus();
+      const queueStatus: QaQueueStatusRemote = (token, sessionId) =>
+        sessionId === undefined
+          ? policyRemote.queueStatus()
+          : policyRemote.queueStatus(token ?? "", sessionId);
       const qaApi: QaSessionsApi = {
         selectModel: (request) =>
           config.getSnapshot().config?.accounts.enabled

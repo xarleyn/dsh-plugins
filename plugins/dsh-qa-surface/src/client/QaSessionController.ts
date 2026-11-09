@@ -147,13 +147,13 @@ export interface QaSessionControllerOptions {
    */
   readonly slashApi?: QaSlashApi;
   /**
-   * The Host's live read of the request ceiling. Absent on a Host build that
-   * predates it — and unanswered, or answered by a deployment that sets no
-   * ceiling — the surface sends the way it always did: the ceiling is an
-   * arrangement between browsers about how much this stand can take, never a
-   * reason a question cannot be asked.
+   * Global admission snapshot. Managed queues accept sends even while full;
+   * legacy Hosts retain the courtesy refusal. A failed read still submits the
+   * prompt through the server's own admission boundary.
    */
   readonly queueStatus?: QaQueueStatusRemote;
+  /** Authorized per-chat queue status, polled while the Host driver is live. */
+  readonly requestStatus?: QaQueueStatusRemote;
   readonly storage?: StorageLike;
   /**
    * Browser file-upload service, resolved lazily: the page may not serve the
@@ -377,6 +377,10 @@ export class QaSessionController {
   /** Host-side question requests of the bound chat waiting for the operator. */
   private readonly hostQuestions: QaHostQuestionBridge;
   private readonly queueRemote: QaQueueStatusRemote | undefined;
+  private readonly requestRemote: QaQueueStatusRemote | undefined;
+  private requestWaitStatus: QaQueueStatus | null = null;
+  private requestReadRevision = 0;
+  private requestReading = false;
   /** Last send the stand had no room for; drives the request-ceiling dialog. */
   private requestQueueNotice: QaQueueStatus | null = null;
   /** Set while a running turn is polled for parked requests. */
@@ -452,6 +456,7 @@ export class QaSessionController {
     this.hostApprovals = new QaHostApprovalBridge(options.approvalApi);
     this.hostQuestions = new QaHostQuestionBridge(options.questionApi);
     this.queueRemote = options.queueStatus;
+    this.requestRemote = options.requestStatus;
     // Cold account catalogs can outlive one short network round trip.
     // Keep bootstrap bounded without rejecting a valid slow restoration.
     this.timeoutMs = options.timeoutMs ?? 60_000;
@@ -626,7 +631,7 @@ export class QaSessionController {
       // the submission rides exactly the way it always did.
       if (this.disposed || (bound !== undefined && this.session !== bound))
         return false;
-      if (ceiling !== null && ceiling.full) {
+      if (ceiling !== null && ceiling.full && ceiling.managed !== true) {
         this.requestQueueNotice = ceiling;
         this.publish();
         return false;
@@ -756,10 +761,8 @@ export class QaSessionController {
   /**
    * What the stand answers about its load, or null when it does not answer.
    *
-   * Every failure here sends the question anyway. The ceiling exists to keep a
-   * weak model from drowning, not to be a door a browser cannot open: an
-   * unreadable count says nothing about the load, and refusing a visitor on
-   * that would be a worse answer than the one they would have got.
+   * A failed status read does not bypass the server queue. Submit normally;
+   * the Host owns admission even when the browser cannot read its load.
    */
   private async readQueueStatus(): Promise<QaQueueStatus | null> {
     if (this.queueRemote === undefined) return null;
@@ -769,6 +772,37 @@ export class QaSessionController {
     } catch (error) {
       console.error("dsh-qa-surface: queue status unavailable", error);
       return null;
+    }
+  }
+
+  private async refreshRequestStatus(
+    sessionId: string,
+    token: string,
+  ): Promise<void> {
+    if (this.requestRemote === undefined || this.requestReading) return;
+    this.requestReading = true;
+    const revision = this.requestReadRevision;
+    try {
+      const result = await this.requestRemote(token, sessionId);
+      if (
+        this.disposed ||
+        revision !== this.requestReadRevision ||
+        String(this.session?.sessionId) !== sessionId
+      )
+        return;
+      if (!result.ok) return;
+      const status =
+        result.value.managed === true && result.value.waiting === true
+          ? result.value
+          : null;
+      if (JSON.stringify(status) === JSON.stringify(this.requestWaitStatus))
+        return;
+      this.requestWaitStatus = status;
+      this.publish();
+    } catch {
+      // Keep the last known position during a transient transport failure.
+    } finally {
+      if (revision === this.requestReadRevision) this.requestReading = false;
     }
   }
 
@@ -2191,6 +2225,9 @@ export class QaSessionController {
     // answers for its own sends.
     this.requestQueueNotice = null;
     this.policyReady = false;
+    this.requestWaitStatus = null;
+    this.requestReadRevision += 1;
+    this.requestReading = false;
     this.inheritedThroughSeq = undefined;
     this.compatibilityReadOnly = false;
     // The catalog belongs to the chat that produced it: another chat has a
@@ -2258,7 +2295,7 @@ export class QaSessionController {
             ? "reconnecting"
             : "idle",
         error: this.operationError,
-        requestQueue: this.requestQueueNotice,
+        requestQueue: this.requestWaitStatus ?? this.requestQueueNotice,
         canSend: connected && !materializing,
         pendingMessage: this.pendingSubmission?.message ?? null,
         chatsRevision: this.chatsRevision,
@@ -2273,7 +2310,7 @@ export class QaSessionController {
         phase:
           !connected && this.connectedOnce ? "reconnecting" : this.state.phase,
         error: this.operationError ?? this.state.error,
-        requestQueue: this.requestQueueNotice,
+        requestQueue: this.requestWaitStatus ?? this.requestQueueNotice,
       };
       this.emit();
       return;
@@ -2319,7 +2356,7 @@ export class QaSessionController {
       // carries its owner's name when an admin reads it.
       author: this.accounts?.messageAuthorOf(sessionId),
       operationError: this.operationError,
-      requestQueue: this.requestQueueNotice,
+      requestQueue: this.requestWaitStatus ?? this.requestQueueNotice,
       policyReady: this.policyReady,
       compatibilityReadOnly: this.compatibilityReadOnly,
       admissionPending:
@@ -2722,20 +2759,27 @@ export class QaSessionController {
     const pending =
       this.hostApprovals.list().length > 0 ||
       this.hostQuestions.list().length > 0;
+    const queue =
+      this.requestRemote !== undefined &&
+      this.config.session.maxActiveRequests > 0;
     const wanted =
-      ((running && (approvals || questions)) || pending) &&
+      ((running && (approvals || questions || queue)) || pending) &&
       // A subagent watched from the panel is a read-only view of a session the
       // chat owns: its own requests belong to the chat, not to this binding.
       this.viewingSubagent === null &&
       this.session !== undefined;
     if (!wanted) {
       this.stopPendingPolling();
+      this.requestWaitStatus = null;
+      this.requestReadRevision += 1;
+      this.requestReading = false;
       return;
     }
     if (this.pendingTimer !== undefined || this.session === undefined) return;
     const sessionId = String(this.session.sessionId);
     const token = this.hostToken();
     const tick = () => {
+      if (queue) void this.refreshRequestStatus(sessionId, token);
       // A seam still on screen is re-read even where its config gate has since
       // closed: the Host is the authority on what it holds, and an empty answer
       // is what takes a settled request off the screen.

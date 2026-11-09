@@ -375,6 +375,14 @@ export interface QaQueueStatus {
   readonly active: number;
   /** Whether one more turn fits; false while no ceiling is set. */
   readonly full: boolean;
+  /** The Host enforces admission and starts queued turns automatically. */
+  readonly managed?: boolean;
+  readonly queued?: number;
+  /** Present only for the authorized chat whose status was requested. */
+  readonly waiting?: boolean;
+  readonly position?: number | null;
+  /** Approximate delay derived from completed turns, or null without a sample. */
+  readonly estimatedWaitMs?: number | null;
 }
 
 export interface QaSessionState {

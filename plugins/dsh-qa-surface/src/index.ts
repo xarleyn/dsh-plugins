@@ -110,7 +110,11 @@ import type { QaPresetScopeLease } from "./access/capability-catalog.js";
 import { createQaSlashRemotes } from "./slash/remotes.js";
 import type { QaSlashRemotes } from "./slash/remotes.js";
 import { QaPromptNotes } from "./prompt-notes.js";
-import { qaActiveRequests, qaQueueStatus } from "./request-queue.js";
+import {
+  QaRequestScheduler,
+  qaRequestFamilyBusy,
+  qaRequestRoots,
+} from "./request-scheduler.js";
 import { QaTools } from "./qa-tools/index.js";
 import { docsDefaultVersionOf } from "./config-resolvers/tools.js";
 import { QaProvenanceHost } from "./provenance/host-store.js";
@@ -366,6 +370,7 @@ export class QaSurface extends TypertRemoteService {
   private chatSharingStore: QaChatSharingStore | undefined;
   private readonly chatTransport: QaChatTransport;
   private readonly chatTurnGuard: QaChatTurnGuard;
+  private readonly requestScheduler: QaRequestScheduler;
 
   private sharing(): QaChatSharingStore {
     const accounts = () => {
@@ -387,6 +392,16 @@ export class QaSurface extends TypertRemoteService {
     // the one live source: each read folds its current snapshots, and a settings
     // write is visible on the next read without reloading the plugin.
     this.source = () => readConfigRefs(entry);
+    this.requestScheduler = new QaRequestScheduler(
+      () => this.getConfig().session.maxActiveRequests,
+      () => qaRequestRoots(ctx, this.getConfig().session.maxActiveRequests > 0),
+      Date.now,
+      (agent) => qaRequestFamilyBusy(ctx, agent),
+    );
+    ctx.effect(
+      () => this.requestScheduler.install(ctx),
+      "dsh-qa-surface.request-queue",
+    );
     this.logger = getPluginLogger({
       pluginId: "dsh-qa-surface",
       consoleSink: createHostLoggerSink(ctx.logger),
@@ -1175,24 +1190,16 @@ export class QaSurface extends TypertRemoteService {
   }
 
   /**
-   * Report how much of the deployment's request ceiling the stand is using, so
-   * a browser holds its question back instead of opening another turn on a
-   * model that is busy answering the ones it allows.
-   *
-   * The count is the Host's, not the browser's: a visitor cannot see another
-   * account's chats, and the HTTP API's questions are invisible to every chat
-   * view. Read-only, and a ceiling rather than a lock — a prompt rides the
-   * native session RPC this plugin does not own, so the boundary is the
-   * browser's own courtesy, and two questions sent in the same instant can
-   * still overshoot by one. What the ceiling buys is that steady state, not a
-   * strict bound.
+   * Report server admission. Global reads expose counts only; a chat's FIFO
+   * position requires that account's current read access to the chat. The
+   * scheduler gates every root turn, including native and integration sends.
    */
   @Remote("queueStatus")
-  queueStatus(): QaQueueStatus {
-    return qaQueueStatus(
-      this.getConfig().session.maxActiveRequests,
-      qaActiveRequests(this.ctx.agents.roots()),
-    );
+  queueStatus(token?: string, sessionId?: string): QaQueueStatus {
+    if (sessionId !== undefined && this.getConfig().accounts.enabled) {
+      this.sharing().access(token ?? "", sessionId);
+    }
+    return this.requestScheduler.status(sessionId);
   }
 
   /**
