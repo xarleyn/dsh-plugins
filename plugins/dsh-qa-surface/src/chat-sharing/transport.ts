@@ -26,6 +26,7 @@ import type {
 } from "@deepseek-ai/dsh-api-session-controller/types";
 import type { QaChatSharingStore } from "./store.js";
 import type { SessionEventEntry } from "@deepseek-ai/dsh-api-session-controller/types";
+import { searchQaChats } from "./search.js";
 
 /** Durable access is checked before and after asynchronous reads and per frame. */
 export class QaChatTransport {
@@ -111,17 +112,17 @@ export class QaChatTransport {
     request: SessionSearchRequest,
     signal: AbortSignal,
   ): Promise<SessionSearchValue> {
-    await this.list(token, signal);
-    const value = await this.ctx.sessionController.search(request, signal);
-    const allowed = new Set(
-      (await this.list(token, signal)).items.map((item) =>
-        String(item.sessionId),
-      ),
+    return searchQaChats(
+      this.ctx,
+      request.query,
+      async () =>
+        new Set(
+          (await this.list(token, signal)).items.map((item) =>
+            String(item.sessionId),
+          ),
+        ),
+      signal,
     );
-    return {
-      items: value.items.filter((item) => allowed.has(String(item.sessionId))),
-      hasMore: false,
-    };
   }
 
   async projections(

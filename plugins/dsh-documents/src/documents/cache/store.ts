@@ -93,6 +93,7 @@ export class CacheStore {
         parsed.version !== CACHE_ENTRY_VERSION ||
         parsed.key !== key ||
         !Array.isArray(parsed.outputs) ||
+        !Array.isArray(parsed.assets) ||
         parsed.outputs.length === 0
       ) {
         return undefined;

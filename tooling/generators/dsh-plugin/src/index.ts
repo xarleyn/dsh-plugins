@@ -32,6 +32,8 @@ export default async function generatePlugin(
   const packageScope = options.scope ?? DEFAULT_SCOPE;
   const packageName = `${packageScope}/dsh-${pluginName}`;
   const withTests = options.withTests ?? true;
+  const description =
+    options.description?.trim() || `DSH plugin: ${pluginName}`;
 
   if (!pluginName || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(pluginName)) {
     throw new Error("Plugin name must resolve to non-empty kebab-case.");
@@ -61,6 +63,7 @@ export default async function generatePlugin(
     // entrypoint, so the subpath promises no `types` target it cannot keep.
     exportsMap["./client"] = "./lib/client.js";
   }
+  exportsMap["./locale/en.json"] = "./locale/en.json";
   exportsMap["./package.json"] = "./package.json";
 
   const dependencies: Record<string, string> = {
@@ -130,7 +133,7 @@ export default async function generatePlugin(
       {
         name: packageName,
         version: "0.0.0",
-        description: options.description ?? `DSH plugin: ${pluginName}`,
+        description,
         repository: {
           type: "git",
           url: "git+https://github.com/xarleyn/dsh-plugins.git",
@@ -145,6 +148,7 @@ export default async function generatePlugin(
         exports: exportsMap,
         files: [
           "lib",
+          "locale",
           "cordis.patch.yml",
           "compatibility.json",
           "README.md",
@@ -166,6 +170,23 @@ export default async function generatePlugin(
         engines: { node: "^22.19.0 || >=24.0.0" },
         keywords: [...CANONICAL_KEYWORDS, `dsh-${pluginName}`],
         scripts,
+      },
+      null,
+      2,
+    ),
+  );
+
+  tree.write(
+    `${projectRoot}/locale/en.json`,
+    JSON.stringify(
+      {
+        meta: {
+          title: pluginName
+            .split("-")
+            .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+            .join(" "),
+          description,
+        },
       },
       null,
       2,
@@ -503,7 +524,7 @@ ${options.description ?? `DSH plugin: ${pluginName}.`}
 
 - DeepSeek Harness \`>=0.1.7-rc.2 <0.2.0\`
 - Node.js \`^22.19.0 || >=24.0.0\`
-- Cordis \`^4.0.4\`${specExtraRequirements}
+- Cordis \`~4.0.4\`${specExtraRequirements}
 
 ## 3. Entrypoints
 

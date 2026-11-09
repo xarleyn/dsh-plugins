@@ -6,7 +6,10 @@ import { qaAgentScope } from "./agent-scope.js";
 // the package root merges a conflicting host `sessions` service type.
 import { SessionId } from "@deepseek-ai/dsh-session/types";
 import { WorkspaceId } from "@deepseek-ai/dsh-workspace";
-import type { DocumentsFace } from "@yadsh/dsh-documents";
+import {
+  QaAttachmentAccess,
+  type QaAttachmentRecovery,
+} from "./attachment-access.js";
 import type { PluginLogger } from "@yadsh/dsh-plugin-log";
 import {
   QA_SESSION_CLAIM_WINDOW_MS,
@@ -47,15 +50,6 @@ interface UserWorkspaceAccess {
   root: string;
   sharedReadOnlyRoots: readonly string[];
 }
-
-/**
- * The slice of the document service this gate needs: the readable input roots
- * one session's `document_*` tools may carry. Resolved softly per grant, so a
- * Host that runs QA Surface without the document plugin simply grants nothing
- * — the tools are absent there rather than wrong. The method is optional for
- * the same reason: an older installed plugin has no such grant to give.
- */
-type QaDocumentInputRoots = Pick<DocumentsFace, "registerInputRoots">;
 
 interface QaDeploymentPins {
   readonly pinnedWorkspace?: { readonly path: string };
@@ -133,13 +127,10 @@ export class QaPolicyAdmission {
    * one set answers for the whole chat.
    */
   private readonly attested = new Set<string>();
+  private readonly rejected = new Set<string>();
   private readonly questionWarnings = new Map<string, string>();
   private readonly workspaceAccess = new Map<string, UserWorkspaceAccess>();
-  /**
-   * Removers of the document input roots granted per session, so a grant lives
-   * exactly as long as the workspace access that justified it.
-   */
-  private readonly documentInputRoots = new Map<string, () => void>();
+  private readonly attachmentAccess: QaAttachmentAccess;
   /**
    * Every name reachable anywhere in one QA conversation, keyed by session id.
    *
@@ -188,20 +179,31 @@ export class QaPolicyAdmission {
      * to compare, so it fills it here, against the ownership record it checked.
      */
     private readonly principals?: QaIntegrationPrincipalBindings,
+    attachmentRecovery: QaAttachmentRecovery = {},
   ) {
+    this.attachmentAccess = new QaAttachmentAccess(ctx, attachmentRecovery);
     this.disposeWorkspaceGuard = ctx.tools.guard((execution) => {
       const session = execution.agent?.session;
       if (session === undefined) return undefined;
+      if (this.rejected.has(String(session.id)))
+        return "QA session creation did not complete.";
       const access = this.workspaceAccess.get(String(session.id));
       if (access === undefined) return undefined;
       if (!cwdMatches(session.header.cwd, access.root)) {
         return "QA workspace boundary: session cwd is outside this user's directory.";
       }
+      this.attachmentAccess.observe(
+        String(session.id),
+        session.snapshotEvents?.() ?? [],
+      );
       return qaUserWorkspaceDenial(
         execution,
         access.root,
         this.attachmentRoot(),
-        access,
+        {
+          ...access,
+          attachmentFiles: this.attachmentAccess.files(String(session.id)),
+        },
       );
     });
     // The workspace guard above covers the chat's own agents; this one covers
@@ -229,7 +231,7 @@ export class QaPolicyAdmission {
         this.workspaceAccess.set(String(session.id), access);
         // A delegated child runs the same tools against the same store, so it
         // inherits the grant the way it inherits the fence.
-        this.grantDocumentInputRoots(String(session.id));
+        this.attachmentAccess.inherit(session, String(parent));
       }
       // A child inherits the conversation's ceiling, and a grandchild inherits
       // it through the child, so one lookup answers for any depth.
@@ -238,11 +240,18 @@ export class QaPolicyAdmission {
         this.ceilings.set(String(session.id), ceiling);
       }
     });
+    ctx.on(
+      "session/event",
+      (session, event) => {
+        this.attachmentAccess.observe(String(session.id), [event]);
+      },
+      { global: true },
+    );
     ctx.on("agent/disposed", ({ agent }) => {
       this.appliedPolicies.delete(agent);
       this.workspaceAccess.delete(String(agent.session.id));
       this.ceilings.delete(String(agent.session.id));
-      this.revokeDocumentInputRoots(String(agent.session.id));
+      this.attachmentAccess.revoke(String(agent.session.id));
     });
   }
 
@@ -269,50 +278,35 @@ export class QaPolicyAdmission {
     this.deploymentPins(this.config());
   }
 
+  /** Keep a failed creation fenced even when its Host teardown cannot finish. */
+  rejectSession(sessionId: string): void {
+    this.rejected.add(sessionId);
+    this.attested.delete(sessionId);
+    this.attachmentAccess.revoke(sessionId);
+  }
+
+  /** Called only after failed creation confirms resource and ownership cleanup. */
+  forgetRejectedSession(sessionId: string): void {
+    if (!this.rejected.has(sessionId)) return;
+    this.attachmentAccess.revoke(sessionId);
+    this.attested.delete(sessionId);
+    this.questionWarnings.delete(sessionId);
+    this.workspaceAccess.delete(sessionId);
+    this.ceilings.delete(sessionId);
+    this.rejected.delete(sessionId);
+  }
+
   /**
-   * The mounted attachment store's verbatim root, when the backend exposes
-   * one. It sits outside every workspace, so the per-user fence would
-   * otherwise deny the model the exact file an upload produced and the prompt
-   * points it at. A backend without a resolvable root simply keeps the fence
-   * closed — attachments then only work where reads are not fenced per user.
-   * Source preview asks for the same root, so one upload is readable by both.
+   * The backend location used to validate exact file capabilities. The root
+   * itself grants no read access; only this conversation's Host-admitted
+   * user-message references and verified submitted form resources do.
    */
   attachmentRoot(): string | undefined {
-    const store = this.ctx.get("attachments") as
-      { readonly root?: unknown } | undefined;
-    return typeof store?.root === "string" ? store.root : undefined;
+    return this.attachmentAccess.root();
   }
 
-  /**
-   * Carry the fence's attachment exemption into the document pipeline.
-   *
-   * The guard above lets a single-file read reach the mounted store: an upload
-   * is content-addressed, immutable, outside every workspace, and the prompt
-   * hands the model exactly that path. The document pipeline keeps its own
-   * read scope and knew nothing about the store, so `document_*` refused the
-   * very file the model was allowed to read — the panel's own Word preview hit
-   * the same wall. The grant is the missing hand-over, made where the access it
-   * mirrors is made: per admitted session, and revoked with it.
-   */
-  private grantDocumentInputRoots(sessionId: string): void {
-    const root = this.attachmentRoot();
-    if (root === undefined || this.documentInputRoots.has(sessionId)) return;
-    const documents = this.ctx.get("documents") as
-      Partial<QaDocumentInputRoots> | undefined;
-    const remove = documents?.registerInputRoots?.(sessionId, [root]);
-    if (remove === undefined) {
-      this.logger.debug("documents.input-roots-unavailable", { sessionId });
-      return;
-    }
-    this.documentInputRoots.set(sessionId, remove);
-  }
-
-  /** Drop one session's document grant, if the pipeline still holds it. */
-  private revokeDocumentInputRoots(sessionId: string): void {
-    const remove = this.documentInputRoots.get(sessionId);
-    if (remove === undefined) return;
-    this.documentInputRoots.delete(sessionId);
-    remove();
+  grantAttachmentFile(sessionId: string, file: string): void {
+    this.attachmentAccess.grantFile(sessionId, file);
   }
 
   /**
@@ -516,6 +510,11 @@ export class QaPolicyAdmission {
     resolveOwner: (sessionId: string) => { readonly id: string } | undefined,
     sessionId: string,
   ): Promise<QaLockdownProof> {
+    if (this.rejected.has(sessionId))
+      throw new QaAttestationError(
+        "attestation-failed",
+        "QA session creation did not complete",
+      );
     const config = this.config();
     const lockdown = config.lockdown;
     let sessionOwner = resolveOwner(sessionId);
@@ -841,10 +840,10 @@ export class QaPolicyAdmission {
         currentAccess.root = expectedUserRoot;
         currentAccess.sharedReadOnlyRoots = lockdown.sharedReadOnlyRoots;
       }
-      this.grantDocumentInputRoots(sessionId);
+      await this.attachmentAccess.admit(agent.session);
     } else {
       this.workspaceAccess.delete(sessionId);
-      this.revokeDocumentInputRoots(sessionId);
+      this.attachmentAccess.revoke(sessionId);
     }
 
     this.attested.add(sessionId);
@@ -960,10 +959,10 @@ export class QaPolicyAdmission {
     }
     this.appliedPolicies.clear();
     this.attested.clear();
+    this.rejected.clear();
     this.questionWarnings.clear();
     this.workspaceAccess.clear();
-    for (const remove of this.documentInputRoots.values()) remove();
-    this.documentInputRoots.clear();
+    this.attachmentAccess.dispose();
     this.ceilings.clear();
     this.principalScopedTools.clear();
     this.disposeWorkspaceGuard();

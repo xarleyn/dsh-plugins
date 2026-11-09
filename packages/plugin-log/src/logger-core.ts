@@ -16,6 +16,7 @@ import { resolveDshHome } from "./dsh-home.js";
 import {
   closeDestination,
   closeQuietly,
+  destroyQuietly,
   devNull,
   TextDestination,
   type ClosableDestination,
@@ -267,6 +268,7 @@ export class LoggerCore {
           this.formatName === "text"
             ? (new TextDestination(fileDestination) as ClosableDestination)
             : fileDestination;
+        this.guardDestination(next, fileDestination);
       } catch (error) {
         // Fail-open: an unusable log directory degrades to console-only.
         this.fileEnabled = false;
@@ -289,6 +291,35 @@ export class LoggerCore {
     );
     if (previous !== undefined && previous !== next) closeQuietly(previous);
     if (this.fileEnabled) this.scheduleRetentionSweep();
+  }
+
+  /** Async open/write errors belong to this sink, not the process. */
+  private guardDestination(
+    destination: ClosableDestination,
+    fileDestination: ClosableDestination,
+  ): void {
+    let failed = false;
+    const fail = (error: Error): void => {
+      if (failed) return;
+      failed = true;
+      // A retiring destination may fail after the next day is already open.
+      // Its failure must not disable that newer destination.
+      if (this.destination === destination) {
+        this.fileEnabled = false;
+        this.destination = undefined;
+        this.root = undefined;
+        this.children.clear();
+        this.mirror(undefined, "warn", "logging.file_disabled", {
+          reason: errorMessage(error),
+        });
+      }
+      destroyQuietly(destination);
+      if (destination !== fileDestination) destroyQuietly(fileDestination);
+    };
+    // Keep listeners after failure: an in-flight write can still emit a late
+    // error. `once` would turn that second error into an uncaught exception.
+    fileDestination.on?.("error", fail);
+    if (destination !== fileDestination) destination.on?.("error", fail);
   }
 
   private targetFor(moduleField: string | undefined): PinoLogger | undefined {

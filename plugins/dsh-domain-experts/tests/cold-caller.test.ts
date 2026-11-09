@@ -345,6 +345,7 @@ describe("cold caller: policy on the real host service", () => {
       maxParallel: 3,
       memoryOwner: DEPLOYMENT_MEMORY_OWNER,
     });
+    h.service["tracker"].reserve("resumed", 1);
     await expect(
       call(h.tool, { domain: "inventory", task: "inspect stock" }, CHILD),
     ).rejects.toThrow("[PARALLELISM_EXCEEDED]");

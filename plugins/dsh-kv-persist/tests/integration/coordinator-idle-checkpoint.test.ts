@@ -10,6 +10,8 @@ describe("single-slot coordinator: idle and manual checkpoints (§26-§28, §50,
       expect(harness.backend.saveCount).toBe(0);
       await sleep(120);
       expect(harness.backend.saveCount).toBe(1);
+      // The backend counter advances before durable metadata publication.
+      await harness.coordinator.getSessionState("session-a")?.saveInFlight;
       const runtime = harness.coordinator.getSessionState("session-a");
       expect(runtime?.persistedRevision).toBe(1);
       expect(runtime?.lifecycle).toBe("saved");
@@ -32,6 +34,7 @@ describe("single-slot coordinator: idle and manual checkpoints (§26-§28, §50,
       await sleep(120);
       // The fired timer belongs to B and saves B, not A.
       expect(harness.backend.saveCount).toBe(2);
+      await harness.coordinator.getSessionState("session-b")?.saveInFlight;
       expect(harness.coordinator.slot.ownerSessionId).toBe("session-b");
     } finally {
       await harness.cleanup();

@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { readSourceImage as readSourceImagePreview } from "./provenance/source-image.js";
 import path from "node:path";
 import { defaultAccountsFilePath } from "./accounts/store.js";
@@ -36,6 +35,7 @@ import type {
   SessionSelectModelValue,
 } from "@deepseek-ai/dsh-api-session-controller/types";
 import { forkQaSession } from "./session-fork-host.js";
+import { createQaSession } from "./session-create.js";
 import type {} from "@deepseek-ai/dsh-api-session-controller";
 import type {} from "@deepseek-ai/dsh-agent-preset-registry";
 import type {} from "@deepseek-ai/dsh-permission-presets";
@@ -46,7 +46,6 @@ import type { Agent } from "@deepseek-ai/dsh-agent";
 import type { ScopeKey } from "@deepseek-ai/dsh-scope";
 import { Remote, TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
 import { SessionId } from "@deepseek-ai/dsh-session/types";
-import { WorkspaceId } from "@deepseek-ai/dsh-workspace";
 import type { Context } from "@deepseek-ai/cordis";
 import {
   createHostLoggerSink,
@@ -74,10 +73,7 @@ import {
 } from "./personal-skills/index.js";
 import type { QaPersonalSkillRemotes } from "./personal-skills/index.js";
 import { QaApprovalGate } from "./approvals.js";
-import {
-  QaAttestationError,
-  qaAttestationFailureMessage,
-} from "./attestation.js";
+import { QaAttestationError } from "./attestation.js";
 import { QaFileDeleteGate } from "./qa-tools/file-delete-gate.js";
 import { QaQuestionGate } from "./questions.js";
 import { QaFormStore } from "./forms/store.js";
@@ -104,7 +100,6 @@ import { createQaIntegrationRunner } from "./integration/host-runner.js";
 import { QaIntegrationService } from "./integration/service.js";
 import { QaPolicyAdmission } from "./secure-session.js";
 import { QaAccessService } from "./access/service.js";
-import { applySessionModelPolicy } from "./session-model.js";
 import { userInvocableSkillNames } from "./access/model.js";
 import type { QaPresetScopeLease } from "./access/capability-catalog.js";
 import { createQaSlashRemotes } from "./slash/remotes.js";
@@ -134,10 +129,7 @@ import {
   readWorkspaceFile,
   QaSourcePreviewError,
 } from "./provenance/file-preview.js";
-import {
-  existingQaUserWorkspace,
-  prepareQaUserWorkspace,
-} from "./user-workspace.js";
+import { existingQaUserWorkspace } from "./user-workspace.js";
 import type { DocumentsFace } from "@yadsh/dsh-documents";
 import type { QaAccountNotificationsInput } from "./types.js";
 import type { QaDomainExpertsFace } from "./integration/expert-memory.js";
@@ -410,6 +402,7 @@ export class QaSurface extends TypertRemoteService {
       () => this.forms(),
       () =>
         ctx.get("attachments") as unknown as QaFormHostAttachments | undefined,
+      (sessionId, file) => this.admission.grantAttachmentFile(sessionId, file),
     );
     this.accountRemotes = createQaAccountRemotes({
       getConfig: () => this.getConfig(),
@@ -527,6 +520,16 @@ export class QaSurface extends TypertRemoteService {
       // ownership record. The browser's `secureSession` remote keeps its own
       // write: there the compared identity is the token's.
       this.integrationPrincipals,
+      {
+        readEvents: async (sessionId) => {
+          const result = await sessionLog.read(sessionId);
+          return result.ok ? result.events : [];
+        },
+        restoreFiles: async (sessionId) => {
+          if (this.getConfig().forms.enabled)
+            await this.formAttachments.restore(sessionId);
+        },
+      },
     );
     this.provenance = new QaProvenanceHost(
       ctx,
@@ -746,7 +749,8 @@ export class QaSurface extends TypertRemoteService {
     this.tools = new QaTools(ctx, {
       forms: this.formGate,
       formsEnabled: () => this.getConfig().forms.enabled,
-      formProjection: (submission) => this.formAttachments.readable(submission),
+      formProjection: (submission, sessionId) =>
+        this.formAttachments.readable(submission, sessionId),
       logger: this.logger,
       dynamicActivation: this.getConfig().tools.dynamicActivation,
       activationSkill: this.getConfig().tools.activationSkill,
@@ -1214,91 +1218,30 @@ export class QaSurface extends TypertRemoteService {
     adminPreview: boolean,
   ): Promise<string> {
     const config = this.getConfig();
-    if (config.session.policy === "fixed") {
-      throw new Error("Fixed QA sessions cannot be created.");
-    }
-    const id = SessionId(`session-${randomUUID()}`);
     const accounts = this.accountRemotes.resolve(config);
-    const owner =
-      accounts === undefined
-        ? undefined
-        : this.accountRemotes.run(() =>
-            this.access.reserveSession(
-              token,
-              String(id),
-              subroleId,
-              adminPreview,
+    return createQaSession({
+      ctx: this.ctx,
+      config,
+      logger: this.logger,
+      sessionFiles: createSessionEraser(),
+      reserve: (id) =>
+        accounts === undefined
+          ? undefined
+          : this.accountRemotes.run(() =>
+              this.access.reserveSession(token, id, subroleId, adminPreview),
             ),
-          );
-    try {
-      // Check deployment-only pins before creating a durable Host session.
-      // Full admission below still verifies the composed agent and tool view.
-      this.admission.preflightDeployment();
-      let userCwd: string | undefined;
-      if (config.accounts.perUserWorkspace) {
-        const workspaceId = config.session.workspaceId;
-        if (owner === undefined || workspaceId === null) {
-          throw new Error(
-            "Per-user QA workspace configuration is unavailable.",
-          );
-        }
-        const workspace = this.ctx.workspaceRegistry.get(
-          WorkspaceId(workspaceId),
-        );
-        if (workspace === undefined) {
-          throw new Error(
-            `Configured QA workspace ${workspaceId} is unavailable.`,
-          );
-        }
-        userCwd = prepareQaUserWorkspace(workspace.path, owner.id);
-      }
-
-      const created = await this.ctx.sessionController.create({
-        sessionId: id,
-        ...(userCwd !== undefined
-          ? { cwd: userCwd }
-          : config.session.workspaceId !== null
-            ? { workspaceId: WorkspaceId(config.session.workspaceId) }
-            : config.session.cwd !== null
-              ? { cwd: config.session.cwd }
-              : {}),
-        ...(config.session.agentPreset === null
-          ? {}
-          : { agentPreset: config.session.agentPreset }),
-      });
-      await applySessionModelPolicy(
-        this.ctx,
-        created.sessionId,
-        this.access.modelPolicyFor(String(created.sessionId)),
-        this.logger,
-      );
-      const sessionId = String(created.sessionId);
-      await this.admission.secureSession(token, sessionId);
-      this.integrationPrincipals.attest(
-        sessionId,
-        owner?.id,
-        accounts?.ownerIdOf(sessionId),
-      );
-      return sessionId;
-    } catch (error) {
-      // This call is the only way the browser could have learned the id, so a
-      // failure at any stage — the Host creating the session, selecting the
-      // model, the admission refusing the composition — leaves no chat behind
-      // and the reservation goes with it. A kept record would put an empty
-      // chat in the account's list, and nothing else would ever remove it.
-      if (owner !== undefined) {
-        accounts?.releaseSessionReservation(owner.id, String(id));
-      }
-      this.logger.error("session.create-rejected", {
-        sessionId: String(id),
-        reason: error instanceof QaAttestationError ? error.reason : undefined,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      throw new Error(
-        qaAttestationFailureMessage("Unable to create a QA session.", error),
-        { cause: error },
-      );
-    }
+      release: (owner, id) => accounts?.releaseSessionReservation(owner, id),
+      modelPolicy: (id) => this.access.modelPolicyFor(id),
+      preflight: () => this.admission.preflightDeployment(),
+      admit: (id) => this.admission.secureSession(token, id),
+      attest: (id, owner) =>
+        this.integrationPrincipals.attest(id, owner, accounts?.ownerIdOf(id)),
+      reject: (id) => {
+        this.integrationPrincipals.attest(id, undefined, undefined);
+        this.admission.rejectSession(id);
+      },
+      forget: (id) => this.admission.forgetRejectedSession(id),
+    });
   }
 
   /** Create an independently admitted ordinary branch of the caller's own chat. */

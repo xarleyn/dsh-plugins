@@ -64,8 +64,9 @@ function parseInto(source: string, depth: number): readonly InlineNode[] {
     const char = source[index] ?? "";
     const rest = source.slice(index);
 
-    if (char === "\\" && ESCAPABLE.includes(source[index + 1] ?? "")) {
-      buffer += source[index + 1] ?? "";
+    const escaped = source[index + 1];
+    if (char === "\\" && escaped !== undefined && ESCAPABLE.includes(escaped)) {
+      buffer += escaped;
       index += 2;
       continue;
     }

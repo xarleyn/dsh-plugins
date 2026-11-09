@@ -68,7 +68,7 @@ export function createSemaphore(limit: number): Semaphore {
   let inUse = 0;
   const waiters: {
     resolve: (release: () => void) => void;
-    reject: (error: unknown) => void;
+    onAbort: () => void;
     signal?: AbortSignal;
   }[] = [];
 
@@ -81,7 +81,7 @@ export function createSemaphore(limit: number): Semaphore {
       const next = waiters.shift();
       if (next !== undefined) {
         inUse += 1;
-        next.signal?.removeEventListener("abort", next.reject as () => void);
+        next.signal?.removeEventListener("abort", next.onAbort);
         next.resolve(releaseOnce());
       }
     };
@@ -103,21 +103,17 @@ export function createSemaphore(limit: number): Semaphore {
       return await new Promise<() => void>((resolve, reject) => {
         const waiter = {
           resolve,
-          reject,
-          ...(signal === undefined ? {} : { signal }),
-        };
-        waiters.push(waiter);
-        signal?.addEventListener(
-          "abort",
-          () => {
+          onAbort: () => {
             const index = waiters.indexOf(waiter);
             if (index >= 0) waiters.splice(index, 1);
             reject(
               new DocumentError("INVALID_INPUT", "the operation was cancelled"),
             );
           },
-          { once: true },
-        );
+          ...(signal === undefined ? {} : { signal }),
+        };
+        waiters.push(waiter);
+        signal?.addEventListener("abort", waiter.onAbort, { once: true });
       });
     },
   };

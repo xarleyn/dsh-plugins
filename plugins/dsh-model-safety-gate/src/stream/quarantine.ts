@@ -81,25 +81,26 @@ export class ChannelQuarantine {
    * released-text context in front of it, clamped to the window size so
    * classifier requests stay bounded.
    *
-   * Coverage wins over context: the window is filled from the head of the
-   * buffer and only its remainder is handed to the lookbehind. Slicing from the
-   * tail instead would let a buffer larger than the window ship its unscanned
-   * head on the next flush (SPEC §12, §13). Context is not lost either — the
-   * released prefix sits immediately before this head, so the lookbehind still
-   * re-reads the seam between two windows.
+   * Reserve the released lookbehind before taking the pending head. Otherwise
+   * a full pending window consumes all context and a phrase spanning two
+   * windows is never checked together. At least one new character must fit,
+   * even when the configured lookbehind is as large as the window.
    *
    * The covered head is remembered so {@link markChecked} can promote it to
    * releasable text once the check passes.
    */
   snapshotText(releasedTail: string): string {
-    const lookbehind = releasedTail.slice(-this.options.lookbehindChars);
     const pending = this.pending.join("");
     const windowBudget = this.options.windowChars;
-    const pendingSlice = pending.slice(0, windowBudget);
+    const overlap = Math.min(
+      releasedTail.length,
+      this.options.lookbehindChars,
+      Math.max(0, windowBudget - 1),
+    );
+    const lookbehind = overlap > 0 ? releasedTail.slice(-overlap) : "";
+    const pendingSlice = pending.slice(0, windowBudget - overlap);
     this.snapshotChars = pendingSlice.length;
-    const remaining = windowBudget - pendingSlice.length;
-    const lookbehindSlice = remaining > 0 ? lookbehind.slice(-remaining) : "";
-    return lookbehindSlice + pendingSlice;
+    return lookbehind + pendingSlice;
   }
 
   /** Char count of the quarantined tail. */
@@ -162,6 +163,7 @@ export class ReleasedTail {
   constructor(private readonly lookbehindChars: number) {}
 
   append(text: string): void {
+    if (this.lookbehindChars <= 0) return;
     this.text =
       this.text.length + text.length > this.lookbehindChars * 4
         ? (this.text + text).slice(-this.lookbehindChars)
@@ -169,7 +171,9 @@ export class ReleasedTail {
   }
 
   tail(): string {
-    return this.text.slice(-this.lookbehindChars);
+    return this.lookbehindChars <= 0
+      ? ""
+      : this.text.slice(-this.lookbehindChars);
   }
 }
 

@@ -20,6 +20,12 @@
 
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
+import {
+  cancelResponseBody,
+  createRequestDeadline,
+  readResponseBytes,
+  withinDeadline,
+} from "@yadsh/dsh-plugin-kit/http";
 
 import { DocumentError, sanitizeBackendOutput } from "../errors.js";
 import type {
@@ -85,6 +91,7 @@ export class DoclingExtractor implements DocumentExtractor {
             signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS),
           },
         );
+        cancelResponseBody(response);
         if (response.ok) return "ok";
       } catch {
         continue;
@@ -132,48 +139,7 @@ export class DoclingExtractor implements DocumentExtractor {
       if (clean !== "") body.append("ocr_lang", clean);
     }
 
-    let response: Response;
-    try {
-      response = await this.fetchImpl(
-        joinUrl(this.options.baseUrl, "/v1/convert/file"),
-        {
-          method: "POST",
-          body,
-          signal: input.signal ?? AbortSignal.timeout(this.options.timeoutMs),
-        },
-      );
-    } catch (error) {
-      const aborted = input.signal?.aborted === true;
-      throw new DocumentError(
-        aborted ? "BACKEND_TIMEOUT" : "BACKEND_UNAVAILABLE",
-        aborted
-          ? "the document extractor was cancelled"
-          : `the document extractor is unreachable: ${sanitizeBackendOutput(
-              error instanceof Error ? error.message : String(error),
-            )}`,
-        { backend: this.name, cause: error },
-      );
-    }
-
-    if (!response.ok) {
-      const detail = sanitizeBackendOutput(
-        await response.text().catch(() => ""),
-      );
-      throw new DocumentError(
-        response.status === 503 ? "BACKEND_UNAVAILABLE" : "EXTRACTION_FAILED",
-        `the document extractor answered ${response.status}${detail === "" ? "" : `: ${detail}`}`,
-        { backend: this.name, details: { status: response.status } },
-      );
-    }
-
-    const raw = await response.text();
-    if (raw.length > this.options.maxResponseBytes) {
-      throw new DocumentError(
-        "DOCUMENT_TOO_LARGE",
-        "the extracted document exceeds the configured response budget",
-        { backend: this.name, details: { bytes: raw.length } },
-      );
-    }
+    const raw = await this.request(body, input.signal);
 
     let payload: unknown;
     try {
@@ -210,6 +176,74 @@ export class DoclingExtractor implements DocumentExtractor {
       backend: backendInfo(this.name, serviceVersion),
       warnings,
     };
+  }
+
+  private async request(
+    body: FormData,
+    callerSignal?: AbortSignal,
+  ): Promise<string> {
+    const deadline = createRequestDeadline({
+      timeoutMs: this.options.timeoutMs,
+      ...(callerSignal === undefined ? {} : { signal: callerSignal }),
+    });
+    let response: Response | undefined;
+    try {
+      deadline.signal.throwIfAborted();
+      const request = this.fetchImpl(
+        joinUrl(this.options.baseUrl, "/v1/convert/file"),
+        {
+          method: "POST",
+          body,
+          signal: deadline.signal,
+        },
+      ).then((answer) => {
+        if (deadline.signal.aborted) {
+          cancelResponseBody(answer);
+          throw deadline.signal.reason;
+        }
+        return answer;
+      });
+      response = await withinDeadline(request, deadline.signal);
+      const content = await readResponseBytes(response, {
+        maxBytes: this.options.maxResponseBytes,
+        signal: deadline.signal,
+      });
+      const raw = new TextDecoder().decode(content.data);
+      if (!response.ok) {
+        const detail = sanitizeBackendOutput(raw);
+        throw new DocumentError(
+          response.status === 503 ? "BACKEND_UNAVAILABLE" : "EXTRACTION_FAILED",
+          `the document extractor answered ${response.status}${detail === "" ? "" : `: ${detail}`}`,
+          { backend: this.name, details: { status: response.status } },
+        );
+      }
+      if (content.truncated) {
+        throw new DocumentError(
+          "DOCUMENT_TOO_LARGE",
+          "the extracted document exceeds the configured response budget",
+          {
+            backend: this.name,
+            details: { bytes: content.bytes },
+          },
+        );
+      }
+      return raw;
+    } catch (error) {
+      if (error instanceof DocumentError) throw error;
+      const aborted = deadline.signal.aborted;
+      throw new DocumentError(
+        aborted ? "BACKEND_TIMEOUT" : "BACKEND_UNAVAILABLE",
+        aborted
+          ? "the document extractor was cancelled or exceeded its deadline"
+          : `the document extractor is unreachable: ${sanitizeBackendOutput(
+              error instanceof Error ? error.message : String(error),
+            )}`,
+        { backend: this.name, cause: error },
+      );
+    } finally {
+      if (response !== undefined) cancelResponseBody(response);
+      deadline.dispose();
+    }
   }
 
   /**

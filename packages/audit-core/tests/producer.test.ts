@@ -25,6 +25,37 @@ const analysis = (sessionId: string) => ({
 const SESSION = "session-41b4e63f-9e35-4406-927b-25a60b7be2c2";
 
 describe("publishAudit", () => {
+  it("preserves every concurrent publication with the same derived name", async () => {
+    const reports = Array.from({ length: 20 }, (_, index) => `report ${index}`);
+    const settled = await Promise.allSettled(
+      reports.map((report) =>
+        publishAudit({
+          auditRoot: root,
+          analysis: analysis(SESSION),
+          report,
+        }),
+      ),
+    );
+    expect(settled.filter((result) => result.status === "rejected")).toEqual(
+      [],
+    );
+    const results = settled.map((result) => {
+      if (result.status === "rejected") throw result.reason;
+      return result.value;
+    });
+    expect(new Set(results.map((result) => result.auditId)).size).toBe(
+      reports.length,
+    );
+    expect(
+      await Promise.all(
+        results.map((result) =>
+          readFile(join(result.directory, "REPORT.md"), "utf8"),
+        ),
+      ),
+    ).toEqual(reports);
+    expect(await readdir(join(root, AUDIT_INCOMING_DIRECTORY))).toEqual([]);
+  });
+
   it("publishes both artefacts under the derived directory name", async () => {
     const result = await publishAudit({
       auditRoot: root,

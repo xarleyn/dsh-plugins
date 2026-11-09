@@ -710,7 +710,13 @@ describe("release workflow fan-out", () => {
 
     assert.match(
       workflow,
-      /name: npm-tarball-\$\{\{ matrix\.slug \}\}\s+path: \$\{\{ github\.workspace \}\}\/tarballs\/\*\.tgz/u,
+      /name: npm-tarball-\$\{\{ matrix\.slug \}\}\s+path: \$\{\{ github\.workspace \}\}\/tarballs\/\*[ \t]*$/mu,
+      "each package artifact must include its tarball and provenance sidecar",
+    );
+    assert.match(
+      workflow,
+      /name: npm-tarballs\s+path: tarballs\/\*[ \t]*$/mu,
+      "the combined recovery artifact must retain the same sidecars",
     );
     assert.match(
       workflow,
@@ -720,7 +726,7 @@ describe("release workflow fan-out", () => {
     // to replace its own without this.
     assert.equal(
       (workflow.match(/overwrite: true/gu) ?? []).length,
-      3,
+      4,
       "every artifact upload must be able to replace itself on a rerun",
     );
   });

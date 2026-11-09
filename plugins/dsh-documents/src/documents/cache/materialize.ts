@@ -12,9 +12,13 @@ import { readFile, rm, stat } from "node:fs/promises";
 import path from "node:path";
 
 import type { ArtifactStore } from "../artifacts/store.js";
-import { sha256OfFile } from "../artifacts/store.js";
+import { sha256OfFile, sha256Hex } from "../artifacts/store.js";
 import type { DocumentWarning } from "../types.js";
-import type { DocumentCacheEntry, DocumentCacheOutput } from "./key.js";
+import type {
+  DocumentCacheEntry,
+  DocumentCacheOutput,
+  DocumentCacheAsset,
+} from "./key.js";
 
 /** One restored output, ready to become a `DocumentFileResult`. */
 export interface MaterializedOutput {
@@ -52,19 +56,33 @@ export async function materializeCacheHit(options: {
 }): Promise<MaterializedHit | undefined> {
   const { store, artifactId, entry } = options;
   const restored: MaterializedOutput[] = [];
+  const restore = async (member: DocumentCacheAsset, outputName: string) => {
+    // A cache entry is disk input. Members cannot reach another bundle.
+    for (const name of [member.outputName, outputName]) {
+      if (
+        path.isAbsolute(name) ||
+        name.split(/[\\/]/u).some((part) => part === ".." || part === "")
+      )
+        return undefined;
+    }
+    const source = store.path(path.join(member.artifactId, member.outputName));
+    const details = await stat(source).catch(() => undefined);
+    if (
+      details === undefined ||
+      !details.isFile() ||
+      details.size !== member.size
+    )
+      return undefined;
+    const bytes = await readFile(source);
+    if (bytes.length !== member.size || sha256Hex(bytes) !== member.sha256)
+      return undefined;
+    const written = await store.write(path.join(artifactId, outputName), bytes);
+    return written.sha256 === member.sha256 ? written : undefined;
+  };
   try {
     for (const output of entry.outputs) {
-      const source = store.path(
-        path.join(output.artifactId, output.outputName),
-      );
-      const details = await stat(source).catch(() => undefined);
-      if (details === undefined || !details.isFile()) return undefined;
-      if (details.size !== output.size) return undefined;
-      const bytes = await readFile(source);
-      if (bytes.length !== output.size) return undefined;
-      const destination = path.join(artifactId, options.outputName(output));
-      const written = await store.write(destination, bytes);
-      if (written.sha256 !== output.sha256) return undefined;
+      const written = await restore(output, options.outputName(output));
+      if (written === undefined) return undefined;
       restored.push({
         format: output.format,
         path: written.path,
@@ -72,6 +90,10 @@ export async function materializeCacheHit(options: {
         size: written.size,
         sha256: written.sha256,
       });
+    }
+    for (const asset of entry.assets) {
+      if ((await restore(asset, asset.outputName)) === undefined)
+        return undefined;
     }
   } catch {
     return undefined;

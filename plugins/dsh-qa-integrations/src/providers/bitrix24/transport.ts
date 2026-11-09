@@ -1,4 +1,5 @@
 import { IntegrationError } from "../../errors.js";
+import { cancelResponseBody } from "@yadsh/dsh-plugin-kit/http";
 import type { ResolvedQaIntegrationsConfig } from "../../config.js";
 import { hostMatchesSuffix } from "../shared/host.js";
 import {
@@ -153,6 +154,7 @@ export class BitrixTransport {
       // The status is decided before the body is touched: a failed answer is
       // never read at all, exactly as in the shared transport loop.
       if (!response.ok) {
+        cancelResponseBody(response);
         const denied = response.status === 401 || response.status === 403;
         throw withTransportDiagnostics(
           isRedirectStatus(response.status)

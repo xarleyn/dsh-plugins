@@ -18,6 +18,14 @@
     "./sqlite": {
       "types": "./lib/sqlite.d.ts",
       "default": "./lib/sqlite.js"
+    },
+    "./http": {
+      "types": "./lib/http.d.ts",
+      "default": "./lib/http.js"
+    },
+    "./post-execute": {
+      "types": "./lib/post-execute.d.ts",
+      "default": "./lib/post-execute.js"
     }
   },
   "files": [

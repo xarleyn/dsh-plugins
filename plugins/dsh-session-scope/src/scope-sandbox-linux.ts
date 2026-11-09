@@ -44,7 +44,6 @@ const BWRAP_READ_ONLY_PROFILE = [
   "/proc",
   "--die-with-parent",
 ] as const;
-const BWRAP_STAGING_ROOT = "/dev/.dsh-session-scope";
 
 /**
  * Make the masked view the only view. The provider confines in a shared PID
@@ -270,30 +269,15 @@ export function confineIsolatedBwrap(
   const profile = withPrivatePidNamespace(confined.argv.slice(0, separator));
   if (policy.mode === "workspace-write") profile.splice(profile.length - 3, 3);
   const bindFlag = policy.mode === "workspace-write" ? "--bind" : "--ro-bind";
-  const mounts: string[] = [
-    "--dir",
-    BWRAP_STAGING_ROOT,
-    "--tmpfs",
-    BWRAP_STAGING_ROOT,
-  ];
-  for (let index = 0; index < roots.length; index += 1) {
-    const staging = `${BWRAP_STAGING_ROOT}/${index}`;
-    mounts.push("--dir", staging, bindFlag, roots[index]!, staging);
-  }
-  mounts.push("--tmpfs", workspaceRoot);
+  const mounts = ["--tmpfs", workspaceRoot];
   for (const directory of mountPointDirectories(workspaceRoot, roots))
     mounts.push("--dir", directory);
-  for (let index = 0; index < roots.length; index += 1) {
-    mounts.push(bindFlag, `${BWRAP_STAGING_ROOT}/${index}`, roots[index]!);
-  }
-  // Drop the alternate path to selected content and leave no new writable
-  // scratch area behind, including under read-only permission.
-  mounts.push(
-    "--tmpfs",
-    BWRAP_STAGING_ROOT,
-    "--remount-ro",
-    BWRAP_STAGING_ROOT,
-  );
+  // Navigation directories belong to the empty view. Only the selected mounts
+  // may become writable under the workspace-write policy.
+  mounts.push("--remount-ro", workspaceRoot);
+  // Bubblewrap resolves each source against the original host tree, even when
+  // a previous mount already masked the same path in the destination tree.
+  for (const root of roots) mounts.push(bindFlag, root, root);
 
   return {
     ...confined,

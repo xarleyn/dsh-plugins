@@ -13,6 +13,7 @@ export interface QaToolsOptions {
   readonly formsEnabled?: () => boolean;
   readonly formProjection?: (
     submission: import("../forms/types.js").QaFormSubmission,
+    sessionId: string,
   ) => Promise<unknown>;
   readonly logger: PluginLogger;
   readonly dynamicActivation: boolean;

@@ -24,6 +24,7 @@ import type {
   ToolExecution,
   ToolExecutionResult,
 } from "@deepseek-ai/dsh-tools";
+import { resolvePostExecuteContent } from "@yadsh/dsh-plugin-kit/post-execute";
 
 import type { ResolvedJevCompactionConfig } from "../config/index.js";
 import type { ShapeSkipReason } from "./metrics.js";
@@ -65,13 +66,15 @@ export function createPostExecuteListener(
         onSkip("downstream-block", { tool: exec.name });
         return downstream;
       }
-      if ("value" in downstream && downstream.value !== undefined) {
+      const effective = resolvePostExecuteContent(downstream, result.content);
+      if (effective.kind === "value-replacement") {
         // A downstream plugin replaced the canonical value. Its renderer has
         // not materialized in this listener, so there is no content to shape
         // and no way to guess what it will look like.
         onSkip("downstream-value-replacement", { tool: exec.name });
         return downstream;
       }
+      if (effective.kind !== "content") return downstream;
       const config = readConfig();
       if (!config.resultShaping.enabled) return downstream;
       // Nested code-mode/PTC dispatches never reach the model as their own
@@ -85,7 +88,7 @@ export function createPostExecuteListener(
         return downstream;
       }
 
-      const content = downstream.content ?? result.content;
+      const content = effective.content;
       const session = exec.agent?.session;
       const sessionId =
         session === undefined ? undefined : String(session.header.id);
@@ -105,7 +108,7 @@ export function createPostExecuteListener(
 
       // Preserve every other field of the accepted decision
       // (`additionalContexts` in particular): only `content` is ours.
-      return { ...downstream, content: outcome.content };
+      return { ...effective.decision, content: outcome.content };
     } catch (error: unknown) {
       // A throw here would turn a successful tool call into a failed one.
       onSkip("jev-error", {

@@ -1,5 +1,11 @@
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -62,17 +68,17 @@ const scope = (
 
 function wrap(
   mode: "read-only" | "workspace-write" = "read-only",
+  workspaceRoot = workspace,
+  command: readonly string[] = ["bash", "-c", "pwd"],
 ): ScopeConfinedArgv {
   return {
     argv: [
       ...bwrapProfile,
       ...(mode === "workspace-write"
-        ? ["--tmpfs", "/tmp", "--bind", workspace, workspace]
+        ? ["--tmpfs", "/tmp", "--bind", workspaceRoot, workspaceRoot]
         : []),
       "--",
-      "bash",
-      "-c",
-      "pwd",
+      ...command,
     ],
     enforcement: "full",
     denialSignatures: ["read-only file system"],
@@ -114,16 +120,19 @@ describe("Linux isolated bwrap profile", () => {
     expect(detectBwrapIsolation(provider, workspace, "linux", execute)).toBe(
       true,
     );
-    expect(execute).toHaveBeenCalledWith(
-      expect.arrayContaining([
-        "bwrap",
-        "--tmpfs",
-        workspace,
-        "--remount-ro",
-        "/dev/.dsh-session-scope",
-        "true",
-      ]),
-    );
+    expect(execute).toHaveBeenCalledWith([
+      "bwrap",
+      "--unshare-pid",
+      ...bwrapProfile.slice(1),
+      "--tmpfs",
+      workspace,
+      "--remount-ro",
+      workspace,
+      "--chdir",
+      workspace,
+      "--",
+      "true",
+    ]);
     expect(
       detectBwrapIsolation(provider, workspace, "linux", () => false),
     ).toBe(false);
@@ -159,20 +168,6 @@ describe("Linux isolated bwrap profile", () => {
       "--proc",
       "/proc",
       "--die-with-parent",
-      "--dir",
-      "/dev/.dsh-session-scope",
-      "--tmpfs",
-      "/dev/.dsh-session-scope",
-      "--dir",
-      "/dev/.dsh-session-scope/0",
-      "--ro-bind",
-      "/workspace/apps/a",
-      "/dev/.dsh-session-scope/0",
-      "--dir",
-      "/dev/.dsh-session-scope/1",
-      "--ro-bind",
-      "/workspace/libs/b",
-      "/dev/.dsh-session-scope/1",
       "--tmpfs",
       workspace,
       "--dir",
@@ -183,16 +178,14 @@ describe("Linux isolated bwrap profile", () => {
       "/workspace/libs",
       "--dir",
       "/workspace/libs/b",
+      "--remount-ro",
+      workspace,
       "--ro-bind",
-      "/dev/.dsh-session-scope/0",
+      "/workspace/apps/a",
       "/workspace/apps/a",
       "--ro-bind",
-      "/dev/.dsh-session-scope/1",
       "/workspace/libs/b",
-      "--tmpfs",
-      "/dev/.dsh-session-scope",
-      "--remount-ro",
-      "/dev/.dsh-session-scope",
+      "/workspace/libs/b",
       "--chdir",
       "/workspace/apps/a/src",
       "--",
@@ -214,10 +207,10 @@ describe("Linux isolated bwrap profile", () => {
       ["--bind", workspace, workspace].join("\0"),
     );
     expect(argv.join("\0")).toContain(
-      ["--bind", "/workspace/apps/a", "/dev/.dsh-session-scope/0"].join("\0"),
+      ["--bind", "/workspace/apps/a", "/workspace/apps/a"].join("\0"),
     );
     expect(argv.join("\0")).toContain(
-      ["--bind", "/dev/.dsh-session-scope/0", "/workspace/apps/a"].join("\0"),
+      ["--bind", "/workspace/libs/b", "/workspace/libs/b"].join("\0"),
     );
   });
 
@@ -325,7 +318,7 @@ describe("Linux isolated bwrap profile", () => {
   });
 
   test.skipIf(!bwrapWorks)(
-    "functionally hides sibling workspace directories with bwrap",
+    "hides sibling directories and enforces the selected mount's access mode with bwrap",
     () => {
       const actualWorkspace = mkdtempSync(
         join(tmpdir(), "dsh-session-scope-bwrap-"),
@@ -337,37 +330,44 @@ describe("Linux isolated bwrap profile", () => {
       writeFileSync(join(selected, "visible.txt"), "visible");
       writeFileSync(join(hidden, "hidden.txt"), "hidden");
       try {
-        const actualPolicy: ScopeSandboxPolicy = {
-          mode: "read-only",
-          workspaceRoot: actualWorkspace,
-        };
-        const base: ScopeConfinedArgv = {
-          ...wrap(),
-          argv: [
-            ...bwrapProfile,
-            "--",
+        for (const mode of ["read-only", "workspace-write"] as const) {
+          const base = wrap(mode, actualWorkspace, [
             "bash",
-            "-c",
-            'printf "%s\\n" "$1"/*; cat "$1/a/visible.txt"; test ! -e "$1/b/hidden.txt"',
+            "-ec",
+            [
+              'printf "%s\\n" "$1"/*',
+              'cat "$1/a/visible.txt"',
+              'test ! -e "$1/b/hidden.txt"',
+              'test ! -w "$1"',
+              'if [ "$2" = workspace-write ]; then touch "$1/a/new.txt"; else test ! -w "$1/a/visible.txt"; fi',
+            ].join("\n"),
             "scope-test",
             actualWorkspace,
-          ],
-        };
-        const isolated = confineIsolatedBwrap(base, actualPolicy, {
-          mode: "isolated",
-          workspaceRoot: actualWorkspace,
-          roots: [selected],
-          navigationRoots: [actualWorkspace],
-        });
-        const result = spawnSync(isolated.argv[0]!, isolated.argv.slice(1), {
-          cwd: actualWorkspace,
-          encoding: "utf8",
-        });
-        expect(result.status, result.stderr).toBe(0);
-        expect(result.stdout).toContain(`${actualWorkspace}/a`);
-        expect(result.stdout).toContain("visible");
-        expect(result.stdout).not.toContain(`${actualWorkspace}/b`);
-        expect(result.stdout).not.toContain("hidden");
+            mode,
+          ]);
+          const isolated = confineIsolatedBwrap(
+            base,
+            { mode, workspaceRoot: actualWorkspace },
+            {
+              mode: "isolated",
+              workspaceRoot: actualWorkspace,
+              roots: [selected],
+              navigationRoots: [actualWorkspace],
+            },
+          );
+          const result = spawnSync(isolated.argv[0]!, isolated.argv.slice(1), {
+            cwd: actualWorkspace,
+            encoding: "utf8",
+          });
+          expect(result.status, result.stderr).toBe(0);
+          expect(result.stdout).toContain(`${actualWorkspace}/a`);
+          expect(result.stdout).toContain("visible");
+          expect(result.stdout).not.toContain(`${actualWorkspace}/b`);
+          expect(result.stdout).not.toContain("hidden");
+          expect(existsSync(join(selected, "new.txt"))).toBe(
+            mode === "workspace-write",
+          );
+        }
       } finally {
         rmSync(actualWorkspace, { recursive: true, force: true });
       }

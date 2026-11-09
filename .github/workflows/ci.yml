@@ -87,6 +87,9 @@ jobs:
       - name: Test repository tooling
         run: pnpm test:release
 
+      - name: Test result processor integration
+        run: pnpm test:integration
+
       # Both events: a commit reaches main without a pull request, and a change
       # to a publishable package that arrives without a version plan is one the
       # release can neither version nor document. The gate resolves the wave

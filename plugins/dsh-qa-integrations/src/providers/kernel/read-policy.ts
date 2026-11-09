@@ -1,4 +1,8 @@
 import {
+  cancelResponseBody,
+  readResponseBytes,
+} from "@yadsh/dsh-plugin-kit/http";
+import {
   IntegrationError,
   type TransportBudget,
   type TransportDiagnostics,
@@ -176,31 +180,6 @@ export function withinCap(
 }
 
 /**
- * Settle `read` no later than `signal`. A body stream that stops delivering
- * chunks has no other way out: the fetch already succeeded, so nothing inside
- * the read itself observes the request deadline.
- */
-function withinDeadline<T>(read: Promise<T>, signal: AbortSignal): Promise<T> {
-  if (signal.aborted) return Promise.reject(signal.reason);
-  return new Promise<T>((resolve, reject) => {
-    const onAbort = (): void => reject(signal.reason);
-    signal.addEventListener("abort", onAbort, { once: true });
-    const settle = (finish: () => void): void => {
-      signal.removeEventListener("abort", onAbort);
-      finish();
-    };
-    read.then(
-      (value) => {
-        settle(() => resolve(value));
-      },
-      (error: unknown) => {
-        settle(() => reject(error));
-      },
-    );
-  });
-}
-
-/**
  * Read a body without letting upstream decide how much memory the broker
  * spends, or for how long it spends the request's time. A body over the cap is
  * reported as truncated instead of surfacing a raw `content-length` nobody can
@@ -214,29 +193,19 @@ export async function readBoundedText(
   signal: AbortSignal,
 ): Promise<BoundedText> {
   const contentType = response.headers.get("content-type");
-  if (response.body === null) {
-    return { text: "", bytes: 0, truncated: false, binary: false };
-  }
-  const declared = numberFrom(response.headers.get("content-length"));
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let bytes = 0;
-  let truncated = declared !== undefined && declared > maxBytes;
   try {
-    for (;;) {
-      const next = await withinDeadline(reader.read(), signal);
-      if (next.done) break;
-      bytes += next.value.byteLength;
-      if (bytes > maxBytes) {
-        // Keep the prefix that still fits: a bounded preview is what makes a
-        // truncated answer useful, an empty one is not.
-        const room = maxBytes - (bytes - next.value.byteLength);
-        if (room > 0) chunks.push(next.value.subarray(0, room));
-        truncated = true;
-        break;
-      }
-      chunks.push(next.value);
-    }
+    const { data, bytes, truncated } = await readResponseBytes(response, {
+      maxBytes,
+      signal,
+    });
+    const body = Buffer.from(data);
+    const binary = looksBinary(contentType, body);
+    return {
+      text: binary ? "" : body.toString("utf8"),
+      bytes,
+      truncated,
+      binary,
+    };
   } catch (error) {
     // This deployment's own deadline ending the read is a timeout, whatever the
     // upstream's answer looked like before it stopped.
@@ -247,21 +216,7 @@ export async function readBoundedText(
       );
     }
     throw error;
-  } finally {
-    // Whatever ended the read — the cap, the deadline, a transfer that broke —
-    // the stream is released, so no body keeps a connection open past the
-    // request it belongs to. Not awaited: a source that never delivers a chunk
-    // can never finish cancelling itself either.
-    void reader.cancel().catch(() => undefined);
   }
-  const body = Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)));
-  const binary = looksBinary(contentType, body);
-  return {
-    text: binary ? "" : body.toString("utf8"),
-    bytes: Math.max(bytes, body.byteLength),
-    truncated,
-    binary,
-  };
 }
 
 /**
@@ -476,6 +431,7 @@ export async function fetchWithRetries<T>(
         continue;
       }
       if (!response.ok) {
+        cancelResponseBody(response);
         const failure = withTransportDiagnostics(
           policy.statusFailure(response),
           answerDiagnostics(response),
