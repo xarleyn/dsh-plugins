@@ -307,7 +307,7 @@ async function executeExpert(
         ? await dependencies.subagents.startActivation(activationSpec)
         : await dependencies.startActivation(
             activationSpec,
-            configuredTools.length > 0 ? profile.toolFilter : undefined,
+            profile.toolFilter,
           );
     onActivation(activation);
     // The Host has now validated every configured name against the child's
