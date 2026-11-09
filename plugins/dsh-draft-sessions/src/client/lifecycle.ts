@@ -67,8 +67,6 @@ export interface DraftSessionLifecycleOptions {
   /** Session running-status subscription; omitted wires the ctx remote face. */
   readonly status?: SessionStatusSource;
   readonly sidebar?: Pick<DraftSidebarSource, "accept" | "remove">;
-  /** Reconcile accepted drafts after initial hydration and every successful re-pull. */
-  readonly reconcileOnList?: boolean;
 }
 
 export type BeforeDraftFinalizeListener = (
@@ -124,57 +122,6 @@ export class DraftSessionLifecycle extends Service {
         "draft-sessions.observe-prompts",
       );
     }
-    if (options?.reconcileOnList) this.observeReadyLists(ctx);
-  }
-
-  private observeReadyLists(ctx: Context): void {
-    let active = true,
-      queued = false,
-      dirty = false;
-    const ready = () => {
-      const snapshot = this.sessions.list.getSnapshot();
-      return snapshot.phase === "ready";
-    };
-    const changed = () => {
-      if (!active || !ready()) return;
-      dirty = true;
-      if (queued) return;
-      queued = true;
-      // Share the status-event queue: a reconnect and running=true must not
-      // race to delete the same durable revision or flush its composer twice.
-      this.enqueueObservation(async () => {
-        try {
-          while (active && dirty && ready()) {
-            dirty = false;
-            const drafts = this.remoteValue(
-              await this.drafts.list({}),
-              "draft-list",
-            );
-            if (!active || !ready()) return;
-            for (const workspace of new Set(
-              drafts.map((draft) => draft.workspaceId),
-            )) {
-              if (!active || !ready()) return;
-              await this.reconcileWorkspace(
-                workspace,
-                false,
-                () => active && ready(),
-              );
-            }
-          }
-        } finally {
-          queued = false;
-        }
-      });
-    };
-    ctx.effect(() => {
-      const remove = this.sessions.list.subscribe(changed);
-      changed();
-      return () => {
-        active = false;
-        remove();
-      };
-    }, "draft-sessions.reconcile-list");
   }
 
   /** Create a durable draft and give it a distinct blank Session shell. */
@@ -212,11 +159,7 @@ export class DraftSessionLifecycle extends Service {
   }
 
   /** Recover every missing Session shell in one Workspace from one list cut. */
-  async reconcileWorkspace(
-    workspaceId: string,
-    recoverMissing = true,
-    mayContinue = () => true,
-  ): Promise<DraftSession[]> {
+  async reconcileWorkspace(workspaceId: string): Promise<DraftSession[]> {
     const drafts = this.remoteValue(
       await this.drafts.list({ workspaceId }),
       "draft-list",
@@ -228,30 +171,12 @@ export class DraftSessionLifecycle extends Service {
     );
     const reconciled: DraftSession[] = [];
     for (const draft of drafts) {
-      if (!mayContinue()) return reconciled;
       const blank =
         draft.sessionId === null ? undefined : blankById.get(draft.sessionId);
       if (blank === false) {
-        for (const listener of [...this.beforeFinalizeListeners])
-          await listener(draft.sessionId!);
-        // A composer flush can advance the revision before deletion. Resolve
-        // the current binding again, and never delete a concurrently rebound draft.
-        const current = this.remoteValue(
-          await this.drafts.list({ workspaceId }),
-          "draft-list",
-        ).find(
-          (item) => item.id === draft.id && item.sessionId === draft.sessionId,
-        );
-        if (current !== undefined && mayContinue())
-          await this.deleteDraft(current);
+        await this.deleteDraft(draft);
       } else {
-        // Background reconciliation never creates a shell from absence: the
-        // list may still be catching up with a concurrent draft creation.
-        reconciled.push(
-          blank === true || !recoverMissing
-            ? draft
-            : await this.materialize(draft),
-        );
+        reconciled.push(blank === true ? draft : await this.materialize(draft));
       }
     }
     return reconciled;

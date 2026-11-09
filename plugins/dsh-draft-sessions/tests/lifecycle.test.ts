@@ -291,103 +291,10 @@ describe("DraftSessionLifecycle", () => {
         }),
       }),
     });
-    lifecycle.onBeforeFinalize(async () => {
-      const current = (await drafts.list())[0]!;
-      await drafts.update({
-        id: current.id,
-        expectedRevision: current.revision,
-        text: "flushed before finalize",
-      });
-    });
 
     await expect(lifecycle.reconcileWorkspace("workspace-a")).resolves.toEqual(
       [],
     );
     expect(await drafts.list()).toEqual([]);
-  });
-
-  it("reconciles accepted drafts on the first ready list and reconnect without a running event", async () => {
-    const drafts = await store();
-    await drafts.create({
-      workspaceId: "workspace-a",
-      sessionId: "session-current",
-    });
-    let value = { phase: "pending", state: "loading", byId: {} };
-    let notify = () => {};
-    const ctx = new Context();
-    const create = vi.fn();
-    const remove = vi.fn();
-    const lifecycle = new DraftSessionLifecycle(ctx, {
-      drafts: remote(drafts),
-      sessions: sessions({
-        create,
-        list: {
-          getSnapshot: () => value,
-          subscribe: (listener: () => void) => {
-            notify = listener;
-            return () => {
-              notify = () => {};
-            };
-          },
-        } as never,
-      }),
-      sidebar: { accept: vi.fn(), remove },
-      reconcileOnList: true,
-    });
-    const before = vi.fn();
-    lifecycle.onBeforeFinalize(before);
-    notify();
-    await Promise.resolve();
-    expect(await drafts.list()).toHaveLength(1);
-    expect(create).not.toHaveBeenCalled();
-    value = {
-      phase: "ready",
-      state: "idle",
-      byId: { "session-current": { blank: false, updatedAt: 1 } },
-    };
-    notify();
-    notify();
-    await vi.waitFor(async () => expect(await drafts.list()).toEqual([]));
-    expect(before).toHaveBeenCalledWith("session-current");
-    expect(remove).toHaveBeenCalledWith("draft-a");
-    await drafts.create({
-      workspaceId: "workspace-a",
-      sessionId: "session-current",
-    });
-    notify();
-    await vi.waitFor(async () => expect(await drafts.list()).toEqual([]));
-    expect(create).not.toHaveBeenCalled();
-    await ctx.fiber.dispose();
-  });
-
-  it("does not finalize after disposal while the ready-list reconciliation is waiting", async () => {
-    const drafts = await store();
-    const draft = await drafts.create({
-      workspaceId: "workspace-a",
-      sessionId: "session-current",
-    });
-    let finish!: (value: { ok: true; value: (typeof draft)[] }) => void;
-    const api = remote(drafts);
-    const pending = new Promise<{ ok: true; value: (typeof draft)[] }>(
-      (resolve) => {
-        finish = resolve;
-      },
-    );
-    const list = vi.fn(() => pending);
-    const ctx = new Context();
-    new DraftSessionLifecycle(ctx, {
-      drafts: { ...api, list },
-      sessions: sessions({
-        list: listStore({ "session-current": { blank: false, updatedAt: 1 } }),
-      }),
-      reconcileOnList: true,
-    });
-    await vi.waitFor(() => expect(list).toHaveBeenCalledOnce());
-    await ctx.fiber.dispose();
-    finish({ ok: true, value: [draft] });
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(await drafts.list()).toEqual([draft]);
-    expect(list).toHaveBeenCalledOnce();
   });
 });

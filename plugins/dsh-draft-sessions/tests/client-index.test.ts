@@ -89,7 +89,6 @@ describe("client activation", () => {
       sessions: sessionsApi,
       status: expect.any(Function),
       sidebar: expect.anything(),
-      reconcileOnList: true,
     });
     expect(observed.composer).toHaveBeenCalledWith(readyCtx, {
       lifecycle: expect.anything(),

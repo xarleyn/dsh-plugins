@@ -52,7 +52,6 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
       status: (listener) =>
         remoteCtx.remote.$on("api-session/status", listener),
       sidebar,
-      reconcileOnList: true,
     });
     const composer = new DraftComposerBridge(remoteCtx, {
       lifecycle,
