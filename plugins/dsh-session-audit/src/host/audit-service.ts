@@ -160,19 +160,24 @@ export class AuditService implements SessionAuditProvider {
     if (this.started) return;
     this.started = true;
     const generation = ++this.lifecycleGeneration;
-    await this.stopping;
-    if (generation !== this.lifecycleGeneration) return;
-    this.stopped = false;
-    this.logger.info("audit root initialized", {
-      root: this.options.config.auditRoot,
-      watch: this.options.config.watch,
-      watchMode: this.options.config.watchMode,
-    });
-    await this.refresh();
-    // The scan is asynchronous, so a stop can land inside it. Starting the
-    // watcher after that would leave a watcher nothing owns.
-    if (!this.started || generation !== this.lifecycleGeneration) return;
-    await this.watcher.start();
+    try {
+      await this.stopping;
+      if (generation !== this.lifecycleGeneration) return;
+      this.stopped = false;
+      this.logger.info("audit root initialized", {
+        root: this.options.config.auditRoot,
+        watch: this.options.config.watch,
+        watchMode: this.options.config.watchMode,
+      });
+      await this.refresh();
+      // The scan is asynchronous, so a stop can land inside it. Starting the
+      // watcher after that would leave a watcher nothing owns.
+      if (!this.started || generation !== this.lifecycleGeneration) return;
+      await this.watcher.start();
+    } catch (error) {
+      if (generation === this.lifecycleGeneration) this.started = false;
+      throw error;
+    }
   }
 
   /** Stop watching and forget everything derived from the filesystem. */
@@ -189,21 +194,20 @@ export class AuditService implements SessionAuditProvider {
   }
 
   private async finishStop(): Promise<void> {
-    await this.watcher.stop();
-    // A scan can still be inside file or session resolution. Drain it before
-    // clearing derived state; a restart waits for this same barrier.
     try {
-      await this.pendingRefresh;
-    } catch {
-      // The refresh caller owns its failure; teardown must still clear state.
+      await this.watcher.stop();
+    } finally {
+      // A scan can still publish records after the watcher closes. Its caller
+      // receives any scan failure, and teardown waits for its last write.
+      await this.pendingRefresh?.catch(() => undefined);
+      this.registry.clear();
+      this.seen.clear();
+      this.lastGood.clear();
+      this.lastGoodBytes = 0;
+      this.bindings.clear();
+      this.discovered.clear();
+      this.corpusListingBroken = false;
     }
-    this.registry.clear();
-    this.seen.clear();
-    this.lastGood.clear();
-    this.lastGoodBytes = 0;
-    this.bindings.clear();
-    this.discovered.clear();
-    this.corpusListingBroken = false;
   }
 
   /**
