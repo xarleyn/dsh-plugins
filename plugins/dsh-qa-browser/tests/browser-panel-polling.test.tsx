@@ -17,6 +17,37 @@ afterEach(() => {
   vi.useRealTimers();
 });
 describe("slow Browser frame polling", () => {
+  it.each([
+    { sessionId: null, visible: true },
+    { sessionId: "chat-b", visible: false },
+  ])(
+    "clears a pending status when the next panel cannot poll ($sessionId, visible=$visible)",
+    async (next) => {
+      const { remote, mocks } = host(panelState([tab()], "tab-a"));
+      let fail!: (error: Error) => void;
+      mocks.panelState.mockReturnValue(
+        new Promise<never>((_resolve, reject) => {
+          fail = reject;
+        }),
+      );
+      const props = owner(remote, "chat-a");
+      const hook = renderHook(
+        ({ owner: currentOwner }) =>
+          useBrowserSession({ browserRemote: remote, owner: currentOwner }),
+        { initialProps: { owner: props } },
+      );
+      expect(hook.result.current.view.statusLine).toBe("Получаем состояние…");
+      hook.rerender({ owner: { ...props, ...next } });
+      expect(hook.result.current.view.statusLine).toBe("Нет данных о Browser");
+      await act(async () => {
+        fail(new Error("old read failed"));
+      });
+      expect(hook.result.current.view.statusLine).toBe("Нет данных о Browser");
+      expect(hook.result.current.error).toBeNull();
+      expect(mocks.panelState).toHaveBeenCalledOnce();
+    },
+  );
+
   it("renders a frame slower than the active poll interval without overlapping screenshots", async () => {
     vi.useFakeTimers();
     const { remote, mocks } = host(

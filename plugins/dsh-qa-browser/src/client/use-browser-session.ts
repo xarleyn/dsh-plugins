@@ -69,6 +69,7 @@ export function useBrowserSession({
   );
   useEffect(() => {
     latestIdentity.current = identity;
+    setLoading(false);
     return () => {
       if (latestIdentity.current === identity) latestIdentity.current = null;
     };
