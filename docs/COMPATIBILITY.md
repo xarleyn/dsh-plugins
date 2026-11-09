@@ -20,7 +20,8 @@ and release decision.
 `pnpm-workspace.yaml` defines two DSH catalogs:
 
 - `catalog:dsh` contains the compatible peer ranges shipped in public package
-  manifests (`^4.0.4` for Cordis and `>=0.1.7-rc.2 <0.2.0` for DSH packages).
+  manifests. Cordis uses `~4.0.4` because the supported loader `~1.0.5` requires
+  Cordis 4.0.x. DSH packages use `>=0.1.7-rc.2 <0.3.0-0`.
 - `catalog:dsh-dev` contains exact versions used by local builds and CI.
 
 `catalog:runtime` is not a DSH catalog: it holds a third-party runtime range that

@@ -16,7 +16,7 @@ onlyBuiltDependencies:
 
 catalogs:
   dsh:
-    '@deepseek-ai/cordis': '^4.0.4'
+    '@deepseek-ai/cordis': '~4.0.4'
     '@deepseek-ai/cordis-plugin-loader': '~1.0.5'
     '@deepseek-ai/dsh-agent-default-model': '>=0.1.7-rc.2 <0.3.0-0'
     '@deepseek-ai/dsh-authorization': '>=0.1.7-rc.2 <0.3.0-0'

@@ -524,7 +524,7 @@ ${options.description ?? `DSH plugin: ${pluginName}.`}
 
 - DeepSeek Harness \`>=0.1.7-rc.2 <0.2.0\`
 - Node.js \`^22.19.0 || >=24.0.0\`
-- Cordis \`^4.0.4\`${specExtraRequirements}
+- Cordis \`~4.0.4\`${specExtraRequirements}
 
 ## 3. Entrypoints
 
