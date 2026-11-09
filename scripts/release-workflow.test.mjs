@@ -710,7 +710,13 @@ describe("release workflow fan-out", () => {
 
     assert.match(
       workflow,
-      /name: npm-tarball-\$\{\{ matrix\.slug \}\}\s+path: \$\{\{ github\.workspace \}\}\/tarballs\/\*/u,
+      /name: npm-tarball-\$\{\{ matrix\.slug \}\}\s+path: \$\{\{ github\.workspace \}\}\/tarballs\/\*[ \t]*$/mu,
+      "each package artifact must include its tarball and provenance sidecar",
+    );
+    assert.match(
+      workflow,
+      /name: npm-tarballs\s+path: tarballs\/\*[ \t]*$/mu,
+      "the combined recovery artifact must retain the same sidecars",
     );
     assert.match(
       workflow,

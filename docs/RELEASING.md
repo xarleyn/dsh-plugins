@@ -171,8 +171,7 @@ tag move only once npm has every version:
 
 ## Failure recovery
 
-Everything before publication is rerunnable, because nothing has left the
-runner yet:
+Check how far the publish job reached across all attempts of the workflow run.
 
 - If versioning, the registry check, the validation gates, or the tarball
   checks fail, fix the cause and rerun the workflow. The version plans are
@@ -180,9 +179,14 @@ runner yet:
   its runner. Because validation is fanned out per package, re-running the
   failed jobs retries only the packages that failed instead of the whole
   workspace.
-- If **Refuse a stale release before publication** fails, no packages have
-  been published by this run. Dispatch a new release from the intended branch
-  revision; the failed run's prepared tree is not substituted onto the new head.
+- If **Refuse a stale release before publication** fails, this attempt stopped
+  before invoking `npm publish`. An earlier attempt may have published part of
+  the wave. Inspect its publish logs and the planned `name@version` entries on
+  npm. Dispatch from the intended branch revision once the logs confirm that
+  earlier attempts published nothing and every planned version is absent. If
+  an earlier attempt published a version or npm already serves it, retain the
+  original plan and tarballs, check their integrity against npm, and follow the
+  post-publication recovery steps below.
 - If the **Publish to npm with OIDC** step fails, it reports every package npm
   rejected plus every package it held back because one of their dependencies
   did not publish, and nothing was pushed. A package the registry does not know
@@ -225,10 +229,32 @@ needs an explicit decision:
   for the remaining GitHub Release work.
 - If **Create the release-wave GitHub Release** failed, rerun with
   `publish_only=true` and `create_github_releases=true` on the exact pushed
-  release tag. Already published npm versions are skipped only after byte
-  integrity matches, and the missing release is created from that tag. A single
-  missing tarball can also be attached with `gh release upload` on the wave
-  tag.
+  release tag. If the rebuilt tarballs match npm, the workflow creates the
+  missing release from that tag.
+- If the rebuilt bytes differ, use the original publishing run's retained
+  artifacts. In a clean checkout of its exact pushed wave tag, set `wave_tag`
+  to that tag, `run_id` to the original run and `plan_sha` to `RELEASE_PLAN_SHA`
+  from its publish job log. Use an empty `recovery/` directory. The following
+  Bash commands verify the release tree, the original tarballs and sidecars,
+  and every version's npm integrity before creating the missing GitHub Release.
+
+  ```bash
+  (
+    set -eu
+    test "$(git rev-parse HEAD)" = "$(git rev-parse --verify "refs/tags/${wave_tag}^{commit}")"
+    gh run download "$run_id" --name release-plan --dir recovery
+    gh run download "$run_id" --name npm-tarballs --dir recovery/tarballs
+    inputs=(--plan=recovery/release-plan.json --expected-plan="$plan_sha" --tarballs=recovery/tarballs)
+    node scripts/release-provenance.mjs verify-artifacts "${inputs[@]}" --tsv=recovery/packages.tsv
+    node scripts/release-provenance.mjs registry "${inputs[@]}" --require-all
+    node scripts/wave-release-notes.mjs --tsv=recovery/packages.tsv > recovery/notes.md
+    gh release create "$wave_tag" recovery/tarballs/*.tgz --verify-tag \
+      --title "Release ${wave_tag#release/}" --notes-file recovery/notes.md
+  )
+  ```
+
+  For an existing Release, run the same verification and attach each missing
+  archive with `gh release upload "$wave_tag" "recovery/tarballs/$tarball"`.
 - `publish_only=true` selects only versions tagged at the dispatched commit.
   For a wave tag, the selected set is the package manifests changed in that
   release commit. For older per-project tags, it selects exact name/version

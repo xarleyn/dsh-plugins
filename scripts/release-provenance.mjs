@@ -185,7 +185,7 @@ export function assertRemoteBase(
   for (const ref of refs) {
     if ((records.get(`${ref}^{}`) ?? records.get(ref)) !== plan.baseSha) {
       throw new Error(
-        `Release ref ${ref} advanced or disappeared. ${afterPublication ? "npm may already contain this wave; do not rerun from a new branch head. Recover the prepared tree and original verified tarballs from this run's artifacts, or issue a new version. No release tag will be pushed." : "Publication stopped before npm was changed; start a new release from the intended revision."}`,
+        `Release ref ${ref} advanced or disappeared. ${afterPublication ? "npm may already contain this wave; do not rerun from a new branch head. Recover the prepared tree and original verified tarballs from this run's artifacts, or issue a new version. No release tag will be pushed." : "This attempt stopped before npm publish. Check earlier attempts and the planned versions on npm before dispatching a new release. Retain the original plan and verified tarballs for recovery."}`,
       );
     }
   }

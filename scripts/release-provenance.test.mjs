@@ -132,7 +132,7 @@ test("a cleanly replayable patch cannot mask a changed source tree", (t) => {
   );
   assert.throws(
     () => assertRemoteBase(f.root, f.plan),
-    /before npm was changed/u,
+    /This attempt stopped before npm publish\. Check earlier attempts and the planned versions on npm/u,
   );
   // The pinned base is still available and yields the prepared source tree.
   const pinned = path.join(f.directory, "pinned");
