@@ -18,10 +18,16 @@ describe("resolveAnswerReviewGateConfig", () => {
   it("clamps numeric limits into their safe ranges", () => {
     const resolved = resolveAnswerReviewGateConfig({
       maxReviewRounds: 99,
+      maxToolCallsPerRound: 20_000,
+      maxConsecutiveRefusalsPerRound: -5,
+      reviewTimeoutMs: Number.NaN,
       minCandidateChars: 0,
       audit: { enabled: true, maxEntries: 1 },
     });
     expect(resolved.maxReviewRounds).toBe(10);
+    expect(resolved.maxToolCallsPerRound).toBe(10_000);
+    expect(resolved.maxConsecutiveRefusalsPerRound).toBe(0);
+    expect(resolved.reviewTimeoutMs).toBe(0);
     expect(resolved.minCandidateChars).toBe(1);
     expect(resolved.audit.maxEntries).toBe(10);
 

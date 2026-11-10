@@ -337,12 +337,13 @@ export class DomainExpertsService extends TypertRemoteService {
       perUserMemory: this.principals.perUserMemory(),
       principalOf: (sessionId) => this.principals.principalOf(sessionId),
       modelPolicyOf: (sessionId) => this.principals.modelPolicyOf(sessionId),
-      startActivation: (spec, filter) =>
+      startActivation: (spec, filter, budget) =>
         startRestrictedExpert(
           this.ctx,
           subagentsFaceOf(this.ctx.subagents),
           spec,
           filter,
+          budget,
         ),
     };
   }
@@ -546,12 +547,31 @@ export class DomainExpertsService extends TypertRemoteService {
     return this.runTestExpert(domainId, task, parentSessionId, true, images);
   }
 
+  /** Explicit capability: the caller can require enforced, cancellable review limits. */
+  async reviewExpertBounded(
+    domainId: string,
+    task: string,
+    parentSessionId: string,
+    images: NonNullable<ExpertRunInput["images"]>,
+    budget: NonNullable<ExpertRunInput["budget"]>,
+  ): Promise<ExpertRunResult> {
+    return this.runTestExpert(
+      domainId,
+      task,
+      parentSessionId,
+      true,
+      images,
+      budget,
+    );
+  }
+
   private async runTestExpert(
     domainId: string,
     task: string,
     parentSessionId: string,
     structuredOutput?: boolean,
     images: NonNullable<ExpertRunInput["images"]> = [],
+    budget?: ExpertRunInput["budget"],
   ): Promise<ExpertRunResult> {
     return guarded(async () => {
       const { handles, definition } = await this.stores.addressed(domainId);
@@ -570,6 +590,7 @@ export class DomainExpertsService extends TypertRemoteService {
         result: await runExpert(this.executionDependencies(handles), {
           ...testRunInput(parent, definition, task, structuredOutput),
           images,
+          ...(budget === undefined ? {} : { budget, signal: budget.signal }),
         }),
       });
     }, expertRunRefusal);

@@ -497,6 +497,22 @@ export class AnswerReviewGate {
     readonly review: (input: ReviewInput) => Promise<ReviewVerdict>;
   } {
     if (config.reviewer.backend === "subagent") {
+      if (
+        config.maxToolCallsPerRound > 0 ||
+        config.maxConsecutiveRefusalsPerRound > 0 ||
+        config.reviewTimeoutMs > 0
+      ) {
+        return {
+          name: "subagent",
+          reviewer: config.reviewer.provider,
+          review: async () => {
+            throw new ReviewerFailure(
+              "review-budget-unsupported",
+              "configured review budgets require the domain-expert backend",
+            );
+          },
+        };
+      }
       return createSubagentBackend({
         face: this.deps.subagents(),
         config: config.reviewer,
@@ -519,6 +535,11 @@ export class AnswerReviewGate {
     return createDomainExpertBackend({
       face: this.deps.domainExperts(),
       config: config.reviewer,
+      limits: {
+        maxToolCalls: config.maxToolCallsPerRound,
+        maxConsecutiveRefusals: config.maxConsecutiveRefusalsPerRound,
+        timeoutMs: config.reviewTimeoutMs,
+      },
       ...(agent.session.header.cwd === undefined
         ? {}
         : { workspaceRoot: agent.session.header.cwd }),

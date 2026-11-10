@@ -194,6 +194,19 @@ export interface ReviewerBackend {
  * handled by the failure policy, never a load-time dependency.
  */
 export interface DomainExpertsFace {
+  /** Explicit capability; an older service must not silently ignore review limits. */
+  reviewExpertBounded?(
+    domainId: string,
+    task: string,
+    parentSessionId: string,
+    images: readonly Extract<ContentBlock, { type: "image" }>[],
+    budget: {
+      readonly maxToolCalls: number;
+      readonly maxConsecutiveRefusals: number;
+      readonly timeoutMs: number;
+      readonly signal: AbortSignal;
+    },
+  ): Promise<ExpertRunOutcome>;
   /** Host-only entry; older installations must fail explicitly for image reviews. */
   reviewExpert?(
     domainId: string,

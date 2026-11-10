@@ -87,10 +87,25 @@ by **stable domain id** (`reviewer.domain`, default `answer-reviewer`), so the
 reviewer persona, policy, tools and model are tuned in the domain-experts UI,
 not here. The verdict is derived from the expert's own structured protocol:
 findings and conflicts are the review objections; a run with no findings and no
-conflicts passes. The domain-experts test entry owns its lifecycle: a running
+conflicts passes. The legacy domain-experts test entry owns its lifecycle: a running
 child cannot be interrupted through this face. The gate checks cancellation
 before and after each attempt, refuses a late verdict, and starts no recovery
 attempt after cancellation.
+
+For a bounded review, set `maxToolCallsPerRound` (for example `60`),
+`maxConsecutiveRefusalsPerRound` (`5`) and `reviewTimeoutMs` (`120000`). All
+default to `0`, which preserves the legacy contract. Nonzero limits require
+the `domain-expert` backend and the host-only `reviewExpertBounded` capability
+from a matching domain-experts build; an incompatible backend fails explicitly
+through `failMode`. The monitor counts completed calls from this reviewer and its delegated descendants,
+resets the error streak on success and exempts native structured result capture.
+At a limit, timeout or caller cancellation it disposes the managed activation
+before reporting a failed review. A bounded round makes one attempt; missing
+structured output follows the failure policy without resetting the budget.
+
+Saved long review packets carry an absolute path so a child with another working
+directory can open the same file. Workspace containment and content verification
+still apply.
 
 ### `reviewer.backend: subagent`
 

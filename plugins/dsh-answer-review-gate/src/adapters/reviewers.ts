@@ -51,6 +51,11 @@ export function createDomainExpertBackend(deps: {
   readonly face: DomainExpertsFace | undefined;
   readonly config: ReviewerConfig;
   readonly workspaceRoot?: string;
+  readonly limits?: {
+    readonly maxToolCalls: number;
+    readonly maxConsecutiveRefusals: number;
+    readonly timeoutMs: number;
+  };
 }): ReviewerBackend {
   return {
     name: "domain-expert",
@@ -75,7 +80,23 @@ export function createDomainExpertBackend(deps: {
         );
       }
       const images = input.requestImages ?? [];
-      if (images.length > 0 && deps.face.reviewExpert === undefined) {
+      const limits = deps.limits;
+      const bounded =
+        limits !== undefined &&
+        (limits.maxToolCalls > 0 ||
+          limits.maxConsecutiveRefusals > 0 ||
+          limits.timeoutMs > 0);
+      if (bounded && deps.face.reviewExpertBounded === undefined) {
+        throw new ReviewerFailure(
+          "review-budget-unavailable",
+          "the installed domain-experts service cannot enforce review limits; update it before reviewing",
+        );
+      }
+      if (
+        !bounded &&
+        images.length > 0 &&
+        deps.face.reviewExpert === undefined
+      ) {
         throw new ReviewerFailure(
           "expert-image-input-unavailable",
           "the installed domain-experts service cannot receive review images; update it before reviewing this request",
@@ -85,14 +106,31 @@ export function createDomainExpertBackend(deps: {
         renderExpertReviewTask(input),
         deps.workspaceRoot,
       );
+      const startedAt = Date.now();
       for (let attempt = 0; attempt < 2; attempt += 1) {
         assertReviewActive(input);
         const task =
           attempt === 0
             ? packet.task
             : `${CAPTURE_RECOVERY_INSTRUCTION}\n\n${packet.task}`;
-        const outcome =
-          images.length > 0
+        const remainingMs = limits?.timeoutMs
+          ? limits.timeoutMs - (Date.now() - startedAt)
+          : 0;
+        if (bounded && limits!.timeoutMs > 0 && remainingMs <= 0)
+          throw new ReviewerFailure("review-timeout");
+        const outcome = bounded
+          ? await deps.face.reviewExpertBounded!(
+              deps.config.domain,
+              task,
+              input.sessionId,
+              images,
+              {
+                ...limits!,
+                timeoutMs: remainingMs,
+                signal: input.signal,
+              },
+            )
+          : images.length > 0
             ? await deps.face.reviewExpert!(
                 deps.config.domain,
                 task,
@@ -121,6 +159,11 @@ export function createDomainExpertBackend(deps: {
             outcome.result.diagnostic,
           )
         ) {
+          if (bounded)
+            throw new ReviewerFailure(
+              "expert-output-not-captured",
+              "the bounded round ended without its structured verdict",
+            );
           input.onRecovery?.();
           continue;
         }

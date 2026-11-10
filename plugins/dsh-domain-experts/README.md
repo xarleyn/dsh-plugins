@@ -221,6 +221,14 @@ match is attempted.
 
 ## Compatibility
 
+The host-only `reviewExpertBounded` entry supports independent answer review with
+an abort signal, wall-clock timeout, completed-tool-call limit and consecutive
+tool-error limit. Limits cover that managed child and its delegated descendants,
+while human forks and unrelated agents remain separate. A successful call
+resets the error streak; native structured result capture is exempt. Exhaustion
+disposes the activation and reports an error instead of returning an incomplete
+verdict. Ordinary expert calls keep their existing lifecycle.
+
 - DeepSeek Harness `>=0.1.7-rc.2 <0.2.0` (tested against `0.1.7-rc.2`)
 - Node `^22.19.0 || >=24.0.0`
 - Browser half requires the `plugins.bundle.config` seat

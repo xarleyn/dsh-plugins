@@ -84,7 +84,8 @@ describe("domain reviewer image input", () => {
       expect(testExpert).not.toHaveBeenCalled();
       expect(tasks).toHaveLength(2);
       const packetPath = /review-packet: (.+)/u.exec(tasks[0]!)![1]!;
-      const packet = await readFile(path.join(root, packetPath), "utf8");
+      expect(path.isAbsolute(packetPath)).toBe(true);
+      const packet = await readFile(packetPath, "utf8");
       expect(packet).toContain(candidateText);
       expect(packet).not.toContain(
         "image omitted because this model accepts text only",

@@ -33,6 +33,7 @@ import { parseExpertAnswer, textOfBlocks } from "./result.js";
 import { EXPERT_REVIEW_OUTPUT_SCHEMA } from "./review-output.js";
 import { expertLabelOf } from "./caller.js";
 import type { ExpertToolFilter } from "./tool-policy.js";
+import type { ExpertExecutionBudget } from "./execution-budget.js";
 import type { RunTracker } from "./run-tracker.js";
 export { RunTracker, type ActiveRun } from "./run-tracker.js";
 
@@ -95,10 +96,12 @@ export interface ExecutionDependencies {
   startActivation?(
     spec: SubagentActivationSpec,
     filter?: ExpertToolFilter,
+    budget?: ExpertExecutionBudget,
   ): Promise<SubagentActivation>;
 }
 
 export interface ExpertRunInput {
+  readonly budget?: ExpertExecutionBudget;
   /** Host-admitted durable images, supplied only by in-process callers. */
   readonly images?: readonly Extract<
     SubagentStartRequest["prompt"][number],
@@ -308,6 +311,7 @@ async function executeExpert(
         : await dependencies.startActivation(
             activationSpec,
             profile.toolFilter,
+            input.budget,
           );
     onActivation(activation);
     // The Host has now validated every configured name against the child's

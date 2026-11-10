@@ -64,6 +64,10 @@ export interface AnswerReviewGateConfig {
   };
   /** Review/revision rounds per user turn before the failure policy applies (clamped 1-10). */
   readonly maxReviewRounds?: number;
+  /** Domain-expert reviewer limits; zero keeps the legacy unbounded contract. */
+  readonly maxToolCallsPerRound?: number;
+  readonly maxConsecutiveRefusalsPerRound?: number;
+  readonly reviewTimeoutMs?: number;
   /**
    * What happens when the review could not complete (reviewer failure or
    * rounds exhausted): `open` allows the answer, `warn` allows it with a
@@ -114,6 +118,9 @@ export interface ResolvedAnswerReviewGateConfig {
     readonly allowedTools: readonly string[];
   };
   readonly maxReviewRounds: number;
+  readonly maxToolCallsPerRound: number;
+  readonly maxConsecutiveRefusalsPerRound: number;
+  readonly reviewTimeoutMs: number;
   readonly failMode: "open" | "warn" | "closed";
   readonly trackBackgroundDelegations: boolean;
   readonly minCandidateChars: number;
@@ -143,6 +150,9 @@ export const ANSWER_REVIEW_GATE_DEFAULTS: ResolvedAnswerReviewGateConfig = {
     allowedTools: REVIEWER_READ_ONLY_TOOLS,
   },
   maxReviewRounds: 3,
+  maxToolCallsPerRound: 0,
+  maxConsecutiveRefusalsPerRound: 0,
+  reviewTimeoutMs: 0,
   failMode: "warn",
   trackBackgroundDelegations: true,
   minCandidateChars: 80,
@@ -228,6 +238,19 @@ export function resolveAnswerReviewGateConfig(
       10,
       defaults.maxReviewRounds,
     ),
+    maxToolCallsPerRound: clampInteger(
+      entry.maxToolCallsPerRound,
+      0,
+      10_000,
+      0,
+    ),
+    maxConsecutiveRefusalsPerRound: clampInteger(
+      entry.maxConsecutiveRefusalsPerRound,
+      0,
+      100,
+      0,
+    ),
+    reviewTimeoutMs: clampInteger(entry.reviewTimeoutMs, 0, 3_600_000, 0),
     failMode: oneOf(
       entry.failMode,
       ["open", "warn", "closed"],
@@ -333,6 +356,24 @@ export const AnswerReviewGateConfigSchema: z<AnswerReviewGateConfig> = z
       .union([z.const("open"), z.const("warn"), z.const("closed")])
       .default("warn")
       .description("Behavior when the review could not complete."),
+    maxToolCallsPerRound: z
+      .number()
+      .default(0)
+      .description(
+        "Domain-expert review: completed tool calls per round before cancelling its activation (0 disables, max 10000). Requires bounded-review support in domain-experts.",
+      ),
+    maxConsecutiveRefusalsPerRound: z
+      .number()
+      .default(0)
+      .description(
+        "Domain-expert review: consecutive tool errors before cancelling its activation (0 disables, max 100). A successful call resets the streak.",
+      ),
+    reviewTimeoutMs: z
+      .number()
+      .default(0)
+      .description(
+        "Domain-expert review: wall-clock budget per round in milliseconds, including result capture recovery (0 disables, max 3600000). Budget exhaustion is a review failure, never PASS.",
+      ),
     trackBackgroundDelegations: z
       .boolean()
       .default(true)

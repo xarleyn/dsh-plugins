@@ -23,12 +23,15 @@ it("preserves the full long answer beyond the expert limit and refuses a changed
   const task = `${"Confirmed evidence\n".repeat(1500)}FINAL CANDIDATE MARKER`;
   const packet = await expertReviewPacket(task, root);
   expect(packet.task.length).toBeLessThan(12_000);
-  const relative = packet.task.match(/review-packet: ([^\n]+)/u)?.[1];
-  expect(relative).toBeDefined();
-  const file = path.join(root, relative!);
-  expect(await readFile(file, "utf8")).toBe(task);
+  const file = packet.task.match(/review-packet: ([^\n]+)/u)?.[1];
+  expect(file).toBeDefined();
+  expect(path.isAbsolute(file!)).toBe(true);
+  expect(path.dirname(file!)).toBe(
+    path.join(root, ".qa/artifacts/answer-reviews"),
+  );
+  expect(await readFile(file!, "utf8")).toBe(task);
   await expect(packet.verify()).resolves.toBeUndefined();
-  await writeFile(file, "Modified snapshot");
+  await writeFile(file!, "Modified snapshot");
   await expect(packet.verify()).rejects.toMatchObject({
     reason: "review-packet-changed",
   });

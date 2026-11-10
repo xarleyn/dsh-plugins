@@ -7,6 +7,10 @@ import type {
 } from "@deepseek-ai/dsh-subagent";
 import type { SubagentsFace } from "./execution.js";
 import { DomainExpertsError, unsupportedCapability } from "./errors.js";
+import {
+  expertExecutionBudget,
+  type ExpertExecutionBudget,
+} from "./execution-budget.js";
 
 export interface ExpertToolFilter {
   readonly allow: readonly string[];
@@ -19,8 +23,10 @@ export async function startRestrictedExpert(
   subagents: SubagentsFace,
   spec: SubagentActivationSpec,
   filter?: ExpertToolFilter,
+  budget?: ExpertExecutionBudget,
 ): Promise<SubagentActivation> {
-  if (filter === undefined) return subagents.startActivation(spec);
+  if (filter === undefined && budget === undefined)
+    return subagents.startActivation(spec);
   // Only a local managed provider accepts a reserved child identity. A remote
   // backend cannot be constrained through this process's agent context.
   if (subagents.getProvider(spec.provider)?.prepareContinuable === undefined) {
@@ -39,10 +45,11 @@ export async function startRestrictedExpert(
       // submits the initial prompt only after it. The restriction belongs to
       // the child's context, so its teardown and concurrent siblings remain
       // the Host's responsibility. Unknown names refuse the creation.
-      agent.ctx.tools.restrict({
-        allow: [...filter.allow],
-        ...(filter.deny.length === 0 ? {} : { deny: [...filter.deny] }),
-      });
+      if (filter !== undefined)
+        agent.ctx.tools.restrict({
+          allow: [...filter.allow],
+          ...(filter.deny.length === 0 ? {} : { deny: [...filter.deny] }),
+        });
       applied = true;
     } catch (cause) {
       throw new DomainExpertsError(
@@ -52,6 +59,10 @@ export async function startRestrictedExpert(
       );
     }
   });
+  const executionBudget =
+    budget === undefined
+      ? undefined
+      : expertExecutionBudget(ctx, childId, budget);
   try {
     const activation = await subagents.startActivation({ ...spec, childId });
     if (!applied || activation.childId !== childId) {
@@ -62,7 +73,10 @@ export async function startRestrictedExpert(
         "the provider did not create the reserved child under the scoped restriction",
       );
     }
-    return activation;
+    return executionBudget?.bind(activation) ?? activation;
+  } catch (error) {
+    executionBudget?.cleanup();
+    throw error;
   } finally {
     unsubscribe();
   }
