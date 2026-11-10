@@ -2770,7 +2770,7 @@ export class QaSurface extends TypertRemoteService {
     const config = this.getConfig();
     const key =
       config.integration.enabled && config.accounts.enabled
-        ? `${config.integration.basePath}:${String(config.integration.maxRequestBytes)}:${String(config.integration.maxAttachmentBytes)}`
+        ? `${config.integration.basePath}:${String(config.integration.maxRequestBytes)}:${String(config.integration.maxAttachmentBytes)}:${String(config.integration.maxAttachments)}`
         : undefined;
     if (key === this.integrationRouteKey) return;
     this.disposeIntegrationRoutes?.();

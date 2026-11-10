@@ -175,6 +175,39 @@ describe("integration multipart parsing", () => {
     ).toBe("\u0089PNG");
   });
 
+  it("counts file parts and reads field names when a client uses unquoted parameters", () => {
+    const unquoted = (count: number) =>
+      Buffer.from(
+        multipart([
+          { name: "message", value: "Inspect every file" },
+          ...Array.from({ length: count }, (_, index) => ({
+            name: "files",
+            value: "x",
+            filename: `file-${String(index)}.png`,
+            contentType: "image/png",
+          })),
+        ])
+          .toString()
+          .replace(/; (name|filename)="([^"]+)"/gu, "; $1=$2"),
+      );
+    const parsed = parseAskBody(
+      unquoted(6),
+      `multipart/form-data; boundary=${boundary}`,
+      config,
+    );
+    expect(parsed.message).toBe("Inspect every file");
+    expect(parsed.attachments).toHaveLength(6);
+    expect(
+      expectRefusal(() =>
+        parseAskBody(
+          unquoted(config.integration.maxAttachments + 1),
+          `multipart/form-data; boundary=${boundary}`,
+          config,
+        ),
+      ).message,
+    ).toContain(`at most ${String(config.integration.maxAttachments)}`);
+  });
+
   it("carries a document as bytes for the Host to read", () => {
     const parsed = parseAskBody(
       multipart([

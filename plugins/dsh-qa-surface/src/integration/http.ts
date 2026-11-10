@@ -638,10 +638,13 @@ function filenameOf(value: string): string | null {
   }
 }
 
-/** One quoted parameter of a header value, or null when it is absent. */
+/** A quoted or token parameter at its own header boundary. */
 function parameterOf(value: string, key: string): string | null {
-  const match = new RegExp(`${key}="([^"]*)"`, "iu").exec(value);
-  return match?.[1] ?? null;
+  const match = new RegExp(
+    `(?:^|;)\\s*${key}\\s*=\\s*(?:"([^"]*)"|([^;\\s]+))`,
+    "iu",
+  ).exec(value);
+  return match?.[1] ?? match?.[2] ?? null;
 }
 
 function boundaryOf(contentType: string | undefined): string | null {
