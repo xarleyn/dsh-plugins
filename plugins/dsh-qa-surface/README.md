@@ -503,12 +503,29 @@ mapping takes precedence over `tools.docsDefaultVersion`. Without a mapping,
 the existing documentation default stays in force. An explicit `version`
 or `path` without `source` retains its override behaviour. An explicit
 `source` without a mapping is refused, as is a conflicting explicit edition.
-`docs_read` can validate an explicit source against the edition in its file
-path. Release and development sources may share a documentation edition.
+`docs_read` validates the file's edition against the chat's selected source
+unless a different source is explicitly named. Release and development sources
+may share a documentation edition.
 
-Selection is explicit per call: repeat `source` for a non-default tree,
-including in subagent instructions. A persistent chat-level selector is a
-subsequent feature. No directory is created, moved or updated by these tools.
+The **Версия кода** selector beside the composer saves an explicit source for
+the chat on the server. Reopening the chat or using another browser restores
+that choice. **По умолчанию** clears the override and follows the deployment
+default. Draft selection creates no session: it is saved before the first
+prompt, and a failed save prevents the prompt and can be retried.
+
+Only the chat owner can change the source. Shared readers and collaborators
+see the same choice, and changes are refused while the chat or its subagents
+are running, while input is queued, or while the chat waits for a server slot.
+The plugin stores preferences in `qa-code-sources.db` beside the accounts DB;
+include that database in deployment backups. New delegated children and forks
+snapshot the parent's effective source. Descendants keep that snapshot if the
+parent later changes its choice; an ordinary fork can change its own source.
+
+An omitted `source` in Git, code or documentation tools uses the persisted
+session choice. Explicit tool parameters still allow comparisons with another
+configured source and do not change the saved choice. Removing a selected
+source from configuration makes it unavailable rather than selecting another
+version. No directory is created, moved or updated by these tools.
 
 ### Writable per-user research space
 

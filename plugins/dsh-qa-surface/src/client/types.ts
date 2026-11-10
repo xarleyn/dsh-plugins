@@ -791,6 +791,22 @@ export type RemoteResult<Value> =
   | { readonly ok: true; readonly value: Value }
   | { readonly ok: false; readonly error: unknown };
 
+export interface QaChatCodeSourceApi {
+  read(
+    token: string,
+    sessionId: string,
+  ): Promise<
+    RemoteResult<import("../types/code-sources.js").QaChatCodeSources>
+  >;
+  select(
+    token: string,
+    sessionId: string,
+    source: string | null,
+  ): Promise<
+    RemoteResult<import("../types/code-sources.js").QaChatCodeSources>
+  >;
+}
+
 /** Minimal persistence contract; backed by `window.localStorage` in the app. */
 export interface StorageLike {
   getItem(key: string): string | null;
