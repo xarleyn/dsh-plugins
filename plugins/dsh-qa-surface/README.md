@@ -1321,6 +1321,7 @@ integration:
   requestTimeoutMs: 3600000 # one-hour answer budget; see docs/INTEGRATION-API.md §2.5
   maxConcurrent: 4
   requestsPerMinute: 60
+  maxAttachments: 0 # 0 inherits attachments.maxPending; positive values set an API limit (1-40)
   maxAnswerCharacters: 4096 # the answer the ticket comment can hold
 ```
 

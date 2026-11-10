@@ -20,6 +20,49 @@ afterEach(async () => {
 });
 
 describe("QA Surface card", () => {
+  it("writes an integration attachment count independently", async () => {
+    const { mutate } = await renderCard({
+      snapshot: {
+        value: {
+          ...BASE,
+          attachments: { ...BASE.attachments, maxPending: 10 },
+          integration: { ...BASE.integration, maxAttachments: 0 },
+        },
+      },
+    });
+    const field = within(section("qa-settings-attachments")).getByLabelText(
+      /Вложений на запрос интеграции/u,
+    );
+    fireEvent.change(field, { target: { value: "12" } });
+    fireEvent.blur(field);
+    await settle();
+    expect(mutate).toHaveBeenCalledWith([
+      { op: "set", path: ["integration", "maxAttachments"], value: 12 },
+    ]);
+    expect(errorPlate()).toBeNull();
+  });
+
+  it("returns an integration attachment override to inheritance", async () => {
+    const { mutate } = await renderCard({
+      snapshot: {
+        value: {
+          ...BASE,
+          integration: { ...BASE.integration, maxAttachments: 12 },
+        },
+      },
+    });
+    const inheritedField = within(
+      section("qa-settings-attachments"),
+    ).getByLabelText(/Вложений на запрос интеграции/u);
+    fireEvent.change(inheritedField, { target: { value: "0" } });
+    fireEvent.blur(inheritedField);
+    await settle();
+    expect(mutate).toHaveBeenLastCalledWith([
+      { op: "set", path: ["integration", "maxAttachments"], value: 0 },
+    ]);
+    expect(errorPlate()).toBeNull();
+  });
+
   it("writes a path-addressed mutation when a control changes", async () => {
     const { mutate } = await renderCard();
 

@@ -11,6 +11,37 @@ import { schemaParse } from "../config/config.helpers.js";
  */
 
 describe("integration config", () => {
+  it("inherits the chat attachment count unless an integration override is set", () => {
+    expect(
+      resolveConfig({ attachments: { maxPending: 10 } }).integration
+        .maxAttachments,
+    ).toBe(10);
+    expect(
+      resolveConfig(schemaParse({ attachments: { maxPending: 10 } }))
+        .integration.maxAttachments,
+    ).toBe(10);
+    expect(
+      resolveConfig(
+        schemaParse({
+          attachments: { maxPending: 10 },
+          integration: { maxAttachments: 0 },
+        }),
+      ).integration.maxAttachments,
+    ).toBe(10);
+    expect(
+      resolveConfig(
+        schemaParse({
+          attachments: { maxPending: 10 },
+          integration: { maxAttachments: 12 },
+        }),
+      ).integration.maxAttachments,
+    ).toBe(12);
+    for (const maxAttachments of [-1, 1.5, 41, NaN, Infinity]) {
+      expect(() => resolveConfig({ integration: { maxAttachments } })).toThrow(
+        /maxAttachments/,
+      );
+    }
+  });
   it("is off with the endpoints the bridge expects when nobody configures it", () => {
     const config = resolveConfig({});
     expect(config.integration).toEqual(DEFAULT_QA_SURFACE_CONFIG.integration);

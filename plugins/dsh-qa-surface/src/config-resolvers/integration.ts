@@ -1,6 +1,7 @@
 import type { QaIntegrationConfig, ResolvedQaSurfaceConfig } from "../types.js";
 import { DEFAULT_QA_SURFACE_CONFIG } from "./defaults.js";
 import { assertIntInRange } from "./shared.js";
+import { QA_MAX_PENDING_MAX } from "../attachment-rules.js";
 
 type ResolvedIntegration = ResolvedQaSurfaceConfig["integration"];
 
@@ -81,6 +82,7 @@ export function normalizeIntegrationBasePath(value: string): string {
 export function resolveIntegration(
   input: QaIntegrationConfig | undefined,
   accounts: ResolvedQaSurfaceConfig["accounts"],
+  attachments = DEFAULT_QA_SURFACE_CONFIG.attachments,
 ): ResolvedIntegration {
   const fallback = DEFAULT_QA_SURFACE_CONFIG.integration;
   const enabled = input?.enabled ?? fallback.enabled;
@@ -95,6 +97,17 @@ export function resolveIntegration(
   const maxRequestBytes = input?.maxRequestBytes ?? fallback.maxRequestBytes;
   const maxAttachmentBytes =
     input?.maxAttachmentBytes ?? fallback.maxAttachmentBytes;
+  const configuredMaxAttachments = input?.maxAttachments ?? 0;
+  assertIntInRange(
+    "integration.maxAttachments",
+    configuredMaxAttachments,
+    0,
+    QA_MAX_PENDING_MAX,
+  );
+  const maxAttachments =
+    configuredMaxAttachments === 0
+      ? attachments.maxPending
+      : configuredMaxAttachments;
   const maxAnswerCharacters =
     input?.maxAnswerCharacters ?? fallback.maxAnswerCharacters;
 
@@ -154,6 +167,7 @@ export function resolveIntegration(
     requestsPerMinute,
     maxRequestBytes,
     maxAttachmentBytes,
+    maxAttachments,
     maxAnswerCharacters,
   });
 }

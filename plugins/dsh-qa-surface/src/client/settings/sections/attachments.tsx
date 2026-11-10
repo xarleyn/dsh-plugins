@@ -29,7 +29,11 @@ export function AttachmentsSection(props: ConfigProps) {
   const pastedTextLines = attachments?.pastedTextLines ?? 200;
   const maxFileBytes = attachments?.maxFileBytes ?? 10_485_760;
   const maxPending = attachments?.maxPending ?? 8;
-  const paths: SectionPaths = [["attachments"]];
+  const maxIntegrationAttachments = config?.integration?.maxAttachments ?? 0;
+  const paths: SectionPaths = [
+    ["attachments"],
+    ["integration", "maxAttachments"],
+  ];
   const modified = overriddenAny(props, paths);
   // The field shows the list in effect: a stored list wins, the Host's
   // resolved list stands in for it, then the built-in default.
@@ -91,6 +95,18 @@ export function AttachmentsSection(props: ConfigProps) {
           testId="qa-settings-attachments-max-pending"
           onChange={(value) => {
             props.write(["attachments", "maxPending"], value);
+          }}
+        />
+        <NumberField
+          label="Вложений на запрос интеграции"
+          value={maxIntegrationAttachments}
+          min={0}
+          max={40}
+          disabled={disabled}
+          hint={`0 — использовать общий лимит чата (сейчас ${String(maxPending)}). Размер файла и всего запроса ограничивается отдельно.`}
+          testId="qa-settings-attachments-integration-max"
+          onChange={(value) => {
+            props.write(["integration", "maxAttachments"], value);
           }}
         />
       </div>

@@ -5,7 +5,6 @@ import {
   parseAskBody,
   parseMultipart,
   QA_INTEGRATION_DEFAULT_TRANSCRIPT_LIMIT,
-  QA_INTEGRATION_MAX_FILES,
   readBody,
   registerQaIntegrationRoutes,
 } from "../../src/integration/http.js";
@@ -255,7 +254,7 @@ describe("integration multipart parsing", () => {
 
   it("bounds the number of attachments and their size", () => {
     const many = Array.from(
-      { length: QA_INTEGRATION_MAX_FILES + 1 },
+      { length: config.integration.maxAttachments + 1 },
       (_, index) => ({
         name: "files",
         value: "x",
@@ -288,6 +287,54 @@ describe("integration multipart parsing", () => {
         ),
       ).reason,
     ).toBe("payload-too-large");
+  });
+
+  it("accepts the inherited ten-file limit and reports the effective override on excess", () => {
+    const files = (count: number) =>
+      Array.from({ length: count }, (_, index) => ({
+        name: "files",
+        value: "x",
+        filename: `file-${String(index)}.png`,
+        contentType: "image/png",
+      }));
+    const settings = resolveConfig({
+      accounts: { enabled: true },
+      attachments: { maxPending: 10 },
+      integration: { enabled: true },
+    });
+    const parse = (count: number, config = settings) =>
+      parseAskBody(
+        multipart([
+          { name: "message", value: "Inspect all files" },
+          ...files(count),
+        ]),
+        `multipart/form-data; boundary=${boundary}`,
+        config,
+      );
+    expect(parse(10).attachments).toHaveLength(10);
+    expect(expectRefusal(() => parse(11)).message).toContain("at most 10");
+    const narrow = resolveConfig({
+      accounts: { enabled: true },
+      attachments: { maxPending: 10 },
+      integration: { enabled: true, maxAttachments: 3 },
+    });
+    expect(parse(3, narrow).attachments).toHaveLength(3);
+    expect(expectRefusal(() => parse(4, narrow)).message).toContain(
+      "at most 3",
+    );
+    const wide = resolveConfig({
+      accounts: { enabled: true },
+      attachments: { maxPending: 10 },
+      integration: { enabled: true, maxAttachments: 12 },
+    });
+    expect(parse(12, wide).attachments).toHaveLength(12);
+    expect(
+      parseAskBody(
+        body({ message: "No attachments" }),
+        "application/json",
+        wide,
+      ).attachments,
+    ).toEqual([]);
   });
 
   it("refuses a context field that is not a JSON object", () => {

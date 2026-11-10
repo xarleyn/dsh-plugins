@@ -746,12 +746,19 @@ const configSchema = z.object({
         .number()
         .step(1)
         .default(D.integration.maxAttachmentBytes),
+      maxAttachments: z
+        .number()
+        .step(1)
+        .default(0)
+        .description(
+          "Files per integration request; 0 inherits attachments.maxPending.",
+        ),
       maxAnswerCharacters: z
         .number()
         .step(1)
         .default(D.integration.maxAnswerCharacters),
     })
-    .default({ ...D.integration })
+    .default({ ...D.integration, maxAttachments: 0 })
     .volatile(),
 });
 

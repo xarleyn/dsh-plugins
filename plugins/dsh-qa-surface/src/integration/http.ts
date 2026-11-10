@@ -7,6 +7,7 @@ import {
   isIntegrationTextMediaType,
 } from "./attachments.js";
 import { QA_INTEGRATION_MAX_TRANSCRIPT_MESSAGES } from "./transcript.js";
+import { DEFAULT_QA_SURFACE_CONFIG } from "../config-resolvers/defaults.js";
 import {
   QaIntegrationError,
   type QaAskAnswer,
@@ -40,9 +41,6 @@ const INLINE_IMAGE_MEDIA_TYPES: readonly string[] = Object.freeze([
   "image/webp",
   "image/gif",
 ]);
-
-/** The bridge's own ceiling: five attachments per question. */
-export const QA_INTEGRATION_MAX_FILES = 5;
 
 export interface QaIntegrationRouteOptions {
   config: ResolvedQaSurfaceConfig;
@@ -315,7 +313,10 @@ export function parseAskBody(
         "multipart/form-data without a boundary parameter",
       );
     }
-    return parseMultipartAsk(parseMultipart(body, boundary), config);
+    return parseMultipartAsk(
+      parseMultipart(body, boundary, config.integration.maxAttachments),
+      config,
+    );
   }
   throw new QaIntegrationError(
     "unsupported-media",
@@ -508,7 +509,11 @@ function parseContextField(raw: string | undefined): QaAskContext {
  * @param boundary - the boundary parameter of the content type.
  * @returns text fields and file parts, in the order they appeared.
  */
-export function parseMultipart(body: Buffer, boundary: string): MultipartBody {
+export function parseMultipart(
+  body: Buffer,
+  boundary: string,
+  maxAttachments = DEFAULT_QA_SURFACE_CONFIG.integration.maxAttachments,
+): MultipartBody {
   const delimiter = Buffer.from(`--${boundary}`);
   const fields = new Map<string, string>();
   const files: MultipartFile[] = [];
@@ -559,6 +564,12 @@ export function parseMultipart(body: Buffer, boundary: string): MultipartBody {
       if (part.filename === null) {
         fields.set(part.name, trimmed.toString("utf8"));
       } else {
+        if (files.length >= maxAttachments) {
+          throw new QaIntegrationError(
+            "invalid-request",
+            `at most ${String(maxAttachments)} attachments are accepted`,
+          );
+        }
         files.push(
           Object.freeze({
             filename: part.filename,
@@ -569,12 +580,6 @@ export function parseMultipart(body: Buffer, boundary: string): MultipartBody {
       }
     }
     cursor = next;
-  }
-  if (files.length > QA_INTEGRATION_MAX_FILES) {
-    throw new QaIntegrationError(
-      "invalid-request",
-      `at most ${String(QA_INTEGRATION_MAX_FILES)} attachments are accepted`,
-    );
   }
   return Object.freeze({ fields, files: Object.freeze(files) });
 }

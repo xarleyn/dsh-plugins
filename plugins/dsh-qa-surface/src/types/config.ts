@@ -366,6 +366,8 @@ export interface QaIntegrationConfig {
   readonly maxRequestBytes?: number;
   /** Ceiling on one inline image attachment, in bytes. */
   readonly maxAttachmentBytes?: number;
+  /** Files per integration request; 0 inherits attachments.maxPending. */
+  readonly maxAttachments?: number;
   /**
    * Ceiling on the published answer, in characters. The caller posts it into a
    * ticket comment, whose own budget is smaller than a model's answer, and a
@@ -616,6 +618,7 @@ export interface ResolvedQaSurfaceConfig {
     readonly requestsPerMinute: number;
     readonly maxRequestBytes: number;
     readonly maxAttachmentBytes: number;
+    readonly maxAttachments: number;
     readonly maxAnswerCharacters: number;
   };
 }

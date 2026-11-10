@@ -165,6 +165,14 @@ not undoable and a live integration may be depending on the token.
 
 ### 2.8 An attachment is read on the Host, and nothing is stored
 
+The file count is controlled by `integration.maxAttachments`. Its default `0`
+inherits `attachments.maxPending`, so a chat limit of ten also permits ten files
+through the integration API. Set a positive integer from 1 to 40 for a separate
+API limit; this setting is also available in the operator's attachment settings.
+Images and documents share this count. Excess files return `400 invalid-request`
+with the effective limit; no file is silently dropped. The existing total body,
+individual file-size and media-type checks still apply.
+
 The ticket's attachments are the part of the request that cannot simply be
 forwarded. Images ride the prompt inline, because that is what the harness
 carries; a file does not — `PromptContentPart` names one by an opaque receipt
