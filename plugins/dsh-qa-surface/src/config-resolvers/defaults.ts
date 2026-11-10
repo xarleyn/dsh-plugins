@@ -1,4 +1,5 @@
 import { DEFAULT_QA_ATTACHMENT_EXTENSIONS } from "../attachment-rules.js";
+import { EMPTY_CODE_SOURCES } from "@yadsh/dsh-plugin-kit/code-sources";
 import { DEFAULT_FORM_POLICY } from "../forms/schema.js";
 import { QA_PROFILE_DEFAULT_INSTRUCTIONS_MAX } from "../profile.js";
 import { DEFAULT_QA_PROVENANCE_RETENTION } from "../provenance/retention.js";
@@ -12,6 +13,7 @@ import type { ResolvedQaSurfaceConfig } from "../types.js";
 /** The canonical resolved config; every domain resolver defaults from it. */
 export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
   {
+    codeSources: EMPTY_CODE_SOURCES,
     forms: DEFAULT_FORM_POLICY,
     enabled: true,
     route: Object.freeze({ path: "/qa", matchChildren: true }),

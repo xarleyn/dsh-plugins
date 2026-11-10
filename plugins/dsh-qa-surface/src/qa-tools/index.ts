@@ -9,6 +9,8 @@ import { QaToolActivationLifecycle } from "./lifecycle.js";
 import type { QaToolActivation } from "./types.js";
 
 export interface QaToolsOptions {
+  readonly codeSources?: () => import("@yadsh/dsh-plugin-kit/code-sources").CodeSourcesCatalog;
+  readonly codeReadRoots?: () => readonly string[];
   readonly forms?: import("../forms/gate.js").QaFormGate;
   readonly formsEnabled?: () => boolean;
   readonly formProjection?: (
@@ -65,6 +67,8 @@ export class QaTools implements QaToolActivation {
       skillLoaded: (agent) =>
         sessionLoadedSkill(agent.session, options.activationSkill),
       docsRoot: options.docsRoot,
+      codeSources: options.codeSources,
+      codeReadRoots: options.codeReadRoots,
       docsDefaultVersion: options.docsDefaultVersion,
     });
     this.catalogTools = catalog.map((entry) => entry.definition.name);
@@ -122,6 +126,8 @@ export class QaTools implements QaToolActivation {
       skillLoaded: (agent) =>
         sessionLoadedSkill(agent.session, options.activationSkill),
       docsRoot: options.docsRoot,
+      codeSources: options.codeSources,
+      codeReadRoots: options.codeReadRoots,
       docsDefaultVersion: options.docsDefaultVersion,
     });
     this.manager.replaceCatalog(catalog);

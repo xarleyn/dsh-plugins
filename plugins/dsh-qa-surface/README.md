@@ -450,6 +450,66 @@ dynamically attached tool gets the same scrutiny as an allow-listed one. Tool
 visibility is not an authorization boundary — a QA tool that writes must still
 enforce its own permissions.
 
+### Multiple code sources
+
+`codeSources` defines named code trees independently of folder and branch
+names. Configure it on the QA Surface row; preset-mounted Git tools read
+this same catalogue unless their own non-empty catalogue overrides it.
+
+```yaml
+codeSources:
+  defaultSource: stable
+  entries:
+    - id: stable
+      label: "Stable release"
+      path: /srv/code/release-a
+      docsVersion: "2.0"
+    - id: preview
+      label: "Development"
+      path: /srv/code/work-in-progress
+      docsVersion: "2.0"
+lockdown:
+  sharedReadOnlyRoots:
+    - /srv/code
+```
+
+Grant Git access separately with `repositoryRoots: [/srv/code]` on the
+Git plugin row mounted in the agent preset. Adding a catalogue entry does
+not grant either filesystem or Git access. The chat's writable scratch
+directory stays separate from the read-only code trees.
+
+After QA tool activation, `code_sources {}` reports the catalogue, its default
+and each tree's read availability. `code_read` and `code_search` accept
+`source: stable` or `source: preview` and source-relative `path` values.
+Omitting `source` uses `defaultSource`, or the only entry when there is one;
+several entries without a default require an explicit choice. A missing,
+unreadable or unknown source fails without falling back to another tree.
+Use the same id in `dsh_git_*` calls. Generic `read`, `glob` and `grep` still
+use explicit paths; use the source-aware tools for version-scoped work.
+
+Search is literal and case-insensitive, bounded to 1,000 attempted text
+files, 10,000 visited entries, 8 MiB of input, three seconds and 32 KiB of
+results. It skips links, binary/oversized files and common generated
+directories (`.git`, `node_modules`, `.nx`, `.cache`, `bin`, `obj`, `dist`,
+`lib`). `truncated` means incomplete: narrow `path` or query before
+concluding code is absent. Reading accepts UTF-8 files up to 1 MiB and
+returns at most 400 lines and 32 KiB. Both tools refuse traversal and nested
+symbolic links. Results carry the source id, label and root; file provenance
+preserves the source id and actual file address.
+
+`docs_search` accepts `source` and uses its optional `docsVersion` mapping.
+When neither `source`, `version` nor `path` is given, the default source's
+mapping takes precedence over `tools.docsDefaultVersion`. Without a mapping,
+the existing documentation default stays in force. An explicit `version`
+or `path` without `source` retains its override behaviour. An explicit
+`source` without a mapping is refused, as is a conflicting explicit edition.
+`docs_read` can validate an explicit source against the edition in its file
+path. Release and development sources may share a documentation edition.
+
+Selection is explicit per call: repeat `source` for a non-default tree,
+including in subagent instructions. A persistent chat-level selector is a
+subsequent feature. No directory is created, moved or updated by these tools.
+
 ### Writable per-user research space
 
 Set `accounts.perUserWorkspace: true` only together with accounts, a registered

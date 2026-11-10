@@ -749,6 +749,8 @@ export class QaSurface extends TypertRemoteService {
     // The QA tool catalog is attached per agent, never at boot: nothing here
     // reaches the model until a managed agent loads the activation skill.
     this.tools = new QaTools(ctx, {
+      codeSources: () => this.getCodeSources(),
+      codeReadRoots: () => this.getConfig().lockdown.sharedReadOnlyRoots,
       forms: this.formGate,
       formsEnabled: () => this.getConfig().forms.enabled,
       formProjection: (submission, sessionId) =>
@@ -946,6 +948,11 @@ export class QaSurface extends TypertRemoteService {
    */
   modelPolicyForSession(sessionId: string): QaModelPair | undefined {
     return this.access.modelPolicyFor(sessionId).pair;
+  }
+
+  /** Shared source catalogue consumed by preset-mounted Git tools at call time. */
+  getCodeSources(): ResolvedQaSurfaceConfig["codeSources"] {
+    return this.getConfig().codeSources;
   }
 
   getConfig(): ResolvedQaSurfaceConfig {

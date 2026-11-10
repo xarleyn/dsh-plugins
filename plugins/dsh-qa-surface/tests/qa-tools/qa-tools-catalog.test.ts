@@ -25,6 +25,9 @@ describe("QA tool catalog", () => {
       "docs_search",
       "docs_read",
       "file_delete",
+      "code_sources",
+      "code_read",
+      "code_search",
     ]);
   });
 
@@ -34,7 +37,7 @@ describe("QA tool catalog", () => {
   });
 
   it("carries a stable, non-empty catalog version", () => {
-    expect(QA_TOOL_CATALOG_VERSION).toBe("4");
+    expect(QA_TOOL_CATALOG_VERSION).toBe("5");
   });
 
   it("builds without registering anything", () => {

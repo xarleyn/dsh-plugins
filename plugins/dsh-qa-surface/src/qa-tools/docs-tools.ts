@@ -3,6 +3,12 @@ import type { Dirent } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import type { ToolDefinition } from "@deepseek-ai/dsh-tools";
+import {
+  CODE_SOURCE_PARAMETER,
+  EMPTY_CODE_SOURCES,
+  selectCodeSource,
+  type CodeSourcesCatalog,
+} from "@yadsh/dsh-plugin-kit/code-sources";
 import { isDocumentationVersion } from "../shared/docs-version.js";
 import { canonicalCandidate, pathIsInside } from "../user-workspace.js";
 
@@ -211,6 +217,7 @@ interface QaDocsExecution {
  * comes from configuration instead of from the calling chat.
  */
 export interface QaDocsOptions {
+  readonly codeSources?: (() => CodeSourcesCatalog) | undefined;
   /** Absolute documentation root, or `""` for `<chat workspace>/docs`. */
   readonly root?: string;
   /**
@@ -254,6 +261,7 @@ export interface QaDocsHit extends QaDocsIdentity {
 
 /** The outcome of one documentation search. */
 export interface QaDocsSearchResult extends QaDocsIdentity {
+  readonly source?: string;
   readonly query: string;
   /** The directory documentation is read from, relative to the workspace. */
   readonly root: string;
@@ -265,6 +273,7 @@ export interface QaDocsSearchResult extends QaDocsIdentity {
 
 /** The outcome of one documentation read. */
 export interface QaDocsReadResult extends QaDocsIdentity {
+  readonly source?: string;
   readonly path: string;
   /** Actual read target, kept out of the model-facing rendering. */
   readonly absolutePath: string;
@@ -959,6 +968,7 @@ export function createDocsSearchTool(
     name: "docs_search",
     description: `Search the stand's documentation, which lives ${docsLayout(options)}. Use it — not memory and not a glob sweep over guessed paths — whenever a question is about the product, a version or a module. Query is a case-insensitive, safe grep-style regular expression: use alternatives such as \`brigadir|brigada\`, character classes and anchors instead of writing several words as one literal phrase; grouping and repetition are refused to keep execution bounded. Hits are lines, tagged with the module and version parsed from the path (${QA_DOCS_DIRECTORY}/<module>/<version>/…); pass version and module to stay inside one edition, and path to stay inside one subtree. Output is bounded by limit and by a byte budget, and a truncated result says so.${defaultVersionNote(options)}`,
     parameters: {
+      source: CODE_SOURCE_PARAMETER,
       query: {
         type: "string",
         required: true,
@@ -989,6 +999,7 @@ export function createDocsSearchTool(
         type: "object",
         additionalProperties: false,
         properties: {
+          source: { type: "string" },
           query: { type: "string", required: true },
           root: { type: "string", required: true },
           hits: {
@@ -1025,12 +1036,12 @@ export function createDocsSearchTool(
           return [
             {
               type: "text",
-              text: `No documentation under ${QA_DOCS_DIRECTORY}/ matches "${result.query}"${filters} (${result.filesScanned} file(s) scanned). Try another phrase, or widen version/module/path.`,
+              text: `${result.source === undefined ? "" : `[${result.source}] `}No documentation under ${QA_DOCS_DIRECTORY}/ matches "${result.query}"${filters} (${result.filesScanned} file(s) scanned). Try another phrase, or widen version/module/path.`,
             },
           ];
         }
         const lines = [
-          `${result.hits.length} match(es) for "${result.query}" in ${QA_DOCS_DIRECTORY}/${filters === "" ? "" : filters} (${result.filesScanned} file(s) scanned)${result.truncated ? " — truncated, narrow with version, module or path" : ""}:`,
+          `${result.source === undefined ? "" : `[${result.source}] `}${result.hits.length} match(es) for "${result.query}" in ${QA_DOCS_DIRECTORY}/${filters === "" ? "" : filters} (${result.filesScanned} file(s) scanned)${result.truncated ? " — truncated, narrow with version, module or path" : ""}:`,
         ];
         for (const hit of result.hits) {
           lines.push(
@@ -1042,13 +1053,40 @@ export function createDocsSearchTool(
     },
     execute: async (args, exec) => {
       const root = await docsRootOf(exec as QaDocsExecution, options);
-      return searchDocumentation(root, {
+      // An explicit edition or path retains the existing override contract.
+      // A named source must agree with an explicitly requested edition.
+      const useSource =
+        args.source !== undefined ||
+        (!(args.version ?? "").trim() && !(args.path ?? "").trim());
+      const source = useSource
+        ? selectCodeSource(
+            options.codeSources?.() ?? EMPTY_CODE_SOURCES,
+            args.source,
+          )
+        : undefined;
+      if (args.source !== undefined && source?.docsVersion === undefined)
+        throw new Error(
+          "Selected source has no docsVersion mapping; pass version or path without source.",
+        );
+      if (
+        source?.docsVersion !== undefined &&
+        (args.version ?? "").trim() !== "" &&
+        !versionMatches({ version: args.version! }, source.docsVersion)
+      )
+        throw new Error(
+          "source and version select different documentation editions.",
+        );
+      const result = await searchDocumentation(root, {
         query: args.query,
-        version: versionFor(options, args),
+        version: source?.docsVersion ?? versionFor(options, args),
         module: args.module,
         path: args.path,
         limit: args.limit,
       });
+      return {
+        ...result,
+        ...(source?.docsVersion === undefined ? {} : { source: source.id }),
+      };
     },
   });
 }
@@ -1060,9 +1098,11 @@ export function createDocsSearchTool(
  */
 function defaultedVersion(options: QaDocsOptions, args: unknown): boolean {
   const request = (args ?? {}) as {
+    readonly source?: unknown;
     readonly version?: unknown;
     readonly path?: unknown;
   };
+  if (typeof request.source === "string") return false;
   const asked = request.version;
   if (typeof asked === "string" && asked.trim() !== "") return false;
   if (typeof request.path === "string" && request.path.trim() !== "") {
@@ -1078,6 +1118,8 @@ function defaultedVersion(options: QaDocsOptions, args: unknown): boolean {
  */
 function defaultVersionNote(options: QaDocsOptions): string {
   const version = (options.defaultVersion ?? "").trim();
+  if (options.codeSources !== undefined)
+    return " A selected or default code source's docsVersion takes precedence over the stand's documentation fallback. Call code_sources for the current mapping. Pass version or path without source to override source selection.";
   return version === ""
     ? ""
     : ` This stand documents version ${version} by default: a search without version and without path stays inside that edition, and pass version or path to look at another one.`;
@@ -1103,6 +1145,7 @@ export function createDocsReadTool(
     name: "docs_read",
     description: `Read one documentation file of the stand's documentation, which lives ${docsLayout(options)}, at a bounded window of lines. Use it after docs_search reports a path, to read the passage a hit belongs to. Only files inside ${QA_DOCS_DIRECTORY}/ can be read; directories, paths outside the tree and paths that leave it through a symbolic link are refused with the reason.`,
     parameters: {
+      source: CODE_SOURCE_PARAMETER,
       path: {
         type: "string",
         required: true,
@@ -1122,6 +1165,7 @@ export function createDocsReadTool(
         type: "object",
         additionalProperties: false,
         properties: {
+          source: { type: "string" },
           path: { type: "string", required: true },
           from: { type: "number", required: true },
           absolutePath: { type: "string", required: true },
@@ -1148,7 +1192,7 @@ export function createDocsReadTool(
       render: (_args, value) => {
         const result = value as QaDocsReadResult;
         const lines = [
-          `${result.path} (lines ${result.from}–${result.to} of ${result.totalLines}${identityLabel(result)})${result.truncated ? " — window truncated, read on with from" : ""}:`,
+          `${result.source === undefined ? "" : `[${result.source}] `}${result.path} (lines ${result.from}–${result.to} of ${result.totalLines}${identityLabel(result)})${result.truncated ? " — window truncated, read on with from" : ""}:`,
         ];
         result.text.split("\n").forEach((line, index) => {
           lines.push(`${result.from + index}  ${line}`);
@@ -1158,11 +1202,33 @@ export function createDocsReadTool(
     },
     execute: async (args, exec) => {
       const root = await docsRootOf(exec as QaDocsExecution, options);
-      return readDocumentation(root, {
+      const source =
+        args.source === undefined
+          ? undefined
+          : selectCodeSource(
+              options.codeSources?.() ?? EMPTY_CODE_SOURCES,
+              args.source,
+            );
+      if (args.source !== undefined && source?.docsVersion === undefined)
+        throw new Error(
+          "Selected source has no docsVersion mapping; read the explicit path without source.",
+        );
+      const result = await readDocumentation(root, {
         path: args.path,
         from: args.from,
         lines: args.lines,
       });
+      if (
+        source?.docsVersion !== undefined &&
+        !versionMatches(result, source.docsVersion)
+      )
+        throw new Error(
+          "Documentation path does not belong to the selected source's edition.",
+        );
+      return {
+        ...result,
+        ...(source === undefined ? {} : { source: source.id }),
+      };
     },
   });
 }

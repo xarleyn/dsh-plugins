@@ -1,4 +1,6 @@
 import { resolveAccounts } from "./config-resolvers/accounts.js";
+import { resolveCodeSources } from "@yadsh/dsh-plugin-kit/code-sources";
+import { isDocumentationVersion } from "./shared/docs-version.js";
 import { resolveFormPolicy } from "./forms/schema.js";
 import { resolveAttachments } from "./config-resolvers/attachments.js";
 import {
@@ -42,7 +44,20 @@ export function resolveConfig(
   const attachments = resolveAttachments(input);
   const tools = resolveTools(input);
   const accounts = resolveAccounts(input, { session, lockdown });
+  const codeSources = resolveCodeSources(input.codeSources);
+  if (
+    codeSources.entries.some(
+      (source) =>
+        source.docsVersion !== undefined &&
+        !isDocumentationVersion(source.docsVersion),
+    )
+  ) {
+    throw new TypeError(
+      "codeSources docsVersion must be a documentation edition such as 2.0",
+    );
+  }
   return Object.freeze({
+    codeSources,
     forms: Object.freeze(resolveFormPolicy(input.forms)),
     enabled: basics.enabled,
     route: basics.route,
