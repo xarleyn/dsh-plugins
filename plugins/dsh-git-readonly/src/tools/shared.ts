@@ -73,7 +73,7 @@ export function expectGitOk(
   if (result.timedOut) {
     throw new GitToolError(
       "git-timeout",
-      `${context} exceeded the configured time budget`,
+      `${context} exceeded the configured time budget.${context === "history lookup" ? " Narrow to an observed repository-relative file or directory and a literal query; avoid all refs for the next attempt. A timeout is an incomplete check, not evidence that history is absent." : ""}`,
     );
   }
   if (result.truncated) return;

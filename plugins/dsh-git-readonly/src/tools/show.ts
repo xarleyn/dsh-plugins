@@ -119,6 +119,10 @@ export function createGitShowTool(deps: GitToolDeps) {
             value.subject,
             value.body.trim() === "" ? "" : value.body.trim(),
             `${value.files.length} file(s)${value.patchTruncated ? ", patch truncated" : ""}`,
+            ...value.files.map(
+              (file) =>
+                `${file.path} (+${file.additions ?? "binary"} -${file.deletions ?? "binary"})`,
+            ),
             value.patch,
           ]
             .filter((part) => part !== "")

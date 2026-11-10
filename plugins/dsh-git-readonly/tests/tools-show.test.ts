@@ -53,6 +53,20 @@ describe("dsh_git_show", () => {
     expect(shown.patchTruncated).toBe(false);
   });
 
+  it("renders file paths for the model even when the patch is omitted", async () => {
+    const tool = makeTool();
+    const args = { oid: secondOid, statOnly: true };
+    const shown = (await tool.execute(
+      args,
+      makeExec(repo.dir),
+    )) as GitShowResult;
+    const text = JSON.stringify(
+      tool.output.render(args, JSON.parse(JSON.stringify(shown))),
+    );
+    expect(text).toContain("src/b.txt (+1 -0)");
+    expect(text).not.toContain("diff --git");
+  });
+
   it("handles the root commit", async () => {
     const tool = makeTool();
     const shown = (await tool.execute(
