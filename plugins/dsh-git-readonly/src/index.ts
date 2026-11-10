@@ -24,6 +24,8 @@ import { createGitBlameTool } from "./tools/blame.js";
 import { createGitContextTool } from "./tools/context.js";
 import { createGitHistoryTool } from "./tools/history.js";
 import { createGitShowTool } from "./tools/show.js";
+import { createGitSourcesTool } from "./tools/sources.js";
+import type { CodeSourcesCatalog } from "@yadsh/dsh-plugin-kit/code-sources";
 import type { GitToolDeps } from "./tools/shared.js";
 
 export {
@@ -87,6 +89,9 @@ export const Config = GitReadonlyConfigSchema;
 
 /** Structural view of the host surface the plugin needs. */
 export interface GitToolsHost {
+  get?(
+    name: "qaSurface",
+  ): { getCodeSources?(): CodeSourcesCatalog } | undefined;
   tools: { register(definition: unknown): () => void };
 }
 
@@ -96,10 +101,11 @@ export const GIT_TOOL_NAMES: readonly string[] = [
   "dsh_git_history",
   "dsh_git_show",
   "dsh_git_blame",
+  "dsh_git_sources",
 ];
 
 /**
- * Plugin entry: resolve config and register the four provenance tools.
+ * Plugin entry: resolve config and register provenance tools and source discovery.
  * Registrations are collected by the Cordis plugin scope; `enabled: false`
  * keeps the surface entirely absent instead of registering inert tools.
  */
@@ -110,11 +116,16 @@ export function apply(ctx: GitToolsHost, rawConfig?: GitReadonlyConfig): void {
     logger.info("plugin.disabled");
     return;
   }
-  const deps: GitToolDeps = { config, logger };
+  const deps: GitToolDeps = {
+    config,
+    logger,
+    codeSources: () => ctx.get?.("qaSurface")?.getCodeSources?.(),
+  };
   ctx.tools.register(createGitContextTool(deps));
   ctx.tools.register(createGitHistoryTool(deps));
   ctx.tools.register(createGitShowTool(deps));
   ctx.tools.register(createGitBlameTool(deps));
+  ctx.tools.register(createGitSourcesTool(deps));
   logger.info("plugin.applied", { tools: [...GIT_TOOL_NAMES] });
 }
 

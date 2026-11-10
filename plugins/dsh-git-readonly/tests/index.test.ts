@@ -7,6 +7,8 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { apply, Config, GIT_TOOL_NAMES, inject, name } from "../src/index.js";
+import { resolveCodeSources } from "@yadsh/dsh-plugin-kit/code-sources";
+import type { ToolDefinition } from "@deepseek-ai/dsh-tools";
 
 let logHome: string;
 let previousHome: string | undefined;
@@ -37,10 +39,27 @@ function makeHost() {
 }
 
 describe("dsh-git-readonly entry", () => {
-  it("registers exactly the four provenance tools", () => {
+  it("reads the QA host catalogue lazily from a preset mount", async () => {
+    let catalog = resolveCodeSources();
+    const host = {
+      ...makeHost(),
+      get: () => ({ getCodeSources: () => catalog }),
+    };
+    apply(host);
+    const tool = host.registered.find(
+      (definition) => (definition as ToolDefinition).name === "dsh_git_sources",
+    ) as ToolDefinition;
+    catalog = resolveCodeSources({
+      entries: [{ id: "shared", label: "Shared", path: "/code/arbitrary" }],
+    });
+    expect(await tool.execute({}, {} as never)).toMatchObject({
+      entries: [expect.objectContaining({ id: "shared" })],
+    });
+  });
+  it("registers provenance tools and source discovery", () => {
     const host = makeHost();
     apply(host, {});
-    expect(host.registered).toHaveLength(4);
+    expect(host.registered).toHaveLength(5);
     expect(
       host.registered.map((tool) => (tool as { name: string }).name),
     ).toEqual([...GIT_TOOL_NAMES]);
@@ -57,8 +76,8 @@ describe("dsh-git-readonly entry", () => {
     apply(first, {});
     const second = makeHost();
     apply(second, { timeoutMs: 5_000 });
-    expect(first.registered).toHaveLength(4);
-    expect(second.registered).toHaveLength(4);
+    expect(first.registered).toHaveLength(5);
+    expect(second.registered).toHaveLength(5);
   });
 
   it("exposes the deployment identity", () => {

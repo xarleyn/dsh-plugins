@@ -40,6 +40,7 @@ await runVerifyPackage({
       "dsh_git_history",
       "dsh_git_show",
       "dsh_git_blame",
+      "dsh_git_sources",
     ]) {
       assert.match(
         readme,

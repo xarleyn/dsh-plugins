@@ -15,7 +15,14 @@ import {
   parseFormatRecord,
 } from "../git/format.js";
 import type { GitRunner } from "../git/repo.js";
-import { resolveToolRepository, type ToolExec } from "../git/repo.js";
+import { type ToolExec } from "../git/repo.js";
+import {
+  CODE_SOURCE_PARAMETER,
+  GIT_SOURCE_PROPERTIES,
+  resolveGitSource,
+  sourceHeading,
+  type GitSourceIdentity,
+} from "./source-selection.js";
 import {
   createBoundRunner,
   expectGitOk,
@@ -23,7 +30,7 @@ import {
   type GitToolDeps,
 } from "./shared.js";
 
-export interface GitContextResult {
+export interface GitContextResult extends GitSourceIdentity {
   readonly root: string;
   readonly branch?: string;
   readonly detached: boolean;
@@ -50,6 +57,7 @@ export function createGitContextTool(deps: GitToolDeps) {
       `Nothing is written and no network command is run. ${UNTRUSTED_NOTE}`,
     ].join(" "),
     parameters: {
+      source: CODE_SOURCE_PARAMETER,
       repository: repositoryParameter(deps.config),
     },
     output: {
@@ -57,7 +65,7 @@ export function createGitContextTool(deps: GitToolDeps) {
         type: "object",
         additionalProperties: false,
         properties: {
-          root: { type: "string", required: true },
+          ...GIT_SOURCE_PROPERTIES,
           branch: { type: "string" },
           detached: { type: "boolean", required: true },
           upstream: { type: "string" },
@@ -73,7 +81,7 @@ export function createGitContextTool(deps: GitToolDeps) {
         {
           type: "text",
           text: [
-            `repository: ${value.root}`,
+            sourceHeading(value),
             value.branch === undefined
               ? "HEAD: detached"
               : `branch: ${value.branch}${value.upstream ? ` (upstream: ${value.upstream})` : ""}`,
@@ -93,15 +101,8 @@ export function createGitContextTool(deps: GitToolDeps) {
     async execute(args: Record<string, unknown>, exec: ToolExec) {
       const started = Date.now();
       const timeoutMs = deps.config.timeoutMs;
-      const repoRoot = await resolveToolRepository(
-        run,
-        exec,
-        args["repository"],
-        {
-          timeoutMs,
-          repositoryRoots: deps.config.repositoryRoots,
-        },
-      );
+      const identity = await resolveGitSource(run, exec, args, deps);
+      const repoRoot = identity.root;
 
       const branchResult = await run(["branch", "--show-current"], {
         cwd: repoRoot,
@@ -112,6 +113,7 @@ export function createGitContextTool(deps: GitToolDeps) {
       const branchName = branchResult.stdout.trim();
 
       let context: GitContextResult = {
+        ...identity,
         root: repoRoot,
         branch: branchName === "" ? undefined : branchName,
         detached: branchName === "",

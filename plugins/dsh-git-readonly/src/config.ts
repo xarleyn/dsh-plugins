@@ -9,11 +9,19 @@
  */
 
 import path from "node:path";
+import {
+  resolveCodeSources,
+  EMPTY_CODE_SOURCES,
+  type CodeSourcesConfig,
+  type CodeSourcesCatalog,
+} from "@yadsh/dsh-plugin-kit/code-sources";
 
 import z from "@deepseek-ai/schemastery";
 
 /** Raw user-facing configuration. */
 export interface GitReadonlyConfig {
+  /** Standalone catalogue; QA deployments normally use qaSurface.codeSources. */
+  readonly codeSources?: CodeSourcesConfig;
   /** Master switch; when false the tools are not registered at all. */
   readonly enabled?: boolean;
   /**
@@ -44,6 +52,7 @@ export interface GitReadonlyConfig {
 
 /** Fully defaulted, clamped configuration used by the tools. */
 export interface ResolvedGitReadonlyConfig {
+  readonly codeSources: CodeSourcesCatalog;
   readonly enabled: boolean;
   readonly gitPath: string;
   readonly repositoryRoots: readonly string[];
@@ -55,6 +64,7 @@ export interface ResolvedGitReadonlyConfig {
 }
 
 export const GIT_READONLY_DEFAULTS: ResolvedGitReadonlyConfig = {
+  codeSources: EMPTY_CODE_SOURCES,
   enabled: true,
   gitPath: "git",
   repositoryRoots: [],
@@ -75,8 +85,25 @@ function clampInteger(
   return Math.min(max, Math.max(min, Math.floor(value)));
 }
 
-export const GitReadonlyConfigSchema: z<GitReadonlyConfig> = z
+export const GitReadonlyConfigSchema = z
   .object({
+    codeSources: z
+      .object({
+        defaultSource: z.string().default(""),
+        entries: z
+          .array(
+            z.object({
+              id: z.string().required(),
+              label: z.string().required(),
+              path: z.string().required(),
+              docsVersion: z.string(),
+            }),
+          )
+          .default([]),
+      })
+      .description(
+        "Named source trees; repositoryRoots still controls Git access. QA catalog is used when this is empty.",
+      ),
     enabled: z
       .boolean()
       .default(true)
@@ -126,7 +153,9 @@ export const GitReadonlyConfigSchema: z<GitReadonlyConfig> = z
         "Maximum patch bytes returned by dsh_git_show (4096-1048576).",
       ),
   })
-  .description("Read-only git provenance tools.");
+  .description(
+    "Read-only git provenance tools.",
+  ) as unknown as z<GitReadonlyConfig>;
 
 /** Normalize and clamp raw configuration into the resolved shape. */
 export function resolveGitReadonlyConfig(
@@ -146,6 +175,7 @@ export function resolveGitReadonlyConfig(
     );
   }
   return {
+    codeSources: resolveCodeSources(config.codeSources),
     enabled: config.enabled ?? GIT_READONLY_DEFAULTS.enabled,
     gitPath:
       typeof config.gitPath === "string" && config.gitPath.trim() !== ""

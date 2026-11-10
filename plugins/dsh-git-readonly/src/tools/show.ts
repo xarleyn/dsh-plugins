@@ -18,11 +18,14 @@ import {
   type NumstatFile,
 } from "../git/format.js";
 import type { GitRunner } from "../git/repo.js";
+import { canonicalizeCommit, type ToolExec } from "../git/repo.js";
 import {
-  canonicalizeCommit,
-  resolveToolRepository,
-  type ToolExec,
-} from "../git/repo.js";
+  CODE_SOURCE_PARAMETER,
+  GIT_SOURCE_PROPERTIES,
+  resolveGitSource,
+  sourceHeading,
+  type GitSourceIdentity,
+} from "./source-selection.js";
 import {
   validateCommitOid,
   validateRepoRelativePath,
@@ -34,7 +37,7 @@ import {
   type GitToolDeps,
 } from "./shared.js";
 
-export interface GitShowResult {
+export interface GitShowResult extends GitSourceIdentity {
   readonly oid: string;
   readonly shortOid: string;
   readonly author: string;
@@ -66,6 +69,7 @@ export function createGitShowTool(deps: GitToolDeps) {
       `Nothing is written and no network command is run. ${UNTRUSTED_NOTE}`,
     ].join(" "),
     parameters: {
+      source: CODE_SOURCE_PARAMETER,
       repository: repositoryParameter(deps.config),
       oid: {
         type: "string",
@@ -87,6 +91,7 @@ export function createGitShowTool(deps: GitToolDeps) {
         type: "object",
         additionalProperties: false,
         properties: {
+          ...GIT_SOURCE_PROPERTIES,
           oid: { type: "string", required: true },
           shortOid: { type: "string", required: true },
           author: { type: "string", required: true },
@@ -115,6 +120,7 @@ export function createGitShowTool(deps: GitToolDeps) {
         {
           type: "text",
           text: [
+            sourceHeading(value),
             `${value.shortOid} ${value.author}, ${value.authoredAt}`,
             value.subject,
             value.body.trim() === "" ? "" : value.body.trim(),
@@ -134,15 +140,8 @@ export function createGitShowTool(deps: GitToolDeps) {
       const started = Date.now();
       const config: ResolvedGitReadonlyConfig = deps.config;
       const timeoutMs = config.timeoutMs;
-      const repoRoot = await resolveToolRepository(
-        run,
-        exec,
-        args["repository"],
-        {
-          timeoutMs,
-          repositoryRoots: config.repositoryRoots,
-        },
-      );
+      const identity = await resolveGitSource(run, exec, args, deps);
+      const repoRoot = identity.root;
 
       const oid = validateCommitOid(args["oid"], "oid");
       const path = validateRepoRelativePath(args["path"], "path");
@@ -212,6 +211,7 @@ export function createGitShowTool(deps: GitToolDeps) {
         patchTruncated,
       });
       const result: GitShowResult = {
+        ...identity,
         oid: record[0] ?? commit,
         shortOid: record[1] ?? "",
         author: record[2] ?? "",

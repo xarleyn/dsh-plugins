@@ -9,11 +9,14 @@ import { defineTool } from "@deepseek-ai/dsh-tools";
 import { GitToolError } from "../errors.js";
 import { parsePorcelainBlame, type BlameLine } from "../git/format.js";
 import type { GitRunner } from "../git/repo.js";
+import { canonicalizeCommit, type ToolExec } from "../git/repo.js";
 import {
-  canonicalizeCommit,
-  resolveToolRepository,
-  type ToolExec,
-} from "../git/repo.js";
+  CODE_SOURCE_PARAMETER,
+  GIT_SOURCE_PROPERTIES,
+  resolveGitSource,
+  sourceHeading,
+  type GitSourceIdentity,
+} from "./source-selection.js";
 import {
   clampLineRange,
   validateCommitOid,
@@ -26,7 +29,7 @@ import {
   type GitToolDeps,
 } from "./shared.js";
 
-export interface GitBlameResult {
+export interface GitBlameResult extends GitSourceIdentity {
   readonly file: string;
   readonly fromLine: number;
   readonly toLine: number;
@@ -49,6 +52,7 @@ export function createGitBlameTool(deps: GitToolDeps) {
       `Nothing is written and no network command is run. ${UNTRUSTED_NOTE}`,
     ].join(" "),
     parameters: {
+      source: CODE_SOURCE_PARAMETER,
       repository: repositoryParameter(deps.config),
       file: {
         type: "string",
@@ -75,6 +79,7 @@ export function createGitBlameTool(deps: GitToolDeps) {
         type: "object",
         additionalProperties: false,
         properties: {
+          ...GIT_SOURCE_PROPERTIES,
           file: { type: "string", required: true },
           fromLine: { type: "integer", required: true },
           toLine: { type: "integer", required: true },
@@ -101,6 +106,7 @@ export function createGitBlameTool(deps: GitToolDeps) {
         {
           type: "text",
           text: [
+            sourceHeading(value),
             `${value.file} lines ${value.fromLine}-${value.toLine}${value.truncated ? " (truncated)" : ""}`,
             ...value.lines.map(
               (blame) =>
@@ -114,15 +120,8 @@ export function createGitBlameTool(deps: GitToolDeps) {
       const started = Date.now();
       const config = deps.config;
       const timeoutMs = config.timeoutMs;
-      const repoRoot = await resolveToolRepository(
-        run,
-        exec,
-        args["repository"],
-        {
-          timeoutMs,
-          repositoryRoots: config.repositoryRoots,
-        },
-      );
+      const identity = await resolveGitSource(run, exec, args, deps);
+      const repoRoot = identity.root;
 
       const file = validateRepoRelativePath(args["file"], "file", {
         required: true,
@@ -188,6 +187,7 @@ export function createGitBlameTool(deps: GitToolDeps) {
         truncated: outputTruncated,
       });
       const blame: GitBlameResult = {
+        ...identity,
         file,
         fromLine: range.from,
         toLine: range.to,

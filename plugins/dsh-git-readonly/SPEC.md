@@ -2,6 +2,15 @@
 
 Read-only git provenance tools for DeepSeek Harness agents.
 
+Named-source extension: `codeSources` maps opaque ids to labels and absolute
+work-tree roots, with an optional default id. `dsh_git_sources` lists the
+catalogue, and all four provenance tools accept `source` instead of an explicit
+`repository`. The shared QA host catalogue is used unless a non-empty local
+catalogue overrides it. Id selection runs the existing repositoryRoots fence,
+must resolve to exactly the configured work-tree root, and never falls back
+to another source. Results identify their root, source id and label; actual
+branch and HEAD remain Git-derived. Legacy path selection is retained.
+
 ## 1. Product contract
 
 1. An agent whose session has a working directory can learn, in one tool
