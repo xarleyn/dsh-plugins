@@ -104,9 +104,12 @@ export class QaCodeSourceSelection {
     return this.view(id, true);
   }
 
-  inherit(id: string, parent: string): void {
+  inherit(id: string, parent: string, managedParent = false): void {
+    const parentPreference = this.stored(parent);
+    if (!managedParent && parentPreference === undefined) return;
     if (this.stored(id) !== undefined) return;
     const catalog = this.catalog(parent);
+    if (catalog.entries.length === 0 && parentPreference === undefined) return;
     this.save(
       id,
       catalog.defaultSource ||

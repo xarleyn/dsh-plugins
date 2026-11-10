@@ -56,6 +56,19 @@ function harness() {
 }
 
 describe("durable chat source selection", () => {
+  it("snapshots the default for QA children without imposing it on unrelated native agents", () => {
+    const h = harness();
+    const store = h.open();
+    store.inherit("native-child", "root");
+    store.inherit("child", "root", true);
+    store.select("root", "preview");
+    expect(store.catalog("child").defaultSource).toBe("stable");
+    expect(
+      store.storage.db
+        .prepare("SELECT source_id FROM selections WHERE session_id=?")
+        .get("native-child"),
+    ).toBeUndefined();
+  });
   it("refuses a missing parent instead of substituting the deployment default", () => {
     const h = harness();
     const store = h.open();

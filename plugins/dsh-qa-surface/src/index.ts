@@ -417,12 +417,12 @@ export class QaSurface extends TypertRemoteService {
             if (
               parentSession !== undefined &&
               (qaDelegatedHeader(agent.session.header) ||
-                agent.session.header.isSeeded === true) &&
-              this.getConfig().codeSources.entries.length > 0
+                agent.session.header.isSeeded === true)
             ) {
               this.codeSourceStore().inherit(
                 String(agent.session.id),
                 String(parentSession),
+                this.admission.knowsSession(String(parentSession)),
               );
             }
           },
