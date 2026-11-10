@@ -205,7 +205,7 @@ to that child's context in the awaited `agent/created` lifecycle event, before
 the first prompt is submitted. The Host validates names, hides restricted
 inherited tools and refuses their execution; the child's own structured-output
 machinery remains available. A successful installation clears that uncertainty
-from the run's audit. An unknown tool refuses creation with `WORKER_UNAVAILABLE`;
+from the run's audit. An unknown allowed tool refuses creation with `WORKER_UNAVAILABLE`;
 the run is never retried with a weaker policy. A backend without local child
 creation is refused when a policy is configured. An adapter without this
 lifecycle capability still reports `TOOL_UNFILTERABLE`.
@@ -220,6 +220,12 @@ match is attempted.
 > worker that consumes the resolved scope — which is why the inspector says so.
 
 ## Compatibility
+
+Tools registered by the child's own preset remain outside the Host's inherited
+tool mask. An explicitly allowed local tool must exist in that exact child's
+registry. Explicit denials also use a scoped execution guard, covering local
+tools and tools registered later without changing sibling agents. Reserved
+execution transports cannot be admitted as local tools.
 
 The host-only `reviewExpertBounded` entry supports independent answer review with
 an abort signal, wall-clock timeout, completed-tool-call limit and consecutive

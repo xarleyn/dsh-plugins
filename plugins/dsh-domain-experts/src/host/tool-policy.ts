@@ -45,11 +45,60 @@ export async function startRestrictedExpert(
       // submits the initial prompt only after it. The restriction belongs to
       // the child's context, so its teardown and concurrent siblings remain
       // the Host's responsibility. Unknown names refuse the creation.
-      if (filter !== undefined)
-        agent.ctx.tools.restrict({
+      if (filter !== undefined) {
+        const tools = agent.ctx.tools;
+        const restriction = {
           allow: [...filter.allow],
           ...(filter.deny.length === 0 ? {} : { deny: [...filter.deny] }),
-        });
+        };
+        try {
+          tools.restrict(restriction);
+        } catch (cause) {
+          // Host masks inherited tools; a preset's OWN tools are deliberately
+          // outside restrict(). Validate allowed local names against this child.
+          if (
+            typeof tools.get !== "function" ||
+            typeof tools.guard !== "function"
+          )
+            throw cause;
+          if ([...filter.allow, ...filter.deny].includes("run_code"))
+            throw cause;
+          const inheritedAllow: string[] = [];
+          const inheritedDeny: string[] = [];
+          for (const name of filter.allow) {
+            try {
+              tools.restrict({ allow: [name] })();
+              inheritedAllow.push(name);
+            } catch (error) {
+              if (tools.get(name, agent) === undefined) throw error;
+            }
+          }
+          for (const name of filter.deny) {
+            try {
+              tools.restrict({ deny: [name] })();
+              inheritedDeny.push(name);
+            } catch {
+              // Local and future tools remain denied by the scoped guard below.
+            }
+          }
+          tools.restrict({
+            allow: inheritedAllow,
+            ...(inheritedDeny.length === 0 ? {} : { deny: inheritedDeny }),
+          });
+        }
+        if (filter.deny.length > 0) {
+          if (typeof tools.guard !== "function")
+            throw new Error(
+              "The Host cannot enforce scoped expert tool denials.",
+            );
+          const denied = new Set(filter.deny);
+          tools.guard((execution) =>
+            denied.has(execution.name)
+              ? "This tool is denied by the expert's configured tool policy."
+              : undefined,
+          );
+        }
+      }
       applied = true;
     } catch (cause) {
       throw new DomainExpertsError(
