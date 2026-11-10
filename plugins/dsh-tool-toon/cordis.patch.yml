@@ -1,0 +1,11 @@
+# The DSH plugin manager discovers this bundle through package.json.
+- insert:
+    - id: dsh-tool-toon
+      name: "@yadsh/dsh-tool-toon"
+      config:
+        enabled: true
+        minBytes: 512
+        maxBytes: 262144
+        minSavingsBytes: 96
+        minSavingsRatio: 0.15
+        excludeTools: []

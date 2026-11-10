@@ -65,6 +65,7 @@ stays listed as a private workspace package with no kind.
 | `plugins/dsh-session-scope` | `@yadsh/dsh-session-scope` | DSH plugin | Per-session workspace visibility scopes for DeepSeek Harness. |
 | `plugins/dsh-sleev` | `@yadsh/dsh-sleev` | DSH plugin | Sleev routing observability for DeepSeek Harness |
 | `plugins/dsh-tool-offload` | `@yadsh/dsh-tool-offload` | DSH plugin | Offloads large, low-judgement DeepSeek Harness tool results to small one-shot worker agents before they enter the main model context |
+| `plugins/dsh-tool-toon` | `@yadsh/dsh-tool-toon` | DSH plugin | Lossless TOON formatting for DeepSeek Harness JSON tool results before they enter model context |
 | `plugins/dsh-ui-repair` | `@yadsh/dsh-ui-repair` | DSH plugin | Reversible DOM diagnostics and scoped UI repairs for DeepSeek Harness plugins |
 | `plugins/dsh-user-correction-miner` | `@yadsh/dsh-user-correction-miner` | DSH plugin | Mine durable project-rule candidates from user corrections in DeepSeek Harness sessions |
 | `plugins/dsh-web-fetch-authenticated` | `@yadsh/dsh-web-fetch-authenticated` | DSH plugin | Authenticated, policy-gated WebFetchProvider for the DeepSeek Harness web capability seam (ctx.web) |
