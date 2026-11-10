@@ -145,6 +145,8 @@ import type {
   QaSpreadsheetPreviewSelection,
   QaDocumentWorkflowStatus,
   QaIssuedServiceToken,
+  QaHistoryFolderTarget,
+  QaOwnedSessionsResult,
   QaLockdownProof,
   QaOwnershipEntry,
   QaPasswordResetRequest,
@@ -1072,7 +1074,7 @@ export class QaSurface extends TypertRemoteService {
 
   /** The token user's owned session ids; the sidebar list authority. */
   @Remote("accountsOwnedSessions")
-  accountsOwnedSessions(token: string): { readonly ids: readonly string[] } {
+  accountsOwnedSessions(token: string): QaOwnedSessionsResult {
     return this.accountRemotes.ownedSessions(token);
   }
 
@@ -1178,6 +1180,19 @@ export class QaSurface extends TypertRemoteService {
       token,
       tokenId,
       allowed,
+    );
+  }
+
+  @Remote("accountsSetServiceTokenHistoryFolder")
+  accountsSetServiceTokenHistoryFolder(
+    token: string,
+    tokenId: string,
+    folder: QaHistoryFolderTarget | null,
+  ): { readonly updated: boolean } {
+    return this.accountRemotes.setServiceTokenHistoryFolder(
+      token,
+      tokenId,
+      folder,
     );
   }
 

@@ -1,6 +1,7 @@
 import { remoteErrorOf } from "@deepseek-ai/dsh-typert-protocol";
 import type { PluginLogger } from "@yadsh/dsh-plugin-log";
 import type { QaAccounts } from "../accounts/store.js";
+import type { QaHistoryFolderTarget } from "../types/accounts.js";
 import {
   parseServiceToken,
   type QaServiceTokenScope,
@@ -74,6 +75,7 @@ export function sourceCitations(
 
 /** Who a presented credential turned out to be. */
 export interface QaIntegrationIdentity {
+  readonly historyFolder?: QaHistoryFolderTarget;
   readonly allowClarifications: boolean;
   readonly tokenId: string;
   readonly userId: string;
@@ -155,6 +157,9 @@ export class QaIntegrationService {
       );
     }
     return Object.freeze({
+      ...(verified.historyFolder === undefined
+        ? {}
+        : { historyFolder: verified.historyFolder }),
       tokenId: verified.tokenId,
       userId: verified.userId,
       scopes: verified.scopes,
@@ -213,6 +218,18 @@ export class QaIntegrationService {
         callerSignal: signal,
         onChat: (id) => {
           chatId = id;
+          if (
+            request.sessionId === null &&
+            identity.historyFolder !== undefined
+          ) {
+            this.deps
+              .accounts()
+              ?.recordIntegrationSessionFolder(
+                identity.userId,
+                id,
+                identity.historyFolder,
+              );
+          }
         },
       });
       this.deps.logger.info("integration.answered", {

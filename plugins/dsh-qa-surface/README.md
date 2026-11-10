@@ -37,6 +37,19 @@ events; it does not synchronize between devices. Folder membership and pins
 change only presentation metadata: session IDs, workspace roots, physical files,
 ownership and access remain as they were.
 
+Under **Integration tokens**, choose **Folder for new chats** when creating a
+credential, or change the destination on an existing active token without
+reissuing it. This default is stored on the server as a virtual folder ID and
+display name. Each newly created API conversation snapshots it before its first
+answer, even when no browser is open. Authenticated history imports that folder
+and assignment once; manual moves and folder deletions are preserved. Changing
+or clearing a token's default affects future conversations, not continuations
+of an existing `session_id`. The default does not change workspace paths or
+grant access to another account's chats. The folder picker lists folders from
+this browser's history and retains an existing server selection from another
+browser. New API chats can recreate a selected folder that was deleted locally;
+clear or change the token default to stop using that destination.
+
 Corporate sign-in through Keycloak or another OpenID Connect provider is opt-in.
 The source tree includes `plugins/dsh-qa-surface/docs/oidc.md` with client settings,
 account linking, role admission, session limits and deployment acceptance.

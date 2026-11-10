@@ -660,6 +660,11 @@ export type QaIntegrationTokenResult<Value> =
 
 /** The integration-token section with the account token bound at the call site. */
 export interface QaIntegrationTokenApi {
+  readonly historyStorageKey?: string;
+  setFolder?(
+    tokenId: string,
+    folder: import("../types/accounts.js").QaHistoryFolderTarget | null,
+  ): Promise<QaIntegrationTokenResult<null>>;
   /**
    * Whether this deployment can mint at all. A token is a credential for the
    * HTTP API, so when that API is off the page explains the state instead of
@@ -680,6 +685,11 @@ export interface QaIntegrationTokenApi {
 
 /** Account remotes exposed by the plugin's own typert namespace. */
 export interface QaAccountsApi {
+  accountsSetServiceTokenHistoryFolder?(
+    token: string,
+    tokenId: string,
+    folder: import("../types/accounts.js").QaHistoryFolderTarget | null,
+  ): Promise<RemoteResult<{ readonly updated: boolean }>>;
   accountsSetServiceTokenClarifications?(
     token: string,
     tokenId: string,
@@ -713,7 +723,9 @@ export interface QaAccountsApi {
   ): Promise<RemoteResult<QaClaimResult>>;
   accountsOwnedSessions(
     token: string,
-  ): Promise<RemoteResult<{ readonly ids: readonly string[] }>>;
+  ): Promise<
+    RemoteResult<import("../types/accounts.js").QaOwnedSessionsResult>
+  >;
   accountsListOwnership(
     token: string,
   ): Promise<RemoteResult<{ readonly entries: readonly QaOwnershipEntry[] }>>;

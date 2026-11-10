@@ -79,6 +79,31 @@ afterEach(() => {
 });
 
 describe("virtual session organization", () => {
+  it("imports API routing once, preserves manual moves, and does not resurrect a deleted folder", () => {
+    const integrationFolders = { one: { id: folder.id, name: folder.name } };
+    const view = render(
+      <QaSidebar {...props} integrationFolders={integrationFolders} />,
+    );
+    expect(chats(folder.name)).toEqual(["one"]);
+    dragChat("one", section("Без каталога"));
+    view.rerender(
+      <QaSidebar {...props} integrationFolders={{ ...integrationFolders }} />,
+    );
+    expect(chats(folder.name)).toEqual([]);
+    expect(chats("Без каталога")).toContain("one");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Настроить каталог «Документы»" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Удалить каталог" }));
+    fireEvent.click(screen.getByRole("button", { name: "Удалить каталог" }));
+    view.rerender(
+      <QaSidebar {...props} integrationFolders={{ ...integrationFolders }} />,
+    );
+    expect(screen.queryByRole("region", { name: folder.name })).toBeNull();
+    view.unmount();
+    render(<QaSidebar {...props} integrationFolders={integrationFolders} />);
+    expect(screen.queryByRole("region", { name: folder.name })).toBeNull();
+  });
   it("orders chats and folders through keyboard actions and restores chat focus", () => {
     localStorage.setItem(
       storageKey,
@@ -400,6 +425,7 @@ describe("history metadata validation", () => {
     expect(moved.assignments.unavailable).toBe(folder.id);
     expect(removeHistoryFolder(moved, folder.id)).toEqual({
       ...moved,
+      folderHandled: ["two", "one", "unavailable"],
       folders: [],
       assignments: {},
     });

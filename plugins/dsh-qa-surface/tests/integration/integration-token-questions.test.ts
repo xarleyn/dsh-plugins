@@ -50,7 +50,7 @@ describe("integration token clarification settings", () => {
     ).toBe(false);
   });
 
-  it.each([3, 4])(
+  it.each([3, 4, 5])(
     "migrates a v%d database without changing existing token rights or its secret",
     (version) => {
       const accounts = store();
@@ -61,8 +61,10 @@ describe("integration token clarification settings", () => {
       });
       const db = new DatabaseSync(accounts.filePath);
       db.exec(
-        "BEGIN; DROP TABLE qa_oidc_sessions; DROP TABLE qa_oidc_identities;",
+        "BEGIN; ALTER TABLE qa_service_tokens DROP COLUMN history_folder_json; DROP TABLE qa_integration_session_folders;",
       );
+      if (version < 5)
+        db.exec("DROP TABLE qa_oidc_sessions; DROP TABLE qa_oidc_identities;");
       if (version === 3)
         db.exec(
           "ALTER TABLE qa_service_tokens DROP COLUMN allow_clarifications; DROP TABLE qa_integration_request_policies;",
@@ -86,7 +88,7 @@ describe("integration token clarification settings", () => {
         schema
           .prepare("SELECT value FROM qa_meta WHERE key='schema_version'")
           .get(),
-      ).toEqual({ value: "5" });
+      ).toEqual({ value: "6" });
       expect(
         schema
           .prepare(

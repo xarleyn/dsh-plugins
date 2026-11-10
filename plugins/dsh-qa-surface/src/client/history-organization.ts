@@ -1,3 +1,6 @@
+import type { QaHistoryFolderTarget } from "../types/accounts.js";
+import { normalizeHistoryFolder } from "../shared/history-folder.js";
+
 /** Browser-only presentation metadata. No entry is a filesystem path. */
 export interface QaHistoryFolder {
   readonly id: string;
@@ -10,6 +13,8 @@ export interface QaHistoryOrganization {
   readonly assignments: Readonly<Record<string, string>>;
   readonly pinned: readonly string[];
   readonly order: readonly string[];
+  /** Routing was imported, or the reader explicitly chose a folder/root. */
+  readonly folderHandled?: readonly string[];
 }
 
 export const EMPTY_HISTORY: QaHistoryOrganization = {
@@ -73,6 +78,9 @@ export function parseHistoryOrganization(
       assignments,
       pinned: strings(data.pinned),
       order: strings(data.order),
+      ...(strings(data.folderHandled).length === 0
+        ? {}
+        : { folderHandled: strings(data.folderHandled) }),
     };
   } catch {
     return EMPTY_HISTORY;
@@ -95,6 +103,14 @@ export function removeHistoryFolder(
 ): QaHistoryOrganization {
   return {
     ...state,
+    folderHandled: [
+      ...new Set([
+        ...(state.folderHandled ?? []),
+        ...Object.entries(state.assignments)
+          .filter(([, id]) => id === folderId)
+          .map(([id]) => id),
+      ]),
+    ],
     folders: state.folders.filter((folder) => folder.id !== folderId),
     assignments: Object.fromEntries(
       Object.entries(state.assignments).filter(([, id]) => id !== folderId),
@@ -151,6 +167,7 @@ export function moveHistoryChat(
   return {
     ...state,
     assignments,
+    folderHandled: [...new Set([...(state.folderHandled ?? []), id])],
     pinned: state.pinned.filter((entry) => entry !== id),
     order: insertHistoryId(
       [...new Set([...state.order, ...visibleOrder])],
@@ -158,6 +175,46 @@ export function moveHistoryChat(
       before,
     ),
   };
+}
+
+/** Apply server defaults once; subsequent manual moves and deletions win. */
+export function importIntegrationFolders(
+  state: QaHistoryOrganization,
+  hints: Readonly<Record<string, QaHistoryFolderTarget>>,
+  visibleIds: ReadonlySet<string>,
+): QaHistoryOrganization {
+  const handled = new Set(state.folderHandled ?? []);
+  let next = state;
+  for (const [sessionId, input] of Object.entries(hints)) {
+    if (handled.has(sessionId) || !visibleIds.has(sessionId)) continue;
+    let target: QaHistoryFolderTarget | null;
+    try {
+      target = normalizeHistoryFolder(input);
+    } catch {
+      continue;
+    }
+    if (target === null) continue;
+    handled.add(sessionId);
+    if (Object.hasOwn(next.assignments, sessionId)) continue;
+    const folder =
+      next.folders.find((entry) => entry.id === target.id) ??
+      next.folders.find(
+        (entry) => entry.name.toLowerCase() === target.name.toLowerCase(),
+      );
+    next = {
+      ...next,
+      folders: folder
+        ? next.folders
+        : [...next.folders, { ...target, collapsed: false }],
+      assignments: {
+        ...next.assignments,
+        [sessionId]: folder?.id ?? target.id,
+      },
+    };
+  }
+  return handled.size === (state.folderHandled?.length ?? 0)
+    ? state
+    : { ...next, folderHandled: [...handled] };
 }
 
 /** Unordered rows keep recency order until the reader arranges them. */

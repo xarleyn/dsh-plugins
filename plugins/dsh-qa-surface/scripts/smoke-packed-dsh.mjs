@@ -13,6 +13,7 @@ import { networkInterfaces, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runHistoryBrowserPass } from "./smoke-history-browser.mjs";
+import { runIntegrationFolderBrowserPass } from "./smoke-integration-folder-browser.mjs";
 import {
   freePort,
   requestWithAuthority,
@@ -1164,6 +1165,15 @@ try {
       authenticatedUrl: `${origin}/?token=${encodeURIComponent(token)}`,
       cookie,
       presetScopedTool,
+    });
+    await runIntegrationFolderBrowserPass({
+      dshBin,
+      dshEnv,
+      root: temporaryRoot,
+      workspacePath,
+      launchToken,
+      authenticateBrowser,
+      hostLog,
     });
   }
   completed = true;

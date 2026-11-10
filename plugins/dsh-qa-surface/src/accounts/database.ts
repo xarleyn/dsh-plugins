@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import type { QaHistoryFolderTarget } from "../types/accounts.js";
 import { readFileSync, renameSync } from "node:fs";
 import {
   SqliteDatabase,
@@ -150,6 +151,18 @@ const MIGRATIONS: readonly SqliteMigration[] = [
       );
     `,
   },
+  {
+    version: 6,
+    up: `
+      ALTER TABLE qa_service_tokens ADD COLUMN history_folder_json TEXT;
+      CREATE TABLE qa_integration_session_folders (
+        session_id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        folder_json TEXT NOT NULL
+      );
+      CREATE INDEX qa_integration_session_folders_user ON qa_integration_session_folders(user_id);
+    `,
+  },
 ];
 
 interface AccountRow {
@@ -187,6 +200,7 @@ interface OwnershipRow {
 }
 
 interface ServiceTokenRow {
+  readonly history_folder_json: string | null;
   readonly allow_clarifications: number;
   readonly id: string;
   readonly user_id: string;
@@ -206,6 +220,7 @@ interface ServiceTokenRow {
  * nowhere else.
  */
 export interface StoredServiceToken {
+  readonly historyFolder?: QaHistoryFolderTarget;
   readonly allowClarifications: boolean;
   readonly id: string;
   readonly userId: string;
@@ -222,6 +237,13 @@ export interface StoredServiceToken {
 
 function toServiceToken(row: ServiceTokenRow): StoredServiceToken {
   return {
+    ...(row.history_folder_json === null
+      ? {}
+      : {
+          historyFolder: JSON.parse(
+            row.history_folder_json,
+          ) as QaHistoryFolderTarget,
+        }),
     id: row.id,
     userId: row.user_id,
     label: row.label,
@@ -591,6 +613,11 @@ export class QaAccountsDatabase {
       for (const sessionId of sessionIds) {
         remove.run(sessionId);
         this.storage.db
+          .prepare(
+            "DELETE FROM qa_integration_session_folders WHERE session_id = ?",
+          )
+          .run(sessionId);
+        this.storage.db
           .prepare("DELETE FROM qa_skill_activations WHERE session_id = ?")
           .run(sessionId);
       }
@@ -605,8 +632,8 @@ export class QaAccountsDatabase {
         .prepare(
           `INSERT INTO qa_service_tokens
              (id, user_id, label, token_hash, scopes_json, created_at,
-              expires_at, last_used_at, revoked_at, use_count, allow_clarifications)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              expires_at, last_used_at, revoked_at, use_count, allow_clarifications, history_folder_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           token.id,
@@ -620,6 +647,9 @@ export class QaAccountsDatabase {
           token.revokedAt,
           token.useCount,
           token.allowClarifications ? 1 : 0,
+          token.historyFolder === undefined
+            ? null
+            : JSON.stringify(token.historyFolder),
         );
     });
   }
@@ -661,6 +691,53 @@ export class QaAccountsDatabase {
       )
       .run(allowed ? 1 : 0, tokenId, userId, new Date().toISOString());
     return result.changes > 0;
+  }
+
+  setServiceTokenHistoryFolder(
+    userId: string,
+    tokenId: string,
+    folder: QaHistoryFolderTarget | null,
+  ): boolean {
+    return (
+      this.storage.db
+        .prepare(
+          "UPDATE qa_service_tokens SET history_folder_json=? WHERE id=? AND user_id=? AND revoked_at IS NULL AND expires_at>?",
+        )
+        .run(
+          folder === null ? null : JSON.stringify(folder),
+          tokenId,
+          userId,
+          new Date().toISOString(),
+        ).changes > 0
+    );
+  }
+
+  recordIntegrationSessionFolder(
+    userId: string,
+    sessionId: string,
+    folder: QaHistoryFolderTarget,
+  ): void {
+    this.storage.db
+      .prepare(
+        "INSERT OR IGNORE INTO qa_integration_session_folders SELECT session_id, user_id, ? FROM qa_ownership WHERE session_id=? AND user_id=?",
+      )
+      .run(JSON.stringify(folder), sessionId, userId);
+  }
+
+  integrationSessionFolders(
+    userId: string,
+  ): Readonly<Record<string, QaHistoryFolderTarget>> {
+    const rows = this.storage.db
+      .prepare(
+        "SELECT f.session_id, f.folder_json FROM qa_integration_session_folders f JOIN qa_ownership o ON o.session_id=f.session_id AND o.user_id=f.user_id WHERE f.user_id=?",
+      )
+      .all(userId) as { session_id: string; folder_json: string }[];
+    return Object.fromEntries(
+      rows.map((row) => [
+        row.session_id,
+        JSON.parse(row.folder_json) as QaHistoryFolderTarget,
+      ]),
+    );
   }
 
   /**

@@ -14,6 +14,8 @@ import type {
 import type { QaIntegrationTokenApi } from "../types.js";
 import { useCopyAction } from "../clipboard.js";
 import { CopyHint } from "../components/copy-hint.js";
+import { useHistoryOrganization } from "../use-history-organization.js";
+import type { QaHistoryFolderTarget } from "../../types/accounts.js";
 import {
   QaSettingsActions,
   QaSettingsButton,
@@ -80,6 +82,10 @@ export function QaIntegrationTokensPage(props: {
   );
   const [busy, setBusy] = useState(false);
   const [allowClarifications, setAllowClarifications] = useState(true);
+  const history = useHistoryOrganization(
+    props.api.historyStorageKey ?? "dsh-qa-history-unavailable",
+  );
+  const [folderId, setFolderId] = useState("");
   const [issued, setIssued] = useState<QaIssuedServiceToken | null>(null);
   const {
     copied,
@@ -90,6 +96,58 @@ export function QaIntegrationTokensPage(props: {
   const [pendingRevoke, setPendingRevoke] = useState<string | null>(null);
   const [revoking, setRevoking] = useState<string | null>(null);
   const [updating, setUpdating] = useState<string | null>(null);
+  const folderOf = (id: string): QaHistoryFolderTarget | null => {
+    const folder = history.state.folders.find((entry) => entry.id === id);
+    return folder ? { id: folder.id, name: folder.name } : null;
+  };
+  const changeFolder = async (
+    id: string,
+    folder: QaHistoryFolderTarget | null,
+  ) => {
+    if (props.api.setFolder === undefined) return;
+    setUpdating(id);
+    setError(null);
+    try {
+      const result = await props.api.setFolder(id, folder);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      await reload();
+    } finally {
+      setUpdating(null);
+    }
+  };
+  const folderField = (
+    selected: QaHistoryFolderTarget | null,
+    onChange: (folder: QaHistoryFolderTarget | null) => void,
+    label: string,
+    disabled = false,
+  ) => (
+    <QaSettingsField
+      testId="qa-settings-tokens-folder"
+      label={label}
+      hint="Новые чаты этой интеграции автоматически попадут в выбранную виртуальную папку. Уже созданные чаты сохранят своё расположение. Папки создаются в истории чатов."
+    >
+      <select
+        aria-label={label}
+        value={selected?.id ?? ""}
+        disabled={disabled}
+        onChange={(event) => onChange(folderOf(event.currentTarget.value))}
+      >
+        <option value="">Без каталога</option>
+        {selected &&
+        !history.state.folders.some((entry) => entry.id === selected.id) ? (
+          <option value={selected.id}>{selected.name}</option>
+        ) : null}
+        {history.state.folders.map((folder) => (
+          <option key={folder.id} value={folder.id}>
+            {folder.name}
+          </option>
+        ))}
+      </select>
+    </QaSettingsField>
+  );
   const changeClarifications = async (
     tokenId: string,
     allowed: boolean,
@@ -144,6 +202,9 @@ export function QaIntegrationTokensPage(props: {
         label: label.trim(),
         scopes: [...scopes],
         allowClarifications,
+        ...(props.api.historyStorageKey === undefined
+          ? {}
+          : { historyFolder: folderOf(folderId) }),
         ttlDays: days,
       })
       .then(async (result) => {
@@ -339,6 +400,14 @@ export function QaIntegrationTokensPage(props: {
               запросов через API сохраняется. Изменение настройки действует на
               следующие запросы.
             </p>
+            {props.api.historyStorageKey === undefined
+              ? null
+              : folderField(
+                  folderOf(folderId),
+                  (folder) => setFolderId(folder?.id ?? ""),
+                  "Папка для новых чатов",
+                  busy,
+                )}
             <QaSettingsActions>
               <QaSettingsButton
                 testId="qa-settings-tokens-create"
@@ -438,57 +507,70 @@ export function QaIntegrationTokensPage(props: {
                       </span>
                     )}
                     {state === "active" ? (
-                      <QaSettingsActions>
-                        {props.api.setClarifications === undefined ? null : (
-                          <label
-                            className="dsh-qa-settings__toggle"
-                            data-testid="qa-settings-tokens-row-clarifications"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={token.allowClarifications !== false}
-                              disabled={updating === token.id}
-                              onChange={(event) => {
-                                void changeClarifications(
-                                  token.id,
-                                  event.currentTarget.checked,
-                                );
-                              }}
-                            />
-                            <span className="dsh-qa-settings__toggle-label">
-                              Разрешать уточняющие вопросы
-                            </span>
-                          </label>
-                        )}
-                        {confirming ? (
-                          <>
+                      <>
+                        {props.api.setFolder === undefined ||
+                        props.api.historyStorageKey === undefined
+                          ? null
+                          : folderField(
+                              token.historyFolder ?? null,
+                              (folder) => {
+                                void changeFolder(token.id, folder);
+                              },
+                              `Папка для новых чатов: ${token.label}`,
+                              updating === token.id,
+                            )}
+                        <QaSettingsActions>
+                          {props.api.setClarifications === undefined ? null : (
+                            <label
+                              className="dsh-qa-settings__toggle"
+                              data-testid="qa-settings-tokens-row-clarifications"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={token.allowClarifications !== false}
+                                disabled={updating === token.id}
+                                onChange={(event) => {
+                                  void changeClarifications(
+                                    token.id,
+                                    event.currentTarget.checked,
+                                  );
+                                }}
+                              />
+                              <span className="dsh-qa-settings__toggle-label">
+                                Разрешать уточняющие вопросы
+                              </span>
+                            </label>
+                          )}
+                          {confirming ? (
+                            <>
+                              <QaSettingsButton
+                                testId="qa-settings-tokens-revoke-cancel"
+                                label="Отмена"
+                                onClick={() => setPendingRevoke(null)}
+                              />
+                              <QaSettingsButton
+                                testId="qa-settings-tokens-revoke-confirm"
+                                tone="danger"
+                                disabled={revoking === token.id}
+                                label={
+                                  revoking === token.id
+                                    ? "Отзываем…"
+                                    : "Отозвать окончательно"
+                                }
+                                onClick={() => revoke(token.id)}
+                              />
+                            </>
+                          ) : (
                             <QaSettingsButton
-                              testId="qa-settings-tokens-revoke-cancel"
-                              label="Отмена"
-                              onClick={() => setPendingRevoke(null)}
-                            />
-                            <QaSettingsButton
-                              testId="qa-settings-tokens-revoke-confirm"
+                              testId="qa-settings-tokens-revoke"
                               tone="danger"
-                              disabled={revoking === token.id}
-                              label={
-                                revoking === token.id
-                                  ? "Отзываем…"
-                                  : "Отозвать окончательно"
-                              }
-                              onClick={() => revoke(token.id)}
+                              label="Отозвать"
+                              title={`Отозвать токен «${token.label}»`}
+                              onClick={() => setPendingRevoke(token.id)}
                             />
-                          </>
-                        ) : (
-                          <QaSettingsButton
-                            testId="qa-settings-tokens-revoke"
-                            tone="danger"
-                            label="Отозвать"
-                            title={`Отозвать токен «${token.label}»`}
-                            onClick={() => setPendingRevoke(token.id)}
-                          />
-                        )}
-                      </QaSettingsActions>
+                          )}
+                        </QaSettingsActions>
+                      </>
                     ) : null}
                   </div>
                 </li>

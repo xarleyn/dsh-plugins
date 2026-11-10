@@ -170,4 +170,28 @@ describe("integration token remotes", () => {
       expect(refusalReason(call)).toBe("auth-required");
     }
   });
+
+  it("exposes folder defaults and only allows their owner to update them", () => {
+    const { remotes, store } = context(config(true));
+    open = store;
+    const first = remotes.register("routing-one@example.test", "password-one");
+    const second = remotes.register("routing-two@example.test", "password-two");
+    const folder = { id: "api-folder", name: "Запросы API" };
+    const issued = remotes.createServiceToken(first.token, {
+      historyFolder: folder,
+    });
+    expect(issued.historyFolder).toEqual(folder);
+    expect(
+      remotes.setServiceTokenHistoryFolder(second.token, issued.id, null),
+    ).toEqual({ updated: false });
+    expect(
+      remotes.listServiceTokens(first.token).tokens[0]?.historyFolder,
+    ).toEqual(folder);
+    expect(
+      remotes.setServiceTokenHistoryFolder(first.token, issued.id, null),
+    ).toEqual({ updated: true });
+    expect(
+      remotes.listServiceTokens(first.token).tokens[0]?.historyFolder,
+    ).toBeUndefined();
+  });
 });

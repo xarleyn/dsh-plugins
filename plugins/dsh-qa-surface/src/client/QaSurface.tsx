@@ -428,6 +428,7 @@ export function QaSurface(props: QaSurfaceProps) {
   const railItemsRef = useRef<readonly QaTurnRailItem[]>([]);
   const activeTurnFrame = useRef<number | null>(null);
   const stateKey = qaStorageNamespace(config);
+  const historyStorageKey = `${stateKey}:history:${accountsSnapshot.stage === "authed" ? accountsSnapshot.user.id : "anonymous"}`;
   // The palette belongs to the surface, so it is only painted while the
   // surface is what the visitor is looking at: outside its own route the
   // overlay is mounted and invisible, and flipping the Host document's
@@ -1240,13 +1241,16 @@ export function QaSurface(props: QaSurfaceProps) {
             // listing and revoking stay available either way, because a
             // credential that already exists has to remain revocable.
             canCreate: config.integration.enabled,
+            historyStorageKey,
+            setFolder: (tokenId, folder) =>
+              accounts.setServiceTokenHistoryFolder(tokenId, folder),
             list: () => accounts.serviceTokens(),
             create: (input) => accounts.createServiceToken(input),
             revoke: (tokenId) => accounts.revokeServiceToken(tokenId),
             setClarifications: (tokenId, allowed) =>
               accounts.setServiceTokenClarifications(tokenId, allowed),
           },
-    [accounts, config.integration.enabled],
+    [accounts, config.integration.enabled, historyStorageKey],
   );
   // Everything the dialog needs, assembled once per change. Each face is
   // absent where the deployment withheld the feature, and the dialog simply
@@ -1773,7 +1777,12 @@ export function QaSurface(props: QaSurfaceProps) {
             title={config.branding.title}
             logoUrl={config.branding.logoUrl}
             stateKey={stateKey}
-            organizationKey={`${stateKey}:history:${accountsSnapshot.stage === "authed" ? accountsSnapshot.user.id : "anonymous"}`}
+            organizationKey={historyStorageKey}
+            integrationFolders={
+              accountsSnapshot.stage === "authed"
+                ? accountsSnapshot.integrationFolders
+                : undefined
+            }
             showNewChat={allowNewChat}
             busy={state.phase === "creating"}
             drawerOpen={historyOpen}

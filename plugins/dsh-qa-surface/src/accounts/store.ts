@@ -37,6 +37,11 @@ import {
 import { normalizeStarters, validateStartersWrite } from "../starters.js";
 import { validateCredentials, validatePassword } from "./credentials.js";
 import { QaAccountsDatabase } from "./database.js";
+import type {
+  QaHistoryFolderTarget,
+  QaOwnedSessionsResult,
+} from "../types/accounts.js";
+import { normalizeHistoryFolder } from "../shared/history-folder.js";
 import { QaAccountsError } from "./errors.js";
 import {
   defaultAccountsFilePath,
@@ -146,6 +151,7 @@ const MAX_SESSION_ID_LENGTH = 200;
 
 /** What a caller asks for when it mints an integration token. */
 export interface QaServiceTokenIssueInput {
+  readonly historyFolder?: QaHistoryFolderTarget | null;
   /** A note for the operator's token list; empty becomes a generic label. */
   readonly label?: string;
   /** Requested scopes; unknown ones are dropped, explicit empty grants none. */
@@ -163,6 +169,7 @@ export interface QaServiceTokenIssueInput {
 
 /** What a presented integration token resolved to. */
 export interface QaVerifiedServiceToken {
+  readonly historyFolder?: QaHistoryFolderTarget;
   readonly allowClarifications: boolean;
   readonly tokenId: string;
   readonly userId: string;
@@ -1471,6 +1478,7 @@ export class QaAccounts {
     )
       throw new TypeError("allowClarifications must be a boolean.");
     const allowClarifications = input.allowClarifications ?? true;
+    const historyFolder = normalizeHistoryFolder(input.historyFolder);
     const scopes = normalizeServiceTokenScopes(
       input.scopes ?? QA_SERVICE_TOKEN_DEFAULT_SCOPES,
     );
@@ -1482,6 +1490,7 @@ export class QaAccounts {
       .trim()
       .slice(0, QA_SERVICE_TOKEN_LABEL_MAX);
     this.database.insertServiceToken({
+      ...(historyFolder === null ? {} : { historyFolder }),
       id: minted.tokenId,
       userId: target.id,
       label: label === "" ? "integration" : label,
@@ -1496,6 +1505,7 @@ export class QaAccounts {
     });
     return Object.freeze({
       id: minted.tokenId,
+      ...(historyFolder === null ? {} : { historyFolder }),
       token: minted.token,
       label: label === "" ? "integration" : label,
       scopes,
@@ -1539,6 +1549,9 @@ export class QaAccounts {
       tokenId: record.id,
       userId: record.userId,
       scopes: normalizeServiceTokenScopes(record.scopes),
+      ...(record.historyFolder === undefined
+        ? {}
+        : { historyFolder: record.historyFolder }),
       allowClarifications: record.allowClarifications,
     });
   }
@@ -1563,6 +1576,9 @@ export class QaAccounts {
           id: record.id,
           label: record.label,
           scopes: normalizeServiceTokenScopes(record.scopes),
+          ...(record.historyFolder === undefined
+            ? {}
+            : { historyFolder: record.historyFolder }),
           allowClarifications: record.allowClarifications,
           createdAt: record.createdAt,
           expiresAt: record.expiresAt,
@@ -1616,6 +1632,43 @@ export class QaAccounts {
     requestId: string,
   ): boolean {
     return this.database.integrationClarificationsAllowed(sessionId, requestId);
+  }
+
+  setServiceTokenHistoryFolder(
+    token: string,
+    tokenId: string,
+    input: QaHistoryFolderTarget | null,
+  ): boolean {
+    const user = this.requireUser(token);
+    return this.database.setServiceTokenHistoryFolder(
+      user.id,
+      tokenId,
+      normalizeHistoryFolder(input),
+    );
+  }
+
+  recordIntegrationSessionFolder(
+    userId: string,
+    sessionId: string,
+    folder: QaHistoryFolderTarget,
+  ): void {
+    this.database.recordIntegrationSessionFolder(
+      userId,
+      sessionId,
+      normalizeHistoryFolder(folder)!,
+    );
+  }
+
+  ownedSessionsWithFolders(token: string): QaOwnedSessionsResult {
+    const ids = this.ownedSessionIds(token);
+    const user = this.requireUser(token);
+    const integrationFolders = this.database.integrationSessionFolders(user.id);
+    return {
+      ids,
+      ...(Object.keys(integrationFolders).length === 0
+        ? {}
+        : { integrationFolders }),
+    };
   }
 
   /** Revoke one integration token of an account the caller has established. */

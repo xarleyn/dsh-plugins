@@ -5,6 +5,7 @@ import type {
   QaAccountStartersInput,
   QaAccountUserPublic,
   QaIssuedServiceToken,
+  QaHistoryFolderTarget,
   QaOwnershipEntry,
   QaServiceTokenCreateInput,
   QaServiceTokenSummary,
@@ -54,6 +55,9 @@ export type QaAccountsSnapshot =
        * by this list rather than by the sidebar's.
        */
       readonly ownIds: readonly string[];
+      readonly integrationFolders?: Readonly<
+        Record<string, QaHistoryFolderTarget>
+      >;
       /**
        * The full ownership map; admins only, empty for ordinary accounts and
        * whenever the admin listing was refused or unavailable.
@@ -668,6 +672,34 @@ export class QaAccountsController {
     }
   }
 
+  async setServiceTokenHistoryFolder(
+    tokenId: string,
+    folder: QaHistoryFolderTarget | null,
+  ): Promise<QaIntegrationTokenResult<null>> {
+    const token = this.tokenValue;
+    const update = this.options.remote.accountsSetServiceTokenHistoryFolder;
+    if (
+      this.disposed ||
+      token === null ||
+      this.snapshot.stage !== "authed" ||
+      update === undefined
+    )
+      return { ok: false, error: accountsErrorMessage(null) };
+    try {
+      const result = await update.call(
+        this.options.remote,
+        token,
+        tokenId,
+        folder,
+      );
+      return result.ok && result.value.updated
+        ? { ok: true, value: null }
+        : { ok: false, error: accountsErrorMessage(null) };
+    } catch {
+      return { ok: false, error: accountsErrorMessage(null) };
+    }
+  }
+
   private async authenticate(
     mode: "login" | "register",
     call: () => Promise<
@@ -716,6 +748,8 @@ export class QaAccountsController {
   ): Promise<void> {
     const migration = this.options.legacyChatIds?.() ?? [];
     let ownIds: readonly string[] = [];
+    let integrationFolders:
+      Readonly<Record<string, QaHistoryFolderTarget>> | undefined;
     let ownership: readonly QaOwnershipEntry[] = [];
     let ownershipKnown = false;
     try {
@@ -730,6 +764,7 @@ export class QaAccountsController {
       }
       const ids = await this.options.remote.accountsOwnedSessions(token);
       ownIds = ids.ok ? ids.value.ids : [];
+      integrationFolders = ids.ok ? ids.value.integrationFolders : undefined;
       ownershipKnown = ids.ok;
       // The cross-user ownership view is a separate operator opt-in. A
       // refusal only costs the grouping, never the admin's own chats.
@@ -758,8 +793,9 @@ export class QaAccountsController {
       }
     }
     if (this.disposed) return;
+    if (this.tokenValue !== token) return;
     const sharedChats = await this.fetchSharedChats(token);
-    if (this.disposed) return;
+    if (this.disposed || this.tokenValue !== token) return;
     this.publish({
       stage: "authed",
       user,
@@ -773,6 +809,7 @@ export class QaAccountsController {
       ownIds,
       ownership,
       ownedRevision: 1,
+      ...(integrationFolders === undefined ? {} : { integrationFolders }),
     });
   }
 
@@ -785,24 +822,40 @@ export class QaAccountsController {
     ) {
       return;
     }
+    const token = this.tokenValue;
     try {
-      const ids = await this.options.remote.accountsOwnedSessions(
-        this.tokenValue,
-      );
-      if (this.disposed || !ids.ok || this.snapshot.stage !== "authed") return;
+      const ids = await this.options.remote.accountsOwnedSessions(token);
+      if (
+        this.disposed ||
+        this.tokenValue !== token ||
+        !ids.ok ||
+        this.snapshot.stage !== "authed"
+      )
+        return;
       let ownership = this.snapshot.ownership;
       if (
         this.snapshot.user.role === "admin" &&
         this.options.config().accounts.showOtherUsersChats
       ) {
-        ownership = await this.fetchOwnership(this.tokenValue);
-        if (this.disposed || this.snapshot.stage !== "authed") return;
+        ownership = await this.fetchOwnership(token);
+        if (
+          this.disposed ||
+          this.tokenValue !== token ||
+          this.snapshot.stage !== "authed"
+        )
+          return;
       } else {
         ownership = [];
       }
       const ownIds = ids.value.ids;
-      const sharedChats = await this.fetchSharedChats(this.tokenValue);
-      if (this.disposed || this.snapshot.stage !== "authed") return;
+      const integrationFolders = ids.value.integrationFolders;
+      const sharedChats = await this.fetchSharedChats(token);
+      if (
+        this.disposed ||
+        this.tokenValue !== token ||
+        this.snapshot.stage !== "authed"
+      )
+        return;
       const ownedIds = [
         ...new Set([
           ...mergeOwnershipIds(ownIds, ownership),
@@ -817,7 +870,9 @@ export class QaAccountsController {
         JSON.stringify(ownIds) === JSON.stringify(this.snapshot.ownIds) &&
         JSON.stringify(sharedChats) ===
           JSON.stringify(this.snapshot.sharedChats ?? []) &&
-        JSON.stringify(ownership) === JSON.stringify(this.snapshot.ownership)
+        JSON.stringify(ownership) === JSON.stringify(this.snapshot.ownership) &&
+        JSON.stringify(integrationFolders) ===
+          JSON.stringify(this.snapshot.integrationFolders)
       ) {
         return;
       }
@@ -828,6 +883,7 @@ export class QaAccountsController {
         sharedChats,
         ownership,
         ownedRevision: this.snapshot.ownedRevision + 1,
+        integrationFolders,
       });
     } catch (error) {
       console.warn("dsh-qa-surface: owned sessions refresh failed", error);

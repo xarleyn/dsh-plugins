@@ -11,6 +11,8 @@ import type {
   QaAccountStartersInput,
   QaAccountUserPublic,
   QaIssuedServiceToken,
+  QaHistoryFolderTarget,
+  QaOwnedSessionsResult,
   QaOwnershipEntry,
   QaServiceTokenCreateInput,
   QaServiceTokenSummary,
@@ -69,7 +71,7 @@ export interface QaAccountRemotes {
    * delegated session, which takes session lineage, and that lives in
    * `QaAccessService.claimSessions` — one entry point, no path around it.
    */
-  ownedSessions(token: string): { readonly ids: readonly string[] };
+  ownedSessions(token: string): QaOwnedSessionsResult;
   /**
    * Every chat-ownership entry with owner display names; the cross-user view
    * admin browsers group the sidebar by. Ordinary accounts are refused with
@@ -123,6 +125,11 @@ export interface QaAccountRemotes {
     token: string,
     tokenId: string,
     allowed: boolean,
+  ): { readonly updated: boolean };
+  setServiceTokenHistoryFolder(
+    token: string,
+    tokenId: string,
+    folder: QaHistoryFolderTarget | null,
   ): { readonly updated: boolean };
 }
 
@@ -240,7 +247,7 @@ export function createQaAccountRemotes(options: {
     ownedSessions: (token) => {
       if (!getConfig().accounts.enabled) return { ids: [] };
       const store = requireAccounts();
-      return run(() => ({ ids: store.ownedSessionIds(token) }));
+      return run(() => store.ownedSessionsWithFolders(token));
     },
     listOwnership: (token) => {
       if (!getConfig().accounts.enabled) return { entries: [] };
@@ -296,6 +303,9 @@ export function createQaAccountRemotes(options: {
         // admin path (`mintServiceToken` with a `userId`) is not reachable
         // from here.
         return store.mintServiceToken(token, {
+          ...(input.historyFolder === undefined
+            ? {}
+            : { historyFolder: input.historyFolder }),
           ...(input.label === undefined ? {} : { label: input.label }),
           ...(input.scopes === undefined ? {} : { scopes: input.scopes }),
           ...(input.allowClarifications === undefined
@@ -315,6 +325,12 @@ export function createQaAccountRemotes(options: {
       const store = requireAccounts();
       return run(() => ({
         updated: store.setServiceTokenClarifications(token, tokenId, allowed),
+      }));
+    },
+    setServiceTokenHistoryFolder: (token, tokenId, folder) => {
+      const store = requireAccounts();
+      return run(() => ({
+        updated: store.setServiceTokenHistoryFolder(token, tokenId, folder),
       }));
     },
   };

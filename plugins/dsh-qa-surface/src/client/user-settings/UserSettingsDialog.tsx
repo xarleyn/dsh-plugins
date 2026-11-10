@@ -219,7 +219,10 @@ export function QaUserSettingsDialog(props: QaUserSettingsDialogProps) {
             />
           ) : null}
           {active === "tokens" && props.integrationTokens !== undefined ? (
-            <QaIntegrationTokensPage api={props.integrationTokens} />
+            <QaIntegrationTokensPage
+              key={props.integrationTokens.historyStorageKey}
+              api={props.integrationTokens}
+            />
           ) : null}
           {active === "general" ? (
             <QaGeneralSettingsPage

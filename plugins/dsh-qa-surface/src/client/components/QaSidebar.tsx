@@ -125,6 +125,9 @@ export interface QaSidebarProps {
   readonly stateKey: string;
   /** Deployment and account scoped key for virtual history metadata. */
   readonly organizationKey?: string;
+  readonly integrationFolders?: Readonly<
+    Record<string, import("../../types/accounts.js").QaHistoryFolderTarget>
+  >;
   readonly showNewChat: boolean;
   readonly busy: boolean;
   readonly onSwitch: (sessionId: string) => void;
@@ -597,6 +600,7 @@ export const QaSidebar = memo(
             }
             rows={props.rows}
             query={normalizedQuery}
+            integrationFolders={props.integrationFolders}
             sectionsOf={(rows) =>
               props.groupByOwner
                 ? buildOwnerSections(rows)
@@ -715,6 +719,7 @@ export const QaSidebar = memo(
     prev.logoUrl === next.logoUrl &&
     prev.stateKey === next.stateKey &&
     prev.organizationKey === next.organizationKey &&
+    prev.integrationFolders === next.integrationFolders &&
     prev.showNewChat === next.showNewChat &&
     prev.busy === next.busy &&
     prev.drawerOpen === next.drawerOpen &&

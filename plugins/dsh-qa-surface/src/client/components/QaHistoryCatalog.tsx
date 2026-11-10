@@ -7,6 +7,7 @@ import {
 } from "react";
 import {
   historyFolderOf,
+  importIntegrationFolders,
   insertHistoryId,
   moveHistoryChat,
   orderHistoryRows,
@@ -39,6 +40,9 @@ export function QaHistoryCatalog(props: {
   readonly storageKey: string;
   readonly rows: readonly QaChatRow[];
   readonly query: string;
+  readonly integrationFolders?: Readonly<
+    Record<string, import("../../types/accounts.js").QaHistoryFolderTarget>
+  >;
   readonly sectionsOf: (
     rows: readonly QaChatRow[],
   ) => readonly QaSidebarSection[];
@@ -51,6 +55,15 @@ export function QaHistoryCatalog(props: {
     props.storageKey,
   );
   const [dialog, setDialog] = useState<Dialog | null>(null);
+  useEffect(() => {
+    if (props.integrationFolders === undefined) return;
+    const next = importIntegrationFolders(
+      state,
+      props.integrationFolders,
+      new Set(props.rows.map((row) => row.id)),
+    );
+    if (next !== state) update(next);
+  }, [state, props.integrationFolders, props.rows, update]);
   const [name, setName] = useState("");
   const [destination, setDestination] = useState("");
   const [hover, setHover] = useState<string | null>(null);

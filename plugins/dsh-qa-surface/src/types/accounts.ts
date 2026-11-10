@@ -140,12 +140,24 @@ export interface QaClaimResult {
  */
 export type QaServiceTokenScope = "ask" | "sessions:read";
 
+/** Virtual UI destination, never a workspace or filesystem path. */
+export interface QaHistoryFolderTarget {
+  readonly id: string;
+  readonly name: string;
+}
+
+export interface QaOwnedSessionsResult {
+  readonly ids: readonly string[];
+  readonly integrationFolders?: Readonly<Record<string, QaHistoryFolderTarget>>;
+}
+
 /**
  * What an account asks a new integration token to be. The credential is always
  * issued to the caller: nothing a browser sends may name another account, so
  * this shape has no owner field and the administrative path keeps its own.
  */
 export interface QaServiceTokenCreateInput {
+  readonly historyFolder?: QaHistoryFolderTarget | null;
   /** A note the operator's list shows; empty becomes a generic label. */
   readonly label?: string;
   /** Requested scopes; unknown ones are dropped, explicit empty grants none. */
@@ -162,6 +174,7 @@ export interface QaServiceTokenCreateInput {
  * that could repeat it would be a list that leaks it.
  */
 export interface QaServiceTokenSummary {
+  readonly historyFolder?: QaHistoryFolderTarget | null;
   readonly id: string;
   readonly label: string;
   readonly scopes: readonly QaServiceTokenScope[];
