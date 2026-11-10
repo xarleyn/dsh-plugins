@@ -217,7 +217,9 @@ interface QaDocsExecution {
  * comes from configuration instead of from the calling chat.
  */
 export interface QaDocsOptions {
-  readonly codeSources?: (() => CodeSourcesCatalog) | undefined;
+  readonly codeSources?:
+    | ((exec?: import("./code-files.js").CodeExecution) => CodeSourcesCatalog)
+    | undefined;
   /** Absolute documentation root, or `""` for `<chat workspace>/docs`. */
   readonly root?: string;
   /**
@@ -1060,7 +1062,7 @@ export function createDocsSearchTool(
         (!(args.version ?? "").trim() && !(args.path ?? "").trim());
       const source = useSource
         ? selectCodeSource(
-            options.codeSources?.() ?? EMPTY_CODE_SOURCES,
+            options.codeSources?.(exec) ?? EMPTY_CODE_SOURCES,
             args.source,
           )
         : undefined;
@@ -1202,13 +1204,10 @@ export function createDocsReadTool(
     },
     execute: async (args, exec) => {
       const root = await docsRootOf(exec as QaDocsExecution, options);
-      const source =
-        args.source === undefined
-          ? undefined
-          : selectCodeSource(
-              options.codeSources?.() ?? EMPTY_CODE_SOURCES,
-              args.source,
-            );
+      const source = selectCodeSource(
+        options.codeSources?.(exec) ?? EMPTY_CODE_SOURCES,
+        args.source,
+      );
       if (args.source !== undefined && source?.docsVersion === undefined)
         throw new Error(
           "Selected source has no docsVersion mapping; read the explicit path without source.",

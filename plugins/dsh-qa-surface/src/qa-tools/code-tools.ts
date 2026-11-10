@@ -52,7 +52,8 @@ export function createCodeSourcesTool(
       render: (_args, value) => [{ type: "text", text: JSON.stringify(value) }],
     },
     execute: async (_args, exec) => {
-      const catalog = options.codeSources?.() ?? EMPTY_CODE_SOURCES;
+      const catalog =
+        options.codeSources?.(exec as CodeExecution) ?? EMPTY_CODE_SOURCES;
       const entries = await Promise.all(
         catalog.entries.map(async (entry) => ({
           ...entry,

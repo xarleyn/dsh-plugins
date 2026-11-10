@@ -11,8 +11,13 @@ import { runGit } from "../git/runner.js";
 import type { PluginLoggerLike } from "@yadsh/dsh-plugin-log";
 
 export interface GitToolDeps {
+  readonly selectedSource?: (
+    exec?: import("../git/repo.js").ToolExec,
+  ) => string | undefined;
   /** Lazy QA catalogue lookup: preset mounts share configuration with the QA host. */
-  readonly codeSources?: () =>
+  readonly codeSources?: (
+    exec?: import("../git/repo.js").ToolExec,
+  ) =>
     import("@yadsh/dsh-plugin-kit/code-sources").CodeSourcesCatalog | undefined;
   readonly config: ResolvedGitReadonlyConfig;
   readonly logger: PluginLoggerLike;

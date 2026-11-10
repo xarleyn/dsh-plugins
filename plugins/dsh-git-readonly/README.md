@@ -126,8 +126,12 @@ The catalogue never grants access: the selected tree must still be inside
 the session directory or this Git mount's `repositoryRoots`. Keep those
 roots on the preset row that actually mounts the tools. Add `dsh_git_sources`
 to locked-down Git tool allow-lists. Without a catalogue, the existing
-session/repositoryRoots selection works unchanged. Selection is per call:
-repeat `source` while comparing trees. A chat-level selector is not included.
+session/repositoryRoots selection works unchanged. On QA deployments an omitted
+`source` uses the chat's server-persisted selection, including the snapshot
+inherited by delegated children. This preference also applies when a Git mount
+defines its own catalogue: a selected id absent from that catalogue is refused.
+Explicit `source` and legacy `repository` parameters still support comparisons
+without changing the saved chat preference.
 
 Configure the plugin under the `git-readonly` key in the DSH profile.
 

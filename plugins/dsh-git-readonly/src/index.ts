@@ -89,9 +89,12 @@ export const Config = GitReadonlyConfigSchema;
 
 /** Structural view of the host surface the plugin needs. */
 export interface GitToolsHost {
-  get?(
-    name: "qaSurface",
-  ): { getCodeSources?(): CodeSourcesCatalog } | undefined;
+  get?(name: "qaSurface"):
+    | {
+        getCodeSources?(sessionId?: string): CodeSourcesCatalog;
+        getSelectedCodeSource?(sessionId: string): string | null;
+      }
+    | undefined;
   tools: { register(definition: unknown): () => void };
 }
 
@@ -117,9 +120,23 @@ export function apply(ctx: GitToolsHost, rawConfig?: GitReadonlyConfig): void {
     return;
   }
   const deps: GitToolDeps = {
+    selectedSource: (exec) =>
+      exec?.agent?.session.id === undefined
+        ? undefined
+        : (ctx
+            .get?.("qaSurface")
+            ?.getSelectedCodeSource?.(String(exec.agent.session.id)) ??
+          undefined),
     config,
     logger,
-    codeSources: () => ctx.get?.("qaSurface")?.getCodeSources?.(),
+    codeSources: (exec) =>
+      ctx
+        .get?.("qaSurface")
+        ?.getCodeSources?.(
+          exec?.agent?.session.id === undefined
+            ? undefined
+            : String(exec.agent.session.id),
+        ),
   };
   ctx.tools.register(createGitContextTool(deps));
   ctx.tools.register(createGitHistoryTool(deps));

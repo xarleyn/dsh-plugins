@@ -81,6 +81,33 @@ afterAll(async () => {
 });
 
 describe("source-aware code and documentation tools", () => {
+  it("uses one execution-scoped default in code search and documentation", async () => {
+    const optionsForSession = {
+      ...options(),
+      codeSources: () => ({
+        ...options().codeSources!(),
+        defaultSource: "preview",
+      }),
+    };
+    const scope = await codeScope(optionsForSession, exec());
+    expect(await searchCode(scope, { query: "shared" })).toMatchObject({
+      source: "preview",
+    });
+    const search = createDocsSearchTool({
+      root: join(root, "docs"),
+      ...optionsForSession,
+    });
+    expect(
+      await search.execute({ query: "edition" }, toolExec()),
+    ).toMatchObject({ source: "preview", version: "2.1" });
+    const reader = createDocsReadTool({
+      root: join(root, "docs"),
+      ...optionsForSession,
+    });
+    await expect(
+      reader.execute({ path: "module/2.0/guide.md" }, toolExec()),
+    ).rejects.toThrow(/edition/u);
+  });
   it("never mixes same-path files from different sources", async () => {
     const stable = await codeScope(options(), exec());
     const preview = await codeScope(options(), exec(), "preview");

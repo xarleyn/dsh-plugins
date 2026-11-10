@@ -140,6 +140,9 @@ export interface QaPromptNote {
 }
 
 export interface QaPromptNotesOptions {
+  readonly codeSources?: (
+    sessionId: string,
+  ) => import("@yadsh/dsh-plugin-kit/code-sources").CodeSourcesCatalog;
   readonly config: () => ResolvedQaSurfaceConfig;
   /** The live accounts store, or undefined while accounts are disabled. */
   readonly accounts: () => QaAccounts | undefined;
@@ -224,7 +227,7 @@ export class QaPromptNotes {
       ...this.delegationNotes(root),
       ...this.documentsNotes(root),
       ...this.sourcePriorityNotes(root),
-      ...this.codeSourceNotes(root, config),
+      ...this.codeSourceNotes(root, config, String(agent.session.id)),
       ...this.branchNotes(root),
     ].filter((note) => this.carriedText(agent, note.name) !== note.text);
     if (pending.length === 0) return decision;
@@ -251,6 +254,7 @@ export class QaPromptNotes {
   private codeSourceNotes(
     rootSessionId: string,
     config: ResolvedQaSurfaceConfig,
+    executionSessionId: string,
   ): readonly QaPromptNote[] {
     if (
       !this.options.isQaSession(rootSessionId) ||
@@ -262,7 +266,10 @@ export class QaPromptNotes {
         name: QA_CODE_SOURCES_NOTE,
         text: "This deployment has named code sources. Use code_sources to discover ids and read availability, code_search/code_read to inspect one source, and the same source id in dsh_git_* and docs_search calls. Honor the source explicitly requested by the user or delegation; repeat it on every call and pass it to subagents. Omitted source uses the configured default (or the sole entry); several entries without a default require a choice. Directory names do not imply versions or branches. Do not mix trees in a broad filesystem search or substitute a different tree after a refusal. For comparisons, inspect each requested source separately and identify it in the answer. Use dsh_git_context to verify actual branch and HEAD.",
       },
-    ];
+    ].map((note) => ({
+      ...note,
+      text: `Current chat source: ${JSON.stringify((this.options.codeSources?.(executionSessionId) ?? config.codeSources).defaultSource || "deployment default / explicit choice required")}. Omitted source arguments use the server-side chat selection. ${note.text}`,
+    }));
   }
 
   /** Who is asking: the owner's name, handles and their own instructions. */

@@ -45,6 +45,21 @@ function deps(roots = [stable.dir, preview.dir]) {
 }
 
 describe("Git named sources", () => {
+  it("uses the calling session's saved source even with a local catalogue", async () => {
+    const local = deps();
+    const tool = createGitContextTool({
+      ...local,
+      config: { ...local.config, codeSources: local.codeSources() },
+      selectedSource: () => "preview",
+    });
+    expect(await tool.execute({}, makeExec(cwd))).toMatchObject({
+      source: "preview",
+      subject: "preview change",
+    });
+    expect(
+      await tool.execute({ source: "stable" }, makeExec(cwd)),
+    ).toMatchObject({ source: "stable", subject: "stable change" });
+  });
   it("supports named linked worktrees and refuses nested non-root source paths", async () => {
     const linked = join(cwd, "linked");
     await preview.run(["worktree", "add", "--detach", linked]);

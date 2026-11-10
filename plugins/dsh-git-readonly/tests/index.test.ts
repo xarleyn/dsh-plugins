@@ -39,6 +39,37 @@ function makeHost() {
 }
 
 describe("dsh-git-readonly entry", () => {
+  it("forwards the calling session id to the QA source preference", async () => {
+    const ids: (string | undefined)[] = [];
+    const host = {
+      ...makeHost(),
+      get: () => ({
+        getCodeSources: (id?: string) => {
+          ids.push(id);
+          return resolveCodeSources({
+            entries: [
+              { id: "preview", label: "Preview", path: "/code/preview" },
+            ],
+            defaultSource: "preview",
+          });
+        },
+        getSelectedCodeSource: (id: string) => {
+          ids.push(id);
+          return "preview";
+        },
+      }),
+    };
+    apply(host);
+    const tool = host.registered.find(
+      (definition) => (definition as ToolDefinition).name === "dsh_git_sources",
+    ) as ToolDefinition;
+    expect(
+      await tool.execute({}, {
+        agent: { session: { id: "chat-source-test" } },
+      } as never),
+    ).toMatchObject({ defaultSource: "preview" });
+    expect(ids).toEqual(["chat-source-test", "chat-source-test"]);
+  });
   it("reads the QA host catalogue lazily from a preset mount", async () => {
     let catalog = resolveCodeSources();
     const host = {

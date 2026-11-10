@@ -32,8 +32,8 @@ export function createGitSourcesTool(deps: GitToolDeps) {
       },
       render: (_args, value) => [{ type: "text", text: JSON.stringify(value) }],
     },
-    async execute() {
-      const catalog = sourceCatalog(deps);
+    async execute(_args, exec) {
+      const catalog = sourceCatalog(deps, exec);
       return {
         defaultSource: catalog.defaultSource,
         entries: [...catalog.entries],

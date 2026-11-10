@@ -9,12 +9,16 @@ import { pathIsInside } from "../user-workspace.js";
 
 export interface CodeExecution {
   readonly agent?: {
-    readonly session?: { readonly header?: { readonly cwd?: unknown } };
+    readonly session?: {
+      readonly id?: unknown;
+      readonly header?: { readonly cwd?: unknown };
+    };
   };
 }
 
 export interface CodeFilesOptions {
-  readonly codeSources?: (() => CodeSourcesCatalog) | undefined;
+  readonly codeSources?:
+    ((exec?: CodeExecution) => CodeSourcesCatalog) | undefined;
   readonly codeReadRoots?: (() => readonly string[]) | undefined;
 }
 
@@ -30,7 +34,7 @@ export async function codeScope(
   requested?: unknown,
 ): Promise<CodeScope> {
   const source = selectCodeSource(
-    options.codeSources?.() ?? { defaultSource: "", entries: [] },
+    options.codeSources?.(exec) ?? { defaultSource: "", entries: [] },
     requested,
   );
   if (source === undefined)

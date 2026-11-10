@@ -9,7 +9,7 @@ import { QaToolActivationLifecycle } from "./lifecycle.js";
 import type { QaToolActivation } from "./types.js";
 
 export interface QaToolsOptions {
-  readonly codeSources?: () => import("@yadsh/dsh-plugin-kit/code-sources").CodeSourcesCatalog;
+  readonly codeSources?: import("./code-files.js").CodeFilesOptions["codeSources"];
   readonly codeReadRoots?: () => readonly string[];
   readonly forms?: import("../forms/gate.js").QaFormGate;
   readonly formsEnabled?: () => boolean;

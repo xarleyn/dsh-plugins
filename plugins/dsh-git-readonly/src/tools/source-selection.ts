@@ -13,10 +13,15 @@ import type { GitToolDeps } from "./shared.js";
 
 export { CODE_SOURCE_PARAMETER };
 
-export function sourceCatalog(deps: GitToolDeps) {
-  return deps.config.codeSources.entries.length > 0
-    ? deps.config.codeSources
-    : (deps.codeSources?.() ?? deps.config.codeSources);
+export function sourceCatalog(deps: GitToolDeps, exec?: ToolExec) {
+  const catalog =
+    deps.config.codeSources.entries.length > 0
+      ? deps.config.codeSources
+      : (deps.codeSources?.(exec) ?? deps.config.codeSources);
+  const selected = deps.selectedSource?.(exec);
+  return selected === undefined
+    ? catalog
+    : { ...catalog, defaultSource: selected };
 }
 
 export interface GitSourceIdentity {
@@ -49,7 +54,7 @@ export async function resolveGitSource(
     );
   const selected =
     args["repository"] === undefined
-      ? selectCodeSource(sourceCatalog(deps), args["source"])
+      ? selectCodeSource(sourceCatalog(deps, exec), args["source"])
       : undefined;
   const root = await resolveToolRepository(
     run,
