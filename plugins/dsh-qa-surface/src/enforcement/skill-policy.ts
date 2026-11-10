@@ -12,6 +12,7 @@ import type {
   QaSkillActivationOrigin,
 } from "../types.js";
 import type { QaAgentToolGrants } from "./tool-grants.js";
+import type {} from "../prompt-notes.js";
 import { userInvocableSkillNames } from "../access/model.js";
 import {
   skillResourceGuidance,
@@ -19,6 +20,7 @@ import {
 } from "./skill-resource-paths.js";
 
 const SKILL_NOT_AVAILABLE = "SKILL_NOT_AVAILABLE";
+const CATALOG_NOTE = "qa-surface:available-skills";
 
 function escapeXml(value: string): string {
   return value
@@ -150,6 +152,8 @@ export function installQaSkillPolicy(
   let disposePaths: () => void = () => undefined;
   let disposePrompt: () => void = () => undefined;
   let disposeGesture: () => void = () => undefined;
+  const catalog = renderCatalog(visible);
+  let catalogCarried = false;
   try {
     disposePaths = agent.ctx.tools.guard((execution) => {
       if (execution.name !== "read") return undefined;
@@ -157,7 +161,7 @@ export function installQaSkillPolicy(
       return skillResourcePathHint(args?.file_path, loadedResources);
     });
     disposePrompt = agent.ctx.systemPrompt.section({
-      name: "qa-surface:available-skills",
+      name: CATALOG_NOTE,
       order: 2_750,
       text: renderCatalog(visible),
     });
@@ -174,8 +178,46 @@ export function installQaSkillPolicy(
         _payload: { readonly messages: UserMessage[] },
         next: () => Promise<PreStepDecision>,
       ): Promise<PreStepDecision> => {
-        const decision = await next();
+        let decision = await next();
         if (decision.kind === "reject") return decision;
+        // A complete persona drops system-prompt sections. Carry the same
+        // filtered catalog in the conversation, as the other QA notes do.
+        // The durable surface also prevents duplication after a plugin reload.
+        if (!catalogCarried && catalog !== "") {
+          const messages = [
+            ...agent.session.surface.nodes.flatMap((seq) => {
+              const event = agent.session.eventAt(seq);
+              return event?.type === "user/message" ? [event.data] : [];
+            }),
+            ...decision.messages,
+          ];
+          catalogCarried = messages.some(
+            ({ source }) =>
+              source.kind === "qa-notes" &&
+              source.form === "snapshot" &&
+              source.sections.some(
+                (section) =>
+                  section.name === CATALOG_NOTE && section.text === catalog,
+              ),
+          );
+          if (!catalogCarried) {
+            decision = {
+              ...decision,
+              messages: [
+                ...decision.messages,
+                createUserMessage({
+                  content: [{ type: "text", text: catalog }],
+                  source: {
+                    kind: "qa-notes",
+                    form: "snapshot",
+                    sections: [{ name: CATALOG_NOTE, text: catalog }],
+                  },
+                }),
+              ],
+            };
+            catalogCarried = true;
+          }
+        }
         if (
           !decision.messages.some(
             (message) => invokedSkill(message) !== undefined,

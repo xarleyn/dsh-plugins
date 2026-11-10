@@ -177,12 +177,16 @@ export function qaUserWorkspaceDenial(
   readPolicy: QaUserWorkspaceReadPolicy = {},
 ): string | undefined {
   const args = record(execution.arguments);
+  const pathDenial =
+    `${PATH_DENIAL} Personal workspace: ${root}. ` +
+    `Shared read-only roots: ${(readPolicy.sharedReadOnlyRoots ?? []).join(", ") || "none"}. ` +
+    "Use an exact path under an allowed root; writes stay in the personal workspace. Attachment access requires the exact file supplied by this conversation.";
   if (
     args?.sandbox_permissions !== undefined ||
     (execution.name === "edit" &&
       (args?.replace_all === true || args?.replaceAll === true))
   ) {
-    return PATH_DENIAL;
+    return pathDenial;
   }
   if (
     execution.name === "bash" ||
@@ -193,7 +197,7 @@ export function qaUserWorkspaceDenial(
     execution.name === "lsp" ||
     execution.name === "apply_patch"
   ) {
-    return PATH_DENIAL;
+    return pathDenial;
   }
   const intent = qaFilesystemIntent(execution.name, args);
   try {
@@ -228,7 +232,7 @@ export function qaUserWorkspaceDenial(
       ) {
         continue;
       }
-      return PATH_DENIAL;
+      return pathDenial;
     }
     if (intent?.kind === "write") {
       const requested = intent.bytes;
@@ -242,6 +246,6 @@ export function qaUserWorkspaceDenial(
     }
     return undefined;
   } catch {
-    return PATH_DENIAL;
+    return pathDenial;
   }
 }

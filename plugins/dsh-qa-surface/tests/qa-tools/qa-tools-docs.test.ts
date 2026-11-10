@@ -194,7 +194,26 @@ describe("docs_search", () => {
     );
     expect(error.code).toBe("invalid-request");
     expect(error.message).toContain("grouping or repetition");
+    expect(error.message).toContain('Rejected token: "("');
     cleanup();
+  });
+
+  it("identifies a quantifier without blaming supported alternatives", async () => {
+    const { workspace, cleanup } = fixture();
+    try {
+      const root = await rootOf(workspace);
+      const error = await refusal(
+        searchDocumentation(root, { query: "token.*|other" }),
+      );
+      expect(error.message).toContain('Rejected token: "*"');
+      expect(error.message).toContain("| itself is supported");
+      const corrected = await searchDocumentation(root, {
+        query: "token|other",
+      });
+      expect(corrected.hits.length).toBeGreaterThan(0);
+    } finally {
+      cleanup();
+    }
   });
 
   it("keeps only the requested version", async () => {

@@ -138,7 +138,12 @@ async function setup(options: {
   }
   const agent = {
     id: "agent-a",
-    session: { id: "session-a", header: { cwd: process.cwd() } },
+    session: {
+      id: "session-a",
+      header: { cwd: process.cwd() },
+      surface: { nodes: [] },
+      eventAt: () => undefined,
+    },
   } as unknown as Agent;
   await ctx.plugin(
     Object.assign(
@@ -302,6 +307,53 @@ describe("QA skill policy consumer", () => {
     expect(ctx.tools.get("skill", agent)?.description).toBe(
       "unfiltered loader",
     );
+  });
+
+  it("carries the filtered catalog when a complete persona drops other sections", async () => {
+    const { ctx, agent, discovered, grants } = await setup({});
+    ctx.systemPrompt.section({
+      name: "complete-persona",
+      order: 1,
+      complete: true,
+      text: "Only this persona survives.",
+    });
+    const dispose = installQaSkillPolicy({
+      agent,
+      policy,
+      discovered,
+      grants,
+      logger: logger(),
+    });
+    const assembly = await ctx.systemPrompt.assemble({ scope: agent });
+    expect(JSON.stringify(assembly.sections)).not.toContain(
+      "<available_skills>",
+    );
+    const first = await propose(ctx, agent, []);
+    expect(first.kind).toBe("enter");
+    if (first.kind === "reject") throw new Error("unexpected rejection");
+    const text = JSON.stringify(first.messages);
+    expect(text).toContain("<available_skills>");
+    expect(text).toContain("allowed-skill");
+    expect(text).not.toContain("hidden-skill");
+    const second = await propose(ctx, agent, []);
+    expect(second).toEqual({ kind: "enter", messages: [] });
+    dispose();
+    Object.assign(agent.session, {
+      surface: { nodes: [1] },
+      eventAt: () => ({ type: "user/message", data: first.messages[0] }),
+    });
+    const reload = installQaSkillPolicy({
+      agent,
+      policy,
+      discovered,
+      grants,
+      logger: logger(),
+    });
+    expect(await propose(ctx, agent, [])).toEqual({
+      kind: "enter",
+      messages: [],
+    });
+    reload();
   });
 
   it("refuses a strict skill and hands over no instructions", async () => {

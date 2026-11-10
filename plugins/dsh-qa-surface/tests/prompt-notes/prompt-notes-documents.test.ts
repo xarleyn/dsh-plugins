@@ -23,6 +23,9 @@ describe("attached documents note", () => {
     // The tools the routing depends on, the plain reader's refusal as the
     // expected answer, and the report to make when the pipeline refuses.
     expect(text).toContain("document_inspect");
+    expect(text).toContain("read_image");
+    expect(text).toContain("files/<shard>/<sha>/<name>");
+    expect(text).toContain("objects/<sha>");
     expect(text).toContain("document_to_markdown");
     expect(text).toContain("spreadsheet_inspect");
     expect(text).toContain("spreadsheet_read");

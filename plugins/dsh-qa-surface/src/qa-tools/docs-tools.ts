@@ -165,7 +165,7 @@ const INVALID_QUERY = "no query was given: pass the phrase to look for.";
 const INVALID_PATTERN =
   "the search query is not a valid regular expression. Use grep-style syntax, for example `brigadir|brigada`, and escape punctuation that should be literal.";
 const UNSAFE_PATTERN =
-  "the search query uses grouping or repetition, which this bounded search does not execute. Use safe grep-style alternatives such as `brigadir|brigada`, character classes or anchors.";
+  "the search query uses grouping or repetition, which this bounded search does not execute. Remove unescaped parentheses and quantifiers (*, +, ?, {n}, including .* and .+). Keep | alternatives of single keywords, character classes and anchors; | itself is supported. Escape punctuation that should be literal.";
 const QUERY_TOO_LONG = `the search query is longer than ${MAX_QUERY_PATTERN_CHARS} characters. Narrow the regular expression and try again.`;
 const OUTSIDE_DOCS = `this path resolves outside the documentation tree (${QA_DOCS_DIRECTORY}/) this stand reads. Documentation is only read where the stand publishes it; pass a path inside ${QA_DOCS_DIRECTORY}/.`;
 
@@ -541,7 +541,7 @@ function clamp(value: number | undefined, low: number, high: number): number {
  * rejected before compilation instead of letting a model-supplied nested
  * quantifier block the Host on a long documentation line.
  */
-function isSafeSearchPattern(query: string): boolean {
+function unsafeSearchToken(query: string): string | undefined {
   let escaped = false;
   let inClass = false;
   for (const character of query) {
@@ -561,9 +561,9 @@ function isSafeSearchPattern(query: string): boolean {
       inClass = false;
       continue;
     }
-    if (!inClass && "()*+?{}".includes(character)) return false;
+    if (!inClass && "()*+?{}".includes(character)) return character;
   }
-  return true;
+  return undefined;
 }
 
 export interface QaDocsSearchRequest {
@@ -769,8 +769,12 @@ export async function searchDocumentation(
   if (query.length > MAX_QUERY_PATTERN_CHARS) {
     throw new QaDocsError("invalid-request", QUERY_TOO_LONG);
   }
-  if (!isSafeSearchPattern(query)) {
-    throw new QaDocsError("invalid-request", UNSAFE_PATTERN);
+  const unsafeToken = unsafeSearchToken(query);
+  if (unsafeToken !== undefined) {
+    throw new QaDocsError(
+      "invalid-request",
+      `${UNSAFE_PATTERN} Rejected token: ${JSON.stringify(unsafeToken)}.`,
+    );
   }
   let pattern: RegExp;
   try {

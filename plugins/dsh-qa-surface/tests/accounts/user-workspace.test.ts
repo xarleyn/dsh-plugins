@@ -139,6 +139,15 @@ describe("per-user QA workspace", () => {
     const readPolicy = {
       sharedReadOnlyRoots: [docs, code],
     };
+    const denial = qaUserWorkspaceDenial(
+      { name: "grep", arguments: { path: outside } },
+      root,
+      undefined,
+      readPolicy,
+    );
+    expect(denial).toContain(`Personal workspace: ${root}`);
+    expect(denial).toContain(`Shared read-only roots: ${docs}, ${code}`);
+    expect(denial).not.toContain(outside);
 
     for (const execution of [
       { name: "read", arguments: { file_path: path.join(docs, "guide.md") } },
