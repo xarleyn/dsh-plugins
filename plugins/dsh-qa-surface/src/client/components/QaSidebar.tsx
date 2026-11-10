@@ -7,6 +7,10 @@ import { QaSettingsButton } from "../user-settings/fields.js";
 import { QA_VERSION, QaChangelogModal } from "./QaChangelog.js";
 import { QaModal } from "./QaModal.js";
 import { QaChatActions } from "./QaChatActions.js";
+import {
+  QaHistoryCatalog,
+  type QaHistoryRowActions,
+} from "./QaHistoryCatalog.js";
 import { relativeTime } from "./format.js";
 import { QaSidebarHandle, useQaSidebarWidth } from "./QaWidthHandle.js";
 
@@ -119,6 +123,8 @@ export interface QaSidebarProps {
   readonly logoUrl: string | null;
   /** Storage prefix used to remember the collapsed state across reloads. */
   readonly stateKey: string;
+  /** Deployment and account scoped key for virtual history metadata. */
+  readonly organizationKey?: string;
   readonly showNewChat: boolean;
   readonly busy: boolean;
   readonly onSwitch: (sessionId: string) => void;
@@ -227,16 +233,6 @@ function ChevronIcon() {
   );
 }
 
-function rowMatches(row: QaChatRow, query: string): boolean {
-  // The whole name, not just what the row had room for: a chat whose row reads
-  // «Напиши двадцать…» is still found by the tail of its title.
-  return (
-    row.title.toLowerCase().includes(query) ||
-    (row.fullName?.toLowerCase().includes(query) ?? false) ||
-    row.ownerName?.toLowerCase().includes(query) === true
-  );
-}
-
 /**
  * How each chat is named by the controls acting on it, keyed by id. A title is
  * not unique — every chat reads «Новый чат» until its first answer lands — so
@@ -292,6 +288,8 @@ export function sameChatRows(
     return (
       row.id === other.id &&
       row.title === other.title &&
+      row.fullName === other.fullName &&
+      row.shareable === other.shareable &&
       row.running === other.running &&
       row.active === other.active &&
       row.meta === other.meta &&
@@ -362,19 +360,11 @@ export const QaSidebar = memo(
     }
     const normalizedQuery = query.trim().toLowerCase();
     const chatNames = nameChats(props.rows);
-    const visibleRows =
-      normalizedQuery === ""
-        ? props.rows
-        : props.rows.filter((row) => rowMatches(row, normalizedQuery));
     const confirmingRow =
       confirmingId === null
         ? undefined
         : props.rows.find((row) => row.id === confirmingId);
-    const sections: readonly QaSidebarSection[] =
-      props.groupByOwner === true
-        ? buildOwnerSections(visibleRows)
-        : [{ name: "", rows: visibleRows }];
-    const renderRow = (row: QaChatRow) => {
+    const renderRow = (row: QaChatRow, organization: QaHistoryRowActions) => {
       const name = nameOfChat(chatNames, row);
       return (
         <div
@@ -401,6 +391,16 @@ export const QaSidebar = memo(
               className="dsh-qa-sidebar__item-title"
               data-testid="qa-surface-sidebar-item-title"
             >
+              {organization.pinned ? (
+                <svg
+                  className="dsh-qa-history__pin"
+                  viewBox="0 0 16 16"
+                  role="img"
+                  aria-label="Закреплённый чат"
+                >
+                  <path d="m6 2 6 6-2 1-2 3-1-3-3-1 3-2-1-4ZM7 9l-4 4" />
+                </svg>
+              ) : null}
               {row.title}
             </span>
             <span
@@ -431,20 +431,26 @@ export const QaSidebar = memo(
                   />
                 );
               })()}
-          {row.shareable && props.onShare !== undefined ? (
-            <QaChatActions
-              name={name}
-              onShare={() => props.onShare?.(row.id)}
-              {...(props.onDelete === undefined
-                ? {}
-                : {
-                    onDelete: (trigger: HTMLButtonElement) => {
-                      deleteTrigger.current = trigger;
-                      setConfirmingId(row.id);
-                    },
-                  })}
-            />
-          ) : props.onDelete === undefined ? null : (
+          <QaChatActions
+            name={name}
+            organization={organization}
+            {...(row.shareable && props.onShare !== undefined
+              ? {
+                  onShare: () => props.onShare?.(row.id),
+                  ...(props.onDelete === undefined
+                    ? {}
+                    : {
+                        onDelete: (trigger: HTMLButtonElement) => {
+                          deleteTrigger.current = trigger;
+                          setConfirmingId(row.id);
+                        },
+                      }),
+                }
+              : {})}
+          />
+          {row.shareable &&
+          props.onShare !== undefined ? null : props.onDelete ===
+            undefined ? null : (
             <button
               type="button"
               className="dsh-qa-sidebar__item-delete"
@@ -584,39 +590,20 @@ export const QaSidebar = memo(
           // restarting from the top of the document.
           tabIndex={-1}
         >
-          {props.rows.length === 0 ? (
-            <p
-              className="dsh-qa-sidebar__empty"
-              data-testid="qa-surface-sidebar-empty"
-            >
-              Здесь пока пусто
-            </p>
-          ) : visibleRows.length === 0 ? (
-            <p
-              className="dsh-qa-sidebar__empty"
-              data-testid="qa-surface-sidebar-empty"
-            >
-              Ничего не найдено
-            </p>
-          ) : (
-            sections.map((section) => (
-              <div
-                key={section.name || "__all"}
-                className="dsh-qa-sidebar__group"
-                data-testid="qa-surface-sidebar-group"
-              >
-                {section.name === "" ? null : (
-                  <div
-                    className="dsh-qa-sidebar__group-name"
-                    data-testid="qa-surface-sidebar-group-name"
-                  >
-                    {section.name} ({section.rows.length})
-                  </div>
-                )}
-                {section.rows.map(renderRow)}
-              </div>
-            ))
-          )}
+          <QaHistoryCatalog
+            key={props.organizationKey ?? props.stateKey}
+            storageKey={
+              props.organizationKey ?? `${props.stateKey}:history:anonymous`
+            }
+            rows={props.rows}
+            query={normalizedQuery}
+            sectionsOf={(rows) =>
+              props.groupByOwner
+                ? buildOwnerSections(rows)
+                : [{ name: "", rows }]
+            }
+            renderRow={renderRow}
+          />
         </div>
         <div
           className="dsh-qa-sidebar__footer"
@@ -727,6 +714,7 @@ export const QaSidebar = memo(
     prev.title === next.title &&
     prev.logoUrl === next.logoUrl &&
     prev.stateKey === next.stateKey &&
+    prev.organizationKey === next.organizationKey &&
     prev.showNewChat === next.showNewChat &&
     prev.busy === next.busy &&
     prev.drawerOpen === next.drawerOpen &&

@@ -4,6 +4,7 @@ import { AUDIT_UI_STYLES } from "@yadsh/dsh-audit-ui";
 import { KATEX_CSS } from "./markdown/katex-css.js";
 import { sourceFiltersStyles } from "./source-filters-styles.js";
 import { requestWaitStyles } from "./request-wait-styles.js";
+import { historyOrganizationStyles } from "./history-organization-styles.js";
 
 /**
  * Company interaction palette ("Цвета взаимодействия" guideline) — the single
@@ -1087,6 +1088,7 @@ ${QA_ADMIN_CONSOLE_STYLES}
 export const QA_ROOT_STYLES = `${QA_SURFACE_STYLES}
 ${sourceFiltersStyles}
 ${requestWaitStyles}
+${historyOrganizationStyles}
 ${KATEX_CSS}
 ${AUDIT_UI_STYLES}`;
 

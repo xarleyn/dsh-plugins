@@ -12,6 +12,7 @@ import {
 import { networkInterfaces, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { runHistoryBrowserPass } from "./smoke-history-browser.mjs";
 import {
   freePort,
   requestWithAuthority,
@@ -912,6 +913,7 @@ async function runBrowserPass({
       );
     }
     await expectChosenThemeIsVisible("after the reload");
+    await runHistoryBrowserPass({ page, choosePalette });
     // The Host booted this document under a dark OS; QA restored the stored
     // light choice above. Leaving the route must return that borrowed native
     // palette, which is visibly different from the browser's QA preference.
@@ -1037,6 +1039,7 @@ try {
       agentPreset: minimal
     ui:
       showReset: false
+      showSessionList: true
     lockdown:
       enabled: true
       sandboxMode: read-only
@@ -1117,11 +1120,29 @@ try {
   if (packageEntry === undefined || batch === undefined) {
     throw new Error("packed QA client was absent from the DSH client graph");
   }
-  const bundleResponse = await fetch(new URL(batch.url, `${origin}/`), {
-    headers: { cookie },
-  });
+  let bundleResponse = await fetch(
+    `${origin}/plugins/${packageName}/client.js`,
+    {
+      headers: { cookie },
+    },
+  );
+  // Hosts serving revisioned combinations expose only the exact URLs from
+  // their boot graph. A missing individual endpoint can use that advertised
+  // batch, while every other refusal still fails the check below.
+  if (bundleResponse.status === 404) {
+    bundleResponse = await fetch(new URL(batch.url, `${origin}/`), {
+      headers: { cookie },
+    });
+  }
   const bundle = await bundleResponse.text();
-  if (!bundleResponse.ok || !bundle.includes(`id: "${packageName}"`)) {
+  // The packed client is minified; whitespace and quote style are not part of
+  // the loader contract. Assert the complete scoped registration itself.
+  if (
+    !bundleResponse.ok ||
+    !/window\.__ModuleLoader__\.load\(\{\s*id:\s*["'`]@yadsh\/dsh-qa-surface["'`]/u.test(
+      bundle,
+    )
+  ) {
     throw new Error(
       `scoped client bundle was not served with its full module id: ${bundleResponse.status} ${bundle.slice(0, 300)}`,
     );

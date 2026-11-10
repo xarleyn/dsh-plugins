@@ -23,6 +23,20 @@ Session and Agent Loop.
 
 ## What it does
 
+Chat history supports virtual folders and a separate pinned section. Create,
+rename, collapse and delete folders; drag chats into folders, out to the root,
+or into the pinned section. Drag rows or folder headers to arrange them, or use
+the chat menu and folder settings with a keyboard. Unpinning returns a chat to
+its previous folder. Moving a pinned chat into a folder unpins it. Deleting a
+folder leaves its chats in history, preserving any pins. Search includes folder
+names and reveals matching chats inside collapsed folders.
+
+This organization is browser-local and scoped to the QA route and account ID.
+It survives reloads and updates other tabs on the same origin through storage
+events; it does not synchronize between devices. Folder membership and pins
+change only presentation metadata: session IDs, workspace roots, physical files,
+ownership and access remain as they were.
+
 Corporate sign-in through Keycloak or another OpenID Connect provider is opt-in.
 The source tree includes `plugins/dsh-qa-surface/docs/oidc.md` with client settings,
 account linking, role admission, session limits and deployment acceptance.

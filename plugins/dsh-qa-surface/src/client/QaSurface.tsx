@@ -1773,6 +1773,7 @@ export function QaSurface(props: QaSurfaceProps) {
             title={config.branding.title}
             logoUrl={config.branding.logoUrl}
             stateKey={stateKey}
+            organizationKey={`${stateKey}:history:${accountsSnapshot.stage === "authed" ? accountsSnapshot.user.id : "anonymous"}`}
             showNewChat={allowNewChat}
             busy={state.phase === "creating"}
             drawerOpen={historyOpen}
