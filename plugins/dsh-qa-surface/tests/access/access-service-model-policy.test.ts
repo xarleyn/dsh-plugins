@@ -12,6 +12,50 @@ import { harness } from "./access-service.helpers.js";
  * where no layer spoke.
  */
 describe("the model policy of a QA role", () => {
+  it("keeps a nested expert on its owning account's model, but does not inherit across a human fork", async () => {
+    const live = new Map([
+      ["expert-1", { parentSession: "session-root", origin: "subagent" }],
+      ["expert-2", { parentSession: "expert-1", origin: "subagent" }],
+      ["human-fork", { parentSession: "session-root", isSeeded: true }],
+    ]);
+    const { service, admin, user } = harness({
+      live,
+      session: { provider: "premium", model: "top" },
+    });
+    await service.updateAssignment(admin.token, user.user.id, {
+      allowedSubroles: ["general"],
+      defaultSubrole: "general",
+      model: { provider: "local", model: "small" },
+    });
+    service.reserveSession(user.token, "session-root", null, false);
+    expect(service.modelPolicyFor("expert-2")).toMatchObject({
+      pair: { provider: "local", model: "small" },
+      layer: "account",
+    });
+    expect(service.modelPolicyFor("human-fork")).toMatchObject({
+      pair: { provider: "premium", model: "top" },
+      layer: "deployment",
+    });
+  });
+  it("applies one deployment redirect to saved account pins without rewriting each user", async () => {
+    const old = { provider: "local", model: "retired" };
+    const next = { provider: "local", model: "small" };
+    const { service, admin, user, accounts } = harness({
+      session: { modelReplacements: [{ from: old, to: next }] },
+    });
+    await service.updateAssignment(admin.token, user.user.id, {
+      allowedSubroles: ["general"],
+      defaultSubrole: "general",
+      model: old,
+    });
+    service.reserveSession(user.token, "session-old-pin", null, false);
+    expect(accounts.accessOf(user.user.id)?.model).toEqual(old);
+    expect(service.modelPolicyFor("session-old-pin")).toMatchObject({
+      pair: next,
+      layer: "account",
+      redirectedFrom: old,
+    });
+  });
   it("opens each role's chat on the pair that role was given", async () => {
     const { service, accounts, admin, user } = harness();
     await service.createSubrole(admin.token, {

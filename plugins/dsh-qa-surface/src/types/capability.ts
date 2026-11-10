@@ -136,6 +136,12 @@ export interface QaModelPair {
   readonly reasoningEffort?: string;
 }
 
+/** Operator-defined replacement of one exact provider/model pair. */
+export interface QaModelReplacement {
+  readonly from: QaModelPair;
+  readonly to: QaModelPair;
+}
+
 /** One agent capability profile. It never grants administrative access. */
 export interface QaSubrole {
   readonly id: string;

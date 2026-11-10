@@ -38,6 +38,7 @@ import {
   normalizeModelPair,
   projectModelCatalog,
   resolveModelPolicy,
+  replaceModelPair,
   type QaSessionModelPolicy,
 } from "./model-policy.js";
 import {
@@ -952,6 +953,21 @@ export class QaAccessService {
    * @param sessionId - the chat being opened.
    */
   modelPolicyFor(sessionId: string): QaSessionModelPolicy {
+    // Only Host-recorded delegated lineage inherits a chat's model policy.
+    // A human fork remains its own chat and resolves its own account/role.
+    const seen = new Set<string>();
+    for (let depth = 0; depth < 64; depth += 1) {
+      if (seen.has(sessionId)) break;
+      seen.add(sessionId);
+      const header = this.ctx.sessions?.get(SessionId(sessionId))?.header;
+      if (
+        header === undefined ||
+        !qaDelegatedHeader(header) ||
+        header.parentSession === undefined
+      )
+        break;
+      sessionId = String(header.parentSession);
+    }
     const config = this.roles.snapshot();
     const accounts = this.options.accounts();
     const ownerId = accounts?.ownerIdOf(sessionId);
@@ -962,14 +978,17 @@ export class QaAccessService {
     const subroleId =
       accounts?.sessionAccess(sessionId)?.subroleId ??
       assignment?.defaultSubrole;
-    return resolveModelPolicy({
-      account: assignment?.model,
-      subrole:
-        subroleId === undefined
-          ? undefined
-          : config.subroles.find(({ id }) => id === subroleId)?.model,
-      deployment: deploymentModelPair(this.options.config().session),
-    });
+    return resolveModelPolicy(
+      {
+        account: assignment?.model,
+        subrole:
+          subroleId === undefined
+            ? undefined
+            : config.subroles.find(({ id }) => id === subroleId)?.model,
+        deployment: deploymentModelPair(this.options.config().session),
+      },
+      this.options.config().session.modelReplacements,
+    );
   }
 
   /**
@@ -995,7 +1014,7 @@ export class QaAccessService {
    */
   private async requireServablePair(pair: QaModelPair): Promise<void> {
     assertModelPairAvailable(
-      pair,
+      replaceModelPair(pair, this.options.config().session.modelReplacements),
       projectModelCatalog(await this.ctx.sessionController.modelCatalog()),
     );
   }

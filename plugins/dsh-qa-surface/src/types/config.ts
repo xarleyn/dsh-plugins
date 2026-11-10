@@ -1,4 +1,5 @@
 import type { QaAccountIdentityField } from "./accounts.js";
+import type { QaModelReplacement } from "./capability.js";
 import type {
   QaApprovalInteraction,
   QaApprovalPolicy,
@@ -135,6 +136,8 @@ export interface QaSurfaceConfig {
     readonly provider?: string | null;
     readonly model?: string | null;
     readonly reasoningEffort?: string | null;
+    /** Exact central redirects applied after account/role/deployment precedence. */
+    readonly modelReplacements?: readonly QaModelReplacement[];
     /**
      * How many chat turns the deployment answers at once. A ceiling is what a
      * locally hosted model needs: the card runs out long before the queue does,
@@ -417,6 +420,7 @@ export interface ResolvedQaSurfaceConfig {
     readonly provider: string | null;
     readonly model: string | null;
     readonly reasoningEffort: string | null;
+    readonly modelReplacements: readonly QaModelReplacement[];
     readonly maxActiveRequests: number;
   };
   readonly ui: {

@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { Context } from "@deepseek-ai/cordis";
 import type { PluginLogger } from "@yadsh/dsh-plugin-log";
-import { applySessionModelPolicy } from "../../src/session-model.js";
+import {
+  applySessionModelPolicy,
+  reconcileSessionModelPolicy,
+  sessionModelSelection,
+} from "../../src/session-model.js";
 import { resolveModelPolicy } from "../../src/access/model-policy.js";
+import type { Agent } from "@deepseek-ai/dsh-agent";
 
 /**
  * The moment a chat is put on the pair its policy names — before the Host has
@@ -39,6 +44,69 @@ function stand(pair: { provider: string; model: string }) {
 }
 
 describe("opening a chat on its policy's pair", () => {
+  it("reads the Host's pending selection ahead of immutable creation options and last-used state", () => {
+    const old = { provider: "local", model: "old-model" };
+    const next = { provider: "local", model: "new-model" };
+    let pending: typeof next | null = next;
+    const ctx = {
+      get: () => ({ stateOf: () => ({ pending, lastUsed: old }) }),
+    } as unknown as Context;
+    const agent = { session: {}, options: old } as unknown as Agent;
+    expect(sessionModelSelection(ctx, agent)).toEqual(next);
+    pending = null;
+    expect(sessionModelSelection(ctx, agent)).toEqual(old);
+    expect(agent.options).toBe(old);
+  });
+  it("repairs an idle session only through the operator's exact redirect", async () => {
+    const old = { provider: "local", model: "old-model" };
+    const next = { provider: "local", model: "new-model" };
+    const rules = [{ from: old, to: next }];
+    const fake = stand(next);
+    const policy = resolveModelPolicy({ account: old }, rules);
+    expect(
+      await reconcileSessionModelPolicy(
+        fake.ctx,
+        "session-1" as never,
+        policy,
+        {
+          status: "idle",
+          options: old,
+          runMaintenance: (task) => task(new AbortController().signal),
+        },
+        rules,
+        fake.logger,
+      ),
+    ).toBe(true);
+    expect(fake.selected).toEqual([{ sessionId: "session-1", ...next }]);
+  });
+  it("leaves running sessions and unrelated model choices unchanged", async () => {
+    const old = { provider: "local", model: "old-model" };
+    const next = { provider: "local", model: "new-model" };
+    const rules = [{ from: old, to: next }];
+    const fake = stand(next);
+    const policy = resolveModelPolicy({ deployment: next }, rules);
+    for (const current of [
+      { status: "running", options: old },
+      {
+        status: "idle",
+        options: { provider: "other", model: "private-model" },
+      },
+    ])
+      expect(
+        await reconcileSessionModelPolicy(
+          fake.ctx,
+          "session-1" as never,
+          policy,
+          {
+            ...current,
+            runMaintenance: (task) => task(new AbortController().signal),
+          },
+          rules,
+          fake.logger,
+        ),
+      ).toBe(false);
+    expect(fake.selected).toEqual([]);
+  });
   it("selects the pair the role named, effort included", async () => {
     const fake = stand({ provider: "deepseek", model: "chat" });
     const applied = await applySessionModelPolicy(

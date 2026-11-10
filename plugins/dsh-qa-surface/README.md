@@ -546,6 +546,34 @@ then collapses to `Worked for ...` before the final answer. Tool capability is
 still controlled exclusively by `lockdown.toolPolicy.allow`; the display flags
 do not grant tools.
 
+When a provider retires a model identifier, `session.modelReplacements` defines
+exact central redirects after account → role → deployment precedence:
+
+```yaml
+session:
+  provider: local
+  model: model-v2
+  modelReplacements:
+    - from:
+        provider: local
+        model: model-v1
+      to:
+        provider: local
+        model: model-v2
+```
+
+The rule covers saved account and role pins as well as the deployment default;
+unrelated pairs keep their own selection. The terminal target must exist in the
+Host catalog. Cycles and duplicate sources are configuration errors. Chained
+redirects let a later transition cover older pins without editing every account;
+retain a rule while stored policies still refer to its source. The stored pins
+remain intact. New chats use the replacement immediately. On access attestation,
+an idle owned QA chat can move along an exact redirect to its current policy;
+an active turn is left unchanged. Ownership, workspace and adoption checks still
+precede reconciliation. A missing target fails explicitly instead of selecting
+another model from catalog order. The journal records the original and applied
+pairs, and delegated experts resolve the owning chat's policy through Host lineage.
+
 ### User profile
 
 Clicking the account name in the sidebar footer opens the signed-in user's

@@ -1,5 +1,6 @@
 import type { QaSurfaceConfig, ResolvedQaSurfaceConfig } from "../types.js";
 import { DEFAULT_QA_SURFACE_CONFIG } from "./defaults.js";
+import { normalizeModelReplacements } from "../access/model-policy.js";
 import {
   assertIntInRange,
   isAbsoluteDirectoryPath,
@@ -71,6 +72,9 @@ export function resolveSession(input: QaSurfaceConfig): SessionSlice {
     provider,
     model,
     reasoningEffort: optionalText(input.session?.reasoningEffort),
+    modelReplacements: normalizeModelReplacements(
+      input.session?.modelReplacements,
+    ),
     maxActiveRequests,
   });
 }

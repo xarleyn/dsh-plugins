@@ -25,6 +25,10 @@ import {
 } from "./lockdown-policy.js";
 import type { QaResolvedSessionPolicy } from "./access/service.js";
 import {
+  reconcileSessionModelPolicy,
+  sessionModelSelection,
+} from "./session-model.js";
+import {
   deploymentModelPair,
   modelPolicySatisfied,
   resolveModelPolicy,
@@ -598,19 +602,20 @@ export class QaPolicyAdmission {
         config.session.cwd !== null &&
         cwdMatches(agent.session.header.cwd, config.session.cwd));
 
-    const options = agent.options as Agent["options"] & {
-      readonly reasoningEffort?: string;
-    };
+    let options = sessionModelSelection(this.ctx, agent);
     // The pair this chat belongs to is its own policy's, not the deployment's:
     // a role served by another model is admitted on that model, while the
     // switch still refuses a chat that moved outside its policy.
     const modelPolicy =
       this.modelPolicy?.(sessionId) ??
-      resolveModelPolicy({ deployment: deploymentModelPair(config.session) });
-    const modelMatches =
+      resolveModelPolicy(
+        { deployment: deploymentModelPair(config.session) },
+        config.session.modelReplacements,
+      );
+    let modelMatches =
       !lockdown.enforceFixedModel || modelPolicySatisfied(modelPolicy, options);
 
-    if (!agentPresetMatches || !workspaceMatches || !modelMatches) {
+    if (!agentPresetMatches || !workspaceMatches) {
       throw new QaAttestationError(
         "composition-mismatch",
         `composition mismatch: agent=${agentPresetMatches} workspace=${workspaceMatches} model=${modelMatches}`,
@@ -637,6 +642,30 @@ export class QaPolicyAdmission {
         "existing non-QA session cannot be adopted",
       );
     }
+
+    if (
+      !modelMatches &&
+      (await reconcileSessionModelPolicy(
+        this.ctx,
+        SessionId(sessionId),
+        modelPolicy,
+        {
+          status: agent.status,
+          options,
+          runMaintenance: agent.runMaintenance?.bind(agent),
+        },
+        config.session.modelReplacements,
+        this.logger,
+      ))
+    ) {
+      options = sessionModelSelection(this.ctx, agent);
+      modelMatches = modelPolicySatisfied(modelPolicy, options);
+    }
+    if (!modelMatches)
+      throw new QaAttestationError(
+        "composition-mismatch",
+        "composition mismatch: agent=true workspace=true model=false",
+      );
 
     // Resolve and persist a role snapshot only after every Host-owned
     // composition and adoption check passed. A browser cannot make a

@@ -20,7 +20,12 @@ function harness(
     /** Live session headers, for the registry half of the lineage answer. */
     readonly live?: ReadonlyMap<
       string,
-      { readonly createdAt?: number; readonly parentSession?: string }
+      {
+        readonly createdAt?: number;
+        readonly parentSession?: string;
+        readonly origin?: string;
+        readonly isSeeded?: boolean;
+      }
     >;
     /** Durable listing, for the sweep half. */
     readonly sessionLog?: QaSessionLogReader;

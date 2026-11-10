@@ -151,6 +151,24 @@ const configSchema = z.object({
       provider: nullableString.default(D.session.provider),
       model: nullableString.default(D.session.model),
       reasoningEffort: nullableString.default(D.session.reasoningEffort),
+      modelReplacements: z
+        .array(
+          z.object({
+            from: z.object({
+              provider: z.string().required(),
+              model: z.string().required(),
+            }),
+            to: z.object({
+              provider: z.string().required(),
+              model: z.string().required(),
+              reasoningEffort: z.string(),
+            }),
+          }),
+        )
+        .default([])
+        .description(
+          "Exact model replacements for all policy layers. A target must be offered by the Host; unrelated account and role pins remain unchanged.",
+        ),
       maxActiveRequests: z
         .number()
         .step(1)
@@ -158,7 +176,7 @@ const configSchema = z.object({
         .max(QA_MAX_ACTIVE_REQUESTS_MAX)
         .default(D.session.maxActiveRequests),
     })
-    .default({ ...D.session })
+    .default({ ...D.session, modelReplacements: [] })
     .volatile(),
   ui: z
     .object({

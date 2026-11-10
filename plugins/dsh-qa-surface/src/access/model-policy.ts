@@ -1,6 +1,7 @@
 import type {
   QaModelCatalogEntry,
   QaModelPair,
+  QaModelReplacement,
   ResolvedQaSurfaceConfig,
 } from "../types.js";
 
@@ -20,6 +21,7 @@ export type QaModelPolicyLayer = "account" | "subrole" | "deployment";
 export interface QaSessionModelPolicy {
   readonly pair: QaModelPair | undefined;
   readonly layer: QaModelPolicyLayer | undefined;
+  readonly redirectedFrom?: QaModelPair;
 }
 
 /** The session fields of the resolved config, as the policy reads them. */
@@ -86,6 +88,7 @@ export function deploymentModelPair(
  */
 export function resolveModelPolicy(
   layers: Partial<Record<QaModelPolicyLayer, QaModelPair | undefined>>,
+  replacements: readonly QaModelReplacement[] = [],
 ): QaSessionModelPolicy {
   const order: readonly QaModelPolicyLayer[] = [
     "account",
@@ -93,10 +96,61 @@ export function resolveModelPolicy(
     "deployment",
   ];
   const layer = order.find((candidate) => layers[candidate] !== undefined);
+  const original = layer === undefined ? undefined : layers[layer];
+  const pair = replaceModelPair(original, replacements);
   return Object.freeze({
-    pair: layer === undefined ? undefined : layers[layer],
+    pair,
     layer,
+    ...(original !== undefined && pair !== original
+      ? { redirectedFrom: original }
+      : {}),
   });
+}
+
+/** Resolve only explicitly configured exact redirects; never guess from catalog order. */
+export function replaceModelPair(
+  pair: QaModelPair | undefined,
+  replacements: readonly QaModelReplacement[],
+): QaModelPair | undefined {
+  if (pair === undefined) return undefined;
+  let current = pair;
+  const visited = new Set<string>();
+  for (;;) {
+    const key = JSON.stringify([current.provider, current.model]);
+    if (visited.has(key))
+      throw new TypeError("session.modelReplacements contains a cycle");
+    visited.add(key);
+    const next = replacements.find(
+      ({ from }) =>
+        from.provider === current.provider && from.model === current.model,
+    );
+    if (next === undefined) return current;
+    current = next.to;
+  }
+}
+
+export function normalizeModelReplacements(
+  input: readonly QaModelReplacement[] | undefined,
+): readonly QaModelReplacement[] {
+  if (input === undefined) return Object.freeze([]);
+  if (!Array.isArray(input) || input.length > 100)
+    throw new TypeError(
+      "session.modelReplacements must be an array of at most 100 exact replacements",
+    );
+  const keys = new Set<string>();
+  const replacements = input.map((entry, index) => {
+    const label = `session.modelReplacements[${index}]`;
+    const from = normalizeModelPair(entry?.from, `${label}.from`);
+    const to = normalizeModelPair(entry?.to, `${label}.to`);
+    if (from === undefined || to === undefined)
+      throw new TypeError(`${label} needs complete from/to pairs`);
+    const key = JSON.stringify([from.provider, from.model]);
+    if (keys.has(key)) throw new TypeError(`${label} duplicates a source pair`);
+    keys.add(key);
+    return Object.freeze({ from, to });
+  });
+  for (const { from } of replacements) replaceModelPair(from, replacements);
+  return Object.freeze(replacements);
 }
 
 /**
