@@ -7,6 +7,10 @@
   "main": "./lib/index.js",
   "types": "./lib/index.d.ts",
   "exports": {
+    "./code-sources": {
+      "types": "./lib/code-sources.d.ts",
+      "default": "./lib/code-sources.js"
+    },
     ".": {
       "types": "./lib/index.d.ts",
       "default": "./lib/index.js"
