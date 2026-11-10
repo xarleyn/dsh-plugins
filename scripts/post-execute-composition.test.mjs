@@ -13,6 +13,7 @@ process.env.NODE_ENV = "test";
 const cas = await import("@yadsh/dsh-cas-results");
 const offload = await import("@yadsh/dsh-tool-offload");
 const { JevCompactionService } = await import("@yadsh/dsh-jev-compaction");
+const toon = await import("../plugins/dsh-tool-toon/lib/index.js");
 
 const log = [
   "installing dependencies",
@@ -72,6 +73,7 @@ async function listeners(t) {
   );
 
   return {
+    toon: toon.createPostExecuteListener(toon.resolveToolToonConfig(), logger),
     jev,
     cas: cas.createPostExecuteListener({
       store: new cas.FilesystemCasStore(join(root, "cas"), {
@@ -112,6 +114,9 @@ for (const [outerName, innerName] of [
   ["jev", "offload"],
   ["cas", "offload"],
   ["offload", "cas"],
+  ["toon", "cas"],
+  ["toon", "offload"],
+  ["toon", "jev"],
 ]) {
   test(`${outerName} wraps ${innerName} without restoring the original result`, async (t) => {
     const processors = await listeners(t);

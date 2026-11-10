@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Tool Toon",
+    "description": "Lossless TOON formatting for JSON tool results before they enter model context"
+  }
+}
