@@ -3,6 +3,10 @@ import { spawn } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { freePort, rpc, stopProcess, waitFor } from "./smoke-helpers.mjs";
+import {
+  seedFormBrowserFixture,
+  runFormBrowserPass,
+} from "./smoke-form-browser.mjs";
 
 /** A second disposable host exercises account settings and the real HTTP API. */
 export async function runIntegrationFolderBrowserPass(options) {
@@ -28,6 +32,8 @@ export async function runIntegrationFolderBrowserPass(options) {
     integration:
       enabled: true
       requestTimeoutMs: 5000
+    forms:
+      enabled: true
     ui:
       showSessionList: true
 `,
@@ -48,11 +54,11 @@ export async function runIntegrationFolderBrowserPass(options) {
     );
     host.stdout.setEncoding("utf8").on("data", (chunk) => log.push(chunk));
     host.stderr.setEncoding("utf8").on("data", (chunk) => log.push(chunk));
-    const launch = await waitFor(
+    let launch = await waitFor(
       () => launchToken(log),
       "integration folder host",
     );
-    const cookie = await authenticateBrowser(port, `127.0.0.1:${port}`, launch);
+    let cookie = await authenticateBrowser(port, `127.0.0.1:${port}`, launch);
     const session = await rpc(
       origin,
       "qaSurface/accountsRegister",
@@ -61,6 +67,34 @@ export async function runIntegrationFolderBrowserPass(options) {
       },
       cookie,
     );
+    const formSession = await rpc(
+      origin,
+      "qaSurface/createSession",
+      { args: { token: session.token, subroleId: null, adminPreview: false } },
+      cookie,
+    );
+    await stopProcess(host);
+    host = undefined;
+    const formFixture = await seedFormBrowserFixture(
+      dshEnv.DSH_HOME,
+      formSession,
+      session.user.id,
+    );
+    log.length = 0;
+    host = spawn(
+      process.execPath,
+      [dshBin, "web", "--patch", patch, "--no-open", "--port", String(port)],
+      {
+        cwd: workspacePath,
+        env: dshEnv,
+        windowsHide: true,
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+    host.stdout.setEncoding("utf8").on("data", (chunk) => log.push(chunk));
+    host.stderr.setEncoding("utf8").on("data", (chunk) => log.push(chunk));
+    launch = await waitFor(() => launchToken(log), "form fixture host restart");
+    cookie = await authenticateBrowser(port, `127.0.0.1:${port}`, launch);
     const { chromium } = await import("playwright");
     const { QA_WELCOME_NOTICE_VERSION } =
       await import("../lib/client/components/QaWelcomeNotice.js");
@@ -70,7 +104,11 @@ export async function runIntegrationFolderBrowserPass(options) {
     });
     let page = await context.newPage();
     await context.addInitScript(
-      ({ token, noticeVersion }) => {
+      ({ token, noticeVersion, formSession }) => {
+        globalThis.localStorage.setItem(
+          "dsh-qa-surface.session:v1:/qa:session",
+          formSession,
+        );
         globalThis.localStorage.setItem(
           "dsh-qa-surface.session:v1:/qa:account-token",
           token,
@@ -80,7 +118,11 @@ export async function runIntegrationFolderBrowserPass(options) {
           noticeVersion,
         );
       },
-      { token: session.token, noticeVersion: QA_WELCOME_NOTICE_VERSION },
+      {
+        token: session.token,
+        noticeVersion: QA_WELCOME_NOTICE_VERSION,
+        formSession,
+      },
     );
     await page.goto(`${origin}/?token=${encodeURIComponent(launch)}`);
     await page.goto(`${origin}/qa`);
@@ -110,6 +152,14 @@ export async function runIntegrationFolderBrowserPass(options) {
       exact: true,
     });
     if (await notice.isVisible()) await notice.click();
+    await runFormBrowserPass({
+      page,
+      origin,
+      cookie,
+      token: session.token,
+      sessionId: formSession,
+      formId: formFixture.id,
+    });
     await sidebar.getByTestId("qa-history-create-folder").click();
     await page
       .getByLabel("Название каталога", { exact: true })

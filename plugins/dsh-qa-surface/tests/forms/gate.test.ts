@@ -12,7 +12,7 @@ const cleanup: (() => void)[] = [];
 afterEach(() => {
   for (const f of cleanup.splice(0)) f();
 });
-function setup() {
+function setup(filesAvailable = false) {
   const f = fixture();
   cleanup.push(() => f.close());
   let allowed = true,
@@ -22,6 +22,7 @@ function setup() {
     (id) => (id === "chat-a" ? id : id === "child" ? "chat-a" : undefined),
     () => busy,
     () => allowed,
+    () => filesAvailable,
   );
   cleanup.unshift(() => gate.dispose());
   gate.touch("chat-a");
@@ -46,6 +47,114 @@ function setup() {
   };
 }
 describe("form tool lifecycle", () => {
+  it("validates without a UI poll, waiter, request_key or saved form", async () => {
+    const t = setup();
+    const headless = new QaFormGate(
+      () => t.f.service,
+      (id) => id,
+      () => false,
+      () => true,
+    );
+    cleanup.unshift(() => headless.dispose());
+    const tool = createRequestUserFormTool(headless);
+    expect(
+      await tool.execute({ action: "validate", form: textOnly }, t.exec()),
+    ).toMatchObject({
+      status: "validated",
+      valid: true,
+      interactive_client_ready: false,
+      file_upload_available: false,
+      issues: [],
+    });
+    expect(t.f.store.list("chat-a")).toHaveLength(0);
+    expect(headless.hasSession("chat-a")).toBe(false);
+  });
+  it("separates invalid schema from unavailable file capabilities without creating a draft", async () => {
+    const t = setup();
+    const valid = await t.gate.request(
+      { action: "validate", form: intake },
+      t.exec(),
+    );
+    expect(valid).toMatchObject({
+      status: "validated",
+      valid: true,
+      file_upload_available: false,
+      policy: { allowedExtensions: expect.arrayContaining([".pdf", ".txt"]) },
+    });
+    const invalid = structuredClone(intake);
+    invalid.steps[0]!.items[0]!.files = {
+      requirement: "required",
+      min_count: 1,
+      max_count: 1,
+      accept: ["application/pdf"],
+      max_file_size_bytes: 1000,
+    };
+    expect(
+      await t.gate.request({ action: "validate", form: invalid }, t.exec()),
+    ).toMatchObject({
+      status: "validated",
+      valid: false,
+      issues: [
+        expect.objectContaining({
+          path: "form.steps[0].items[0].files.accept[0]",
+        }),
+      ],
+    });
+    expect(t.f.store.list("chat-a")).toHaveLength(0);
+  });
+  it("still requires feature and main-agent admission for validation", async () => {
+    const t = setup();
+    const args = { action: "validate", form: textOnly };
+    await expect(t.gate.request(args, t.exec("child"))).rejects.toThrow(
+      /main agent/u,
+    );
+    t.allowed(false);
+    await expect(t.gate.request(args, t.exec())).rejects.toThrow(
+      /unavailable/u,
+    );
+    t.allowed(true);
+    t.f.policy({ enabled: false });
+    await expect(t.gate.request(args, t.exec())).rejects.toThrow(/disabled/u);
+  });
+  it.each(["optional", "required"] as const)(
+    "parks a valid file-only %s form until explicit pause, and validates beside its draft",
+    async (requirement) => {
+      const t = setup(true);
+      const form = structuredClone(textOnly);
+      const item = form.steps[0]!.items[0]!;
+      delete item.answer;
+      item.files = {
+        requirement,
+        max_count: 1,
+        accept: [".txt"],
+        max_file_size_bytes: 1000,
+        ...(requirement === "required" ? { min_count: 1 } : {}),
+      } as typeof item.files;
+      const pending = t.gate.request(
+        { action: "create", request_key: "files", form },
+        t.exec(),
+      );
+      const r = t.f.store.list("chat-a")[0]!;
+      expect(r.status).toBe("draft");
+      expect(r.submission).toBeUndefined();
+      expect(t.gate.waiting(r.id)).toBe(true);
+      expect(
+        await t.gate.request({ action: "validate", form }, t.exec()),
+      ).toMatchObject({
+        status: "validated",
+        valid: true,
+        file_upload_available: true,
+      });
+      expect(t.f.store.list("chat-a")).toHaveLength(1);
+      if (requirement === "required")
+        expect(() => t.f.command(r.id, { action: "submit" })).toThrow(
+          /обязательные/u,
+        );
+      t.gate.notify(t.f.command(r.id, { action: "pause" }), true);
+      expect(await pending).toMatchObject({ status: "paused", form_id: r.id });
+      expect(t.f.store.get("chat-a", r.id).status).toBe("draft");
+    },
+  );
   it("validates the real tool schema and returns a structured submission object", async () => {
     const t = setup(),
       tool = createRequestUserFormTool(t.gate);
@@ -174,7 +283,7 @@ describe("form tool lifecycle", () => {
       () => true,
     );
     await expect(headless.request(create, t.exec())).rejects.toThrow(
-      /Open this chat/u,
+      /No recent QA form poll/u,
     );
     headless.dispose();
   });

@@ -14,9 +14,13 @@ export function createRequestUserFormTool(
   return defineTool({
     name: "request_user_form",
     description:
-      "Collect required answers and item-bound files through a durable step-by-step QA form. create requires request_key and form; resume requires form_id. Only status=submitted with submission_id is completed input. Pauses and cancellation are not success. Resume existing drafts instead of weakening requirements. Only the main QA agent can use this tool.",
+      'Collect answers and item-bound files through a durable step-by-step QA form. First use action=validate with form to check the schema without creating a form or waiting for input. create requires request_key and form; resume requires form_id. Always include form.title as well as step/item titles. Files accept extensions such as [".pdf", ".txt"], never MIME types. Only status=submitted with submission_id is completed input. A submitted form is immutable: resume returns its original snapshot; use a new request_key for new input. Pauses and cancellation are not success. Resume existing drafts instead of weakening requirements. Only the main QA agent can use this tool.',
     parameters: {
-      action: { type: "string", enum: ["create", "resume"], required: true },
+      action: {
+        type: "string",
+        enum: ["create", "resume", "validate"],
+        required: true,
+      },
       request_key: {
         type: "string",
         description:
@@ -28,6 +32,8 @@ export function createRequestUserFormTool(
       },
       form: {
         type: "object",
+        description:
+          "Required for create and validate. Include schema_version=1, a nonempty root title, and steps. validate reports schema issues and current capabilities without collecting answers.",
         additionalProperties: false,
         properties: {
           schema_version: { type: "integer", const: 1, required: true },
@@ -56,6 +62,8 @@ export function createRequestUserFormTool(
                       description: { type: "string" },
                       answer: {
                         type: "object",
+                        description:
+                          "Optional for a file-only item with files.requirement=optional or required. Required when files.requirement=none.",
                         additionalProperties: false,
                         properties: {
                           type: {
@@ -99,11 +107,30 @@ export function createRequestUserFormTool(
                             type: "string",
                             required: true,
                             enum: ["none", "required", "optional"],
+                            description:
+                              "none allows no other file settings. optional requires max_count, accept and max_file_size_bytes; omit min_count. required additionally requires positive min_count.",
                           },
-                          min_count: { type: "integer" },
-                          max_count: { type: "integer" },
-                          accept: { type: "array", items: { type: "string" } },
-                          max_file_size_bytes: { type: "integer" },
+                          min_count: {
+                            type: "integer",
+                            description:
+                              "Positive minimum for required files only; omit for optional and none, including zero.",
+                          },
+                          max_count: {
+                            type: "integer",
+                            description:
+                              "Positive maximum, required for optional and required files.",
+                          },
+                          accept: {
+                            type: "array",
+                            items: { type: "string" },
+                            description:
+                              'Required for optional/required files. Use lowercase extensions, e.g. [".pdf", ".txt"]. MIME types, wildcards, .md and .log are unsupported. validate returns the deployment allowedExtensions policy.',
+                          },
+                          max_file_size_bytes: {
+                            type: "integer",
+                            description:
+                              "Positive byte limit, required for optional and required files.",
+                          },
                         },
                       },
                     },

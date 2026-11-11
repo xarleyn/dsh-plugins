@@ -1,4 +1,8 @@
-import type { QaFormFieldError, QaFormResult } from "./types.js";
+import type {
+  QaFormFieldError,
+  QaFormResult,
+  QaFormSchemaIssue,
+} from "./types.js";
 
 export class QaFormError extends Error {
   constructor(
@@ -6,6 +10,7 @@ export class QaFormError extends Error {
     message: string,
     readonly revision?: number,
     readonly fields?: QaFormFieldError[],
+    readonly schemaIssues?: QaFormSchemaIssue[],
   ) {
     super(message);
   }
@@ -25,6 +30,9 @@ export function formFailure(error: unknown): QaFormResult<never> {
             ...(error.fields === undefined
               ? {}
               : { field_errors: error.fields }),
+            ...(error.schemaIssues === undefined
+              ? {}
+              : { schema_errors: error.schemaIssues }),
           }
         : {
             code: "STORAGE_UNAVAILABLE",

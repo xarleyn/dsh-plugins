@@ -7,7 +7,10 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { QaInputForm } from "../../../src/client/components/QaInputForm.js";
+import {
+  QaInputForm,
+  QaInputForms,
+} from "../../../src/client/components/QaInputForm.js";
 import { QaFormItem } from "../../../src/client/components/QaFormItem.js";
 import type { QaFormApi } from "../../../src/client/forms.js";
 import type { QaFormView } from "../../../src/forms/types.js";
@@ -63,6 +66,85 @@ function setup() {
   return { f, props, view };
 }
 describe("strict form interaction", () => {
+  it("hides a completed form across polls/remounts without resuming or editing it", async () => {
+    const { props, f } = setup();
+    const list = vi.spyOn(props.api, "list");
+    const r = f.store.list("chat-a")[0]!;
+    f.service.command("chat-a", {
+      action: "save",
+      form_id: r.id,
+      expected_revision: r.revision,
+      mutation_id: "answer",
+      answers: { answer: { type: "text", text: "Complete" } },
+      step: 0,
+    });
+    f.service.command("chat-a", {
+      action: "submit",
+      form_id: r.id,
+      expected_revision: f.store.get("chat-a", r.id).revision,
+      mutation_id: "submit",
+    });
+    const mounted = render(<QaInputForms {...props} />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Скрыть отправленную форму" }),
+    );
+    expect(props.onResume).not.toHaveBeenCalled();
+    expect(props.api.mutate).not.toHaveBeenCalled();
+    mounted.unmount();
+    render(<QaInputForms {...props} />);
+    await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
+    expect(
+      screen.queryByRole("button", { name: "Скрыть отправленную форму" }),
+    ).toBeNull();
+    expect(f.store.get("chat-a", r.id).status).toBe("submitted");
+  });
+  it("shows initial polling failures and retries before any form exists", async () => {
+    const { props } = setup();
+    const list = vi.spyOn(props.api, "list");
+    list.mockRejectedValueOnce(new Error("offline"));
+    render(<QaInputForms {...props} />);
+    expect(await screen.findByRole("alert")).toBeDefined();
+    expect(screen.queryByRole("textbox")).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Повторить загрузку форм" }),
+    );
+    await screen.findByRole("textbox");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("reports domain refusals, preserves the existing form and refreshes on focus", async () => {
+    const { props } = setup();
+    const list = vi.spyOn(props.api, "list");
+    render(<QaInputForms {...props} />);
+    await screen.findByRole("textbox");
+    list.mockResolvedValueOnce({
+      ok: true,
+      value: {
+        ok: false,
+        error: { code: "ACCESS_DENIED", message: "Unavailable" },
+      },
+    });
+    fireEvent.focus(window);
+    await screen.findByRole("alert");
+    expect(screen.getByRole("textbox")).toBeDefined();
+    fireEvent.focus(window);
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+  });
+
+  it("does not overlap owner polls while a slow request is pending", async () => {
+    const { props } = setup();
+    const list = vi
+      .spyOn(props.api, "list")
+      .mockImplementation(() => new Promise(() => {}));
+    const rendered = render(<QaInputForms {...props} />);
+    fireEvent.focus(window);
+    fireEvent(document, new Event("visibilitychange"));
+    expect(list).toHaveBeenCalledOnce();
+    rendered.unmount();
+    fireEvent.focus(window);
+    expect(list).toHaveBeenCalledOnce();
+  });
+
   it("has no skip, persists input, reviews and submits with explicit navigation", async () => {
     const { props, f } = setup();
     render(<QaInputForm {...props} />);

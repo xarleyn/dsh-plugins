@@ -105,6 +105,19 @@ export interface QaFormFieldError {
   code: string;
   message: string;
 }
+export interface QaFormSchemaIssue {
+  path: string;
+  code: string;
+  message: string;
+}
+export interface QaFormValidation {
+  status: "validated";
+  valid: boolean;
+  interactive_client_ready: boolean;
+  file_upload_available: boolean;
+  policy: Readonly<QaFormPolicy>;
+  issues: QaFormSchemaIssue[];
+}
 export interface QaFormSubmission {
   status: "submitted";
   form_id: string;
@@ -177,6 +190,7 @@ export type QaFormResult<T> =
         message: string;
         form_revision?: number;
         field_errors?: QaFormFieldError[];
+        schema_errors?: QaFormSchemaIssue[];
       };
     };
 
