@@ -66,6 +66,7 @@ import { QaInputForms } from "./components/QaInputForm.js";
 import type { QaFormApi } from "./forms.js";
 import { QaRequestQueue } from "./components/QaRequestQueue.js";
 import { QaComposer } from "./components/QaComposer.js";
+import { QaModelSelector } from "./components/QaModelSelector.js";
 import { QaQueueDock } from "./components/QaQueueDock.js";
 import { QaRequestWait } from "./components/QaRequestWait.js";
 import { QaHeader, QaSubagentBanner } from "./components/QaHeader.js";
@@ -2180,15 +2181,39 @@ export function QaSurface(props: QaSurfaceProps) {
                       onRemove={handleQueueRemove}
                     />
                     <QaRequestWait status={state.requestQueue} />
-                    {/* Keyed by chat: the composer's draft text is chat-local, so a
-                    switch remounts it empty instead of carrying text across. The
-                    identity is never reused — a controller rebuilt for another chat
-                    hands out a new one — and a draft keeps its own identity while it
-                    creates its session on the first prompt: that is the same chat, and
-                    remounting here would drop the question the Host has not admitted
-                    yet. */}
+                    {/* Keyed by chat: draft input and the model control share the
+                    conversation's lifetime, including draft materialization. */}
                     <QaComposer
                       key={state.chatKey}
+                      modelSelector={
+                        accountsStage === "authed" &&
+                        props.accessApi.userModels !== undefined &&
+                        state.viewingSubagent === null &&
+                        (state.chatAccess === undefined ||
+                          state.chatAccess.mode === "owner") ? (
+                          <QaModelSelector
+                            key={`model:${state.chatKey}`}
+                            api={props.accessApi.userModels}
+                            token={accounts?.token() ?? ""}
+                            sessionId={state.sessionId}
+                            subroleId={selectedSubrole}
+                            preview={previewing || sessionPreview}
+                            disabled={
+                              controller === undefined ||
+                              state.phase === "creating" ||
+                              state.phase === "running" ||
+                              state.compatibilityReadOnly === true ||
+                              state.queue.length > 0 ||
+                              state.requestQueue?.waiting === true
+                            }
+                            onSelect={async (pair) => {
+                              if (controller === undefined)
+                                throw new Error("Чат ещё не открыт.");
+                              return controller.selectModel(pair);
+                            }}
+                          />
+                        ) : null
+                      }
                       fastMode={fastMode}
                       onFastModeChange={setFastMode}
                       placeholder={config.branding.placeholder}

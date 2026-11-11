@@ -126,8 +126,7 @@ export interface QaSkillActivationRecord {
 }
 
 /**
- * One provider and model pair, fixed by policy rather than chosen in the
- * interface. `provider` and `model` are named together or not at all, because
+ * One provider and model pair. `provider` and `model` are named together, because
  * the Host refuses either of them alone.
  */
 export interface QaModelPair {
@@ -150,11 +149,13 @@ export interface QaSubrole {
   readonly enabled: boolean;
   readonly capabilities: QaCapabilitySelection;
   /**
-   * The pair every chat of this role is opened on, whatever the visitor picks
-   * in the interface. Absent means the role keeps no opinion and the
+   * The default pair every new chat of this role opens on.
+   * Absent means the role keeps no opinion and the
    * deployment's pair serves it.
    */
   readonly model?: QaModelPair;
+  /** Additional user-selectable pairs. The default model stays available. */
+  readonly allowedModels?: readonly QaModelPair[];
   readonly ui?: {
     readonly icon?: string;
     readonly accent?: string;
@@ -194,6 +195,16 @@ export interface QaUserAccess {
    * deployment shares. Absent means the account keeps no opinion.
    */
   readonly model?: QaModelPair;
+  /** Overrides the role's alternatives; [] permits only the default model. */
+  readonly allowedModels?: readonly QaModelPair[];
+}
+
+/** Filtered model choices for one owned chat or the caller's next chat. */
+export interface QaModelOptions {
+  readonly models: readonly QaModelCatalogEntry[];
+  readonly choices: readonly QaModelPair[];
+  readonly defaultModel?: QaModelPair;
+  readonly selected?: QaModelPair;
 }
 
 export type QaCapabilitySourceKind =

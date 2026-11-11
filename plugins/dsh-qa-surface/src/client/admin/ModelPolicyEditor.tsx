@@ -30,6 +30,10 @@ export function ModelPolicyEditor(props: {
   /** Prefix of the test ids, so one component serves both editors. */
   readonly testId: string;
   readonly onChange: (value: QaModelPair | undefined) => void;
+  readonly allowedModels?: readonly QaModelPair[];
+  readonly onAllowedModelsChange?: (
+    value: readonly QaModelPair[] | undefined,
+  ) => void;
 }) {
   const models = useAdminResource(
     () => props.api.modelCatalog(props.token),
@@ -62,10 +66,7 @@ export function ModelPolicyEditor(props: {
   }
   return (
     <div data-testid={props.testId}>
-      <FilterField
-        label="Модель этого профиля"
-        testId={`${props.testId}-field`}
-      >
+      <FilterField label="Модель по умолчанию" testId={`${props.testId}-field`}>
         <select
           data-testid={`${props.testId}-pair`}
           disabled={props.disabled}
@@ -125,9 +126,91 @@ export function ModelPolicyEditor(props: {
         </FilterField>
       )}
       <p className="dsh-qa-admin__empty" data-testid={`${props.testId}-hint`}>
-        Пара задаётся до запуска: ей открывается каждый новый чат этого профиля,
-        а не выбор пользователя в интерфейсе.
+        Новый чат начинается с этой модели. Пользователь может сменить её на
+        одну из разрешённых альтернатив. Выбор сохраняется в текущем чате.
       </p>
+      {props.onAllowedModelsChange === undefined ? null : (
+        <fieldset
+          className="dsh-qa-model-policy__alternatives"
+          disabled={props.disabled}
+          data-testid={`${props.testId}-alternatives`}
+        >
+          <legend>Альтернативные модели для пользователя</legend>
+          <label>
+            <input
+              type="checkbox"
+              data-testid={`${props.testId}-inherit-models`}
+              checked={props.allowedModels === undefined}
+              onChange={(event) =>
+                props.onAllowedModelsChange?.(
+                  event.currentTarget.checked ? undefined : [],
+                )
+              }
+            />
+            Наследовать доступные модели
+          </label>
+          <p className="dsh-qa-admin__empty">
+            Аккаунт наследует список роли. Для роли наследование оставляет
+            только модель по умолчанию.
+          </p>
+          {props.allowedModels === undefined
+            ? null
+            : [
+                ...new Map([
+                  ...catalog.map(
+                    (entry) =>
+                      [
+                        entryKey(entry),
+                        {
+                          pair: {
+                            provider: entry.provider,
+                            model: entry.model,
+                          } as QaModelPair,
+                          label: `${entry.provider} / ${entry.label}`,
+                        },
+                      ] as const,
+                  ),
+                  ...props.allowedModels
+                    .filter(
+                      (pair) => !byKey.has(pairKey(pair.provider, pair.model)),
+                    )
+                    .map(
+                      (pair) =>
+                        [
+                          pairKey(pair.provider, pair.model),
+                          {
+                            pair,
+                            label: `${pair.provider} / ${pair.model} (нет в каталоге)`,
+                          },
+                        ] as const,
+                    ),
+                ]).entries(),
+              ].map(([key, entry]) => (
+                <label key={key}>
+                  <input
+                    type="checkbox"
+                    data-testid={`${props.testId}-alternative`}
+                    checked={
+                      props.allowedModels?.some(
+                        (pair) => pairKey(pair.provider, pair.model) === key,
+                      ) ?? false
+                    }
+                    onChange={(event) =>
+                      props.onAllowedModelsChange?.(
+                        event.currentTarget.checked
+                          ? [...(props.allowedModels ?? []), entry.pair]
+                          : (props.allowedModels?.filter(
+                              (pair) =>
+                                pairKey(pair.provider, pair.model) !== key,
+                            ) ?? []),
+                      )
+                    }
+                  />
+                  {entry.label}
+                </label>
+              ))}
+        </fieldset>
+      )}
     </div>
   );
 }

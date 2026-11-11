@@ -18,6 +18,7 @@ import type {
   QaClaimResult,
   QaLockdownProof,
   QaModelCatalogEntry,
+  QaModelOptions,
   QaOwnershipEntry,
   QaPasswordResetRequest,
   QaPendingApproval,
@@ -142,6 +143,12 @@ export type QaQueueStatusRemote = (
 
 /** Role selector plus administrator mutation channel. */
 export interface QaAccessApi {
+  userModels?(
+    token: string,
+    sessionId: string | null,
+    subroleId: string | null,
+    adminPreview: boolean,
+  ): Promise<RemoteResult<QaModelOptions>>;
   current(token: string): Promise<RemoteResult<QaCurrentAccess>>;
   session(
     token: string,

@@ -12,16 +12,48 @@ export type QaModelPolicyLayer = "account" | "subrole" | "deployment";
  * The model policy of one session: the pair its chats open on and the layer
  * that fixed it.
  *
- * That pair is what the fixed-model lockdown holds the session to. It is no
- * longer the deployment's pair, and it is not the model the visitor picked: a
- * role with a pair of its own is served by that pair, while a chat left on a
- * layer some policy has since replaced is outside its policy — exactly as a chat
- * left off the single global pair used to be.
+ * The fixed-model lockdown permits that default and explicitly granted
+ * alternatives. A user choice never changes the default for new chats.
  */
 export interface QaSessionModelPolicy {
   readonly pair: QaModelPair | undefined;
   readonly layer: QaModelPolicyLayer | undefined;
   readonly redirectedFrom?: QaModelPair;
+  readonly allowedModels?: readonly QaModelPair[];
+}
+
+/** Preserve an explicit empty override and reject malformed or excessive grants. */
+export function normalizeAllowedModels(
+  value: readonly QaModelPair[] | undefined,
+  label: string,
+): readonly QaModelPair[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length > 100)
+    throw new TypeError(`${label} must be an array of at most 100 model pairs`);
+  const pairs = value.map((entry, index) => {
+    const pair = normalizeModelPair(entry, `${label}[${index}]`);
+    if (pair === undefined)
+      throw new TypeError(`${label} needs complete pairs`);
+    return pair;
+  });
+  return Object.freeze([
+    ...new Map(pairs.map((pair) => [JSON.stringify(pair), pair])).values(),
+  ]);
+}
+
+/** Add explicit grants without changing which model a new chat starts on. */
+export function withAllowedModels(
+  policy: QaSessionModelPolicy,
+  models: readonly QaModelPair[] | undefined,
+  replacements: readonly QaModelReplacement[],
+): QaSessionModelPolicy {
+  if (models === undefined) return policy;
+  return Object.freeze({
+    ...policy,
+    allowedModels: Object.freeze(
+      models.map((pair) => replaceModelPair(pair, replacements)!),
+    ),
+  });
 }
 
 /** The session fields of the resolved config, as the policy reads them. */
@@ -177,12 +209,16 @@ export function modelPolicySatisfied(
   selection: ModelSelectionFacts,
 ): boolean {
   const pair = policy.pair;
-  if (pair === undefined) return true;
-  return (
-    pair.provider === selection.provider &&
-    pair.model === selection.model &&
-    (pair.reasoningEffort === undefined ||
-      pair.reasoningEffort === selection.reasoningEffort)
+  if (pair === undefined && policy.allowedModels === undefined) return true;
+  return [
+    ...(pair === undefined ? [] : [pair]),
+    ...(policy.allowedModels ?? []),
+  ].some(
+    (candidate) =>
+      candidate.provider === selection.provider &&
+      candidate.model === selection.model &&
+      (candidate.reasoningEffort === undefined ||
+        candidate.reasoningEffort === selection.reasoningEffort),
   );
 }
 

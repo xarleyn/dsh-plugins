@@ -36,6 +36,8 @@ import {
   assertModelPairAvailable,
   deploymentModelPair,
   normalizeModelPair,
+  normalizeAllowedModels,
+  withAllowedModels,
   projectModelCatalog,
   resolveModelPolicy,
   replaceModelPair,
@@ -149,10 +151,15 @@ function requireExactAssignment(
     );
   }
   const model = normalizeModelPair(input.model, "assignment model");
+  const allowedModels = normalizeAllowedModels(
+    input.allowedModels,
+    "assignment allowedModels",
+  );
   return Object.freeze({
     allowedSubroles: Object.freeze(allowed),
     defaultSubrole: input.defaultSubrole,
     ...(model === undefined ? {} : { model }),
+    ...(allowedModels === undefined ? {} : { allowedModels }),
   });
 }
 
@@ -978,16 +985,77 @@ export class QaAccessService {
     const subroleId =
       accounts?.sessionAccess(sessionId)?.subroleId ??
       assignment?.defaultSubrole;
-    return resolveModelPolicy(
-      {
-        account: assignment?.model,
-        subrole:
-          subroleId === undefined
-            ? undefined
-            : config.subroles.find(({ id }) => id === subroleId)?.model,
-        deployment: deploymentModelPair(this.options.config().session),
-      },
-      this.options.config().session.modelReplacements,
+    return this.modelPolicyForAssignment(assignment, subroleId);
+  }
+
+  /** Authorize a draft role before exposing its model grants. */
+  draftModelPolicy(
+    token: string,
+    requested: string | null,
+    preview: boolean,
+  ): QaSessionModelPolicy {
+    const accounts = this.requireAccounts();
+    const user = accounts.currentUser(token);
+    const config = this.roles.snapshot();
+    const assignment = normalizeUserAccess(accounts.accessOf(user.id), config);
+    const subroleId = requested ?? assignment.defaultSubrole;
+    if (!config.subroles.some((role) => role.id === subroleId && role.enabled))
+      throw new TypeError("QA subrole is unavailable");
+    if (preview && user.role !== "admin")
+      throw new QaAccountsError(
+        "admin-required",
+        "Preview requires an admin account",
+      );
+    if (!preview && !assignment.allowedSubroles.includes(subroleId))
+      throw new QaAccountsError(
+        "invalid-role",
+        "This QA subrole is not assigned to the account",
+      );
+    return this.modelPolicyForAssignment(assignment, subroleId);
+  }
+
+  /** Model mutations and their choices belong to the chat owner, including for admins. */
+  userSessionModelPolicy(
+    token: string,
+    sessionId: string,
+  ): QaSessionModelPolicy {
+    const accounts = this.requireAccounts();
+    const user = accounts.currentUser(token);
+    if (accounts.ownerIdOf(sessionId) !== user.id)
+      throw new QaAccountsError(
+        "forbidden",
+        "Only the chat owner can choose its model",
+      );
+    this.session(token, sessionId);
+    return this.modelPolicyFor(sessionId);
+  }
+
+  private modelPolicyForAssignment(
+    assignment: QaUserAccess | undefined,
+    subroleId: string | undefined,
+  ): QaSessionModelPolicy {
+    const role = this.roles
+      .snapshot()
+      .subroles.find(({ id }) => id === subroleId);
+    const replacements = this.options.config().session.modelReplacements;
+    const alternatives = assignment?.allowedModels ?? role?.allowedModels;
+    const hostDefault =
+      alternatives === undefined
+        ? undefined
+        : this.ctx.get?.("agentDefaultModel")?.currentSelection();
+    return withAllowedModels(
+      resolveModelPolicy(
+        {
+          account: assignment?.model,
+          subrole: role?.model,
+          deployment:
+            deploymentModelPair(this.options.config().session) ??
+            normalizeModelPair(hostDefault, "Host default model"),
+        },
+        replacements,
+      ),
+      alternatives,
+      replacements,
     );
   }
 
@@ -1023,6 +1091,8 @@ export class QaAccessService {
     const { actor } = this.requireAdmin(token);
     const pair = normalizeModelPair(input.model, `subrole ${input.id}.model`);
     if (pair !== undefined) await this.requireServablePair(pair);
+    if (input.allowedModels !== undefined)
+      await this.assertAlternativesServable(input.allowedModels);
     return this.roles.create(actor.id, input);
   }
 
@@ -1034,6 +1104,8 @@ export class QaAccessService {
     const { actor } = this.requireAdmin(token);
     const pair = normalizeModelPair(input.model, `subrole ${id}.model`);
     if (pair !== undefined) await this.requireServablePair(pair);
+    if (input.allowedModels !== undefined)
+      await this.assertAlternativesServable(input.allowedModels);
     return this.roles.update(actor.id, id, input);
   }
 
@@ -1070,6 +1142,12 @@ export class QaAccessService {
             user.access.defaultSubrole === id
               ? (replacementId as string)
               : user.access.defaultSubrole,
+          ...(user.access.model === undefined
+            ? {}
+            : { model: user.access.model }),
+          ...(user.access.allowedModels === undefined
+            ? {}
+            : { allowedModels: user.access.allowedModels }),
         },
         after,
       );
@@ -1094,11 +1172,28 @@ export class QaAccessService {
     const { actor, accounts } = this.requireAdmin(token);
     const pair = normalizeModelPair(input.model, "assignment model");
     if (pair !== undefined) await this.requireServablePair(pair);
+    if (input.allowedModels !== undefined)
+      await this.assertAlternativesServable(input.allowedModels);
     const access = requireExactAssignment(input, this.roles.snapshot());
     const before = accounts.accessOf(userId);
     accounts.setAccess(userId, access);
     this.roles.recordAssignment(actor.id, userId, before, access);
     return access;
+  }
+
+  async assertAlternativesServable(
+    input: readonly QaModelPair[] | undefined,
+  ): Promise<void> {
+    const pairs = normalizeAllowedModels(input, "allowedModels");
+    if (pairs === undefined || pairs.length === 0) return;
+    const catalog = projectModelCatalog(
+      await this.ctx.sessionController.modelCatalog(),
+    );
+    for (const pair of pairs)
+      assertModelPairAvailable(
+        replaceModelPair(pair, this.options.config().session.modelReplacements),
+        catalog,
+      );
   }
 
   /** The accounts store, or the refusal this operation names. */

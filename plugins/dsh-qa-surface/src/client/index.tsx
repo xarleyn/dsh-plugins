@@ -301,6 +301,7 @@ interface QaAdminRemote {
 }
 
 interface QaPolicyRemote extends QaAccountsApi, QaAdminRemote {
+  accessUserModels: NonNullable<QaAccessApi["userModels"]>;
   listForms: QaFormApi["list"];
   getForm: QaFormApi["get"];
   mutateForm: QaFormApi["mutate"];
@@ -710,6 +711,8 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
           injectedRemote.agentPresets.select(agentId, agentPreset),
       };
       const accessApi: QaAccessApi = {
+        userModels: (token, sessionId, subroleId, preview) =>
+          policyRemote.accessUserModels(token, sessionId, subroleId, preview),
         current: (token) => policyRemote.accessCurrent(token),
         session: (token, sessionId) =>
           policyRemote.accessSession(token, sessionId),

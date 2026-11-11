@@ -135,7 +135,10 @@ afterEach(() => {
  * chat on a route that restores a persisted conversation. Resolves once the
  * surface is live and its "New chat" button answers.
  */
-async function mountSurface(world: ReturnType<typeof harness>) {
+async function mountSurface(
+  world: ReturnType<typeof harness>,
+  access = accessApi(),
+) {
   window.history.replaceState(null, "", "/qa");
   const config = resolveConfig({
     accounts: { enabled: true },
@@ -154,7 +157,6 @@ async function mountSurface(world: ReturnType<typeof harness>) {
   route = new QaRouteController();
   route.configure(config, true);
   const accounts = liveAccounts();
-  const access = accessApi();
   const configSnapshot = { status: "ready" as const, config, error: null };
   const sectionsSnapshot = { sections: [], revision: 0 };
 
@@ -195,6 +197,37 @@ async function mountSurface(world: ReturnType<typeof harness>) {
 }
 
 describe("first send from a new QA chat", () => {
+  it("keeps one model picker and one composer when a new chat replaces a restored chat", async () => {
+    const world = harness([SAVED_SESSION]);
+    const access = accessApi();
+    const deepseek = { provider: "deepseek", model: "chat" };
+    const local = { provider: "local", model: "small" };
+    access.userModels = vi.fn(async () => ({
+      ok: true as const,
+      value: {
+        models: [deepseek, local].map((pair) => ({
+          ...pair,
+          label: pair.model,
+          reasoningEfforts: [],
+        })),
+        choices: [deepseek, local],
+        defaultModel: deepseek,
+        selected: deepseek,
+      },
+    }));
+    const { newChat } = await mountSurface(world, access);
+    const model = await screen.findByRole("combobox", { name: "Модель чата" });
+    expect(model.closest(".dsh-qa-composer__toolbar")).toBeTruthy();
+    for (let count = 0; count < 3; count++) {
+      fireEvent.click(newChat);
+      await waitFor(() =>
+        expect(
+          screen.getAllByRole("combobox", { name: "Модель чата" }),
+        ).toHaveLength(1),
+      );
+      expect(screen.getAllByTestId("qa-composer-input")).toHaveLength(1);
+    }
+  });
   it("survives the ownership claim and reaches the new session prompt", async () => {
     const world = harness([SAVED_SESSION]);
     let secureCalls = 0;

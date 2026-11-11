@@ -75,6 +75,7 @@ function harness(
     ],
   ]);
   const ctx = {
+    agents: { get: () => undefined },
     // The catalog a model policy is checked against: three pairs, and every
     // policy naming anything else is refused before it reaches the store.
     sessionController: {
@@ -190,7 +191,7 @@ function harness(
       ? {}
       : { onVanishedSessions: options.onVanishedSessions }),
   });
-  return { service, accounts, admin, user, tools, skills };
+  return { service, accounts, admin, user, tools, skills, ctx };
 }
 
 /**

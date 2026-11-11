@@ -100,6 +100,8 @@ import { createQaIntegrationRunner } from "./integration/host-runner.js";
 import { QaIntegrationService } from "./integration/service.js";
 import { QaPolicyAdmission } from "./secure-session.js";
 import { QaAccessService } from "./access/service.js";
+import { userModelOptions, selectUserModel } from "./access/model-choices.js";
+import type { QaModelOptions } from "./types.js";
 import { userInvocableSkillNames } from "./access/model.js";
 import type { QaPresetScopeLease } from "./access/capability-catalog.js";
 import { createQaSlashRemotes } from "./slash/remotes.js";
@@ -224,6 +226,7 @@ export const inject = [
   "systemPrompt",
   "workspaceRegistry",
   "sessionController",
+  "llm",
 ];
 // One home for the namespace: the browser card binds to the same constant
 // through `src/shared/settings.ts`, which avoids importing this module (and
@@ -1346,6 +1349,26 @@ export class QaSurface extends TypertRemoteService {
     );
   }
 
+  @Remote("accessUserModels")
+  async accessUserModels(
+    token: string,
+    sessionId: string | null,
+    subroleId: string | null,
+    adminPreview: boolean,
+  ): Promise<QaModelOptions> {
+    if (sessionId !== null) this.requireChatOwner(token, sessionId);
+    return this.accountRemotes.runAsync(() =>
+      userModelOptions(
+        this.ctx,
+        this.access,
+        token,
+        sessionId,
+        subroleId,
+        adminPreview,
+      ),
+    );
+  }
+
   @Remote("accessDeleteSubrole")
   accessDeleteSubrole(
     token: string,
@@ -1953,9 +1976,14 @@ export class QaSurface extends TypertRemoteService {
     request: SessionSelectModelRequest,
   ): Promise<SessionSelectModelValue> {
     this.requireChatOwner(token, String(request.sessionId));
-    if (this.getConfig().lockdown.enforceFixedModel)
-      throw new Error("The chat model is fixed by its policy.");
-    return this.chatTransport.selectModel(token, request);
+    return this.chatTransport.selectModel(token, request, async () => {
+      const id = String(request.sessionId);
+      if (this.requestScheduler.status(id).waiting === true)
+        throw new Error(
+          "Wait for the queued request before changing the model.",
+        );
+      return selectUserModel(this.ctx, this.access, token, request);
+    });
   }
 
   @Remote("chatPage")

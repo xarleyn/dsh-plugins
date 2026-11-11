@@ -41,9 +41,7 @@ function detail(overrides: Partial<QaAdminUserDetail> = {}): QaAdminUserDetail {
 }
 
 function checkbox(): HTMLInputElement {
-  // The subrole list is the card's only checkbox group; the access mock
-  // enables exactly one profile.
-  return screen.getByRole("checkbox") as HTMLInputElement;
+  return screen.getByRole("checkbox", { name: "Аналитик" }) as HTMLInputElement;
 }
 
 describe("admin user detail card", () => {

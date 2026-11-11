@@ -3,7 +3,10 @@ import type { QaAccounts } from "../accounts/store.js";
 import { QaAccountsError } from "../accounts/store.js";
 import type { QaAccessService } from "../access/service.js";
 import type { QaRoleRepository } from "../access/role-repository.js";
-import { normalizeModelPair } from "../access/model-policy.js";
+import {
+  normalizeModelPair,
+  normalizeAllowedModels,
+} from "../access/model-policy.js";
 import {
   defaultCapabilityConfig,
   normalizeUserAccess,
@@ -957,6 +960,9 @@ export class QaAdminService {
       await this.options
         .access()
         .assertPairServable(nextAccess.model, "assignment model");
+      await this.options
+        .access()
+        .assertAlternativesServable(nextAccess.allowedModels);
       const access = this.exactAssignment(nextAccess, userId);
       accounts.setAccess(userId, access);
       this.options.quality().appendAudit({
@@ -1062,10 +1068,15 @@ export class QaAdminService {
       );
     }
     const model = normalizeModelPair(input.model, "assignment model");
+    const allowedModels = normalizeAllowedModels(
+      input.allowedModels,
+      "assignment allowedModels",
+    );
     return Object.freeze({
       allowedSubroles: Object.freeze(allowed),
       defaultSubrole: input.defaultSubrole,
       ...(model === undefined ? {} : { model }),
+      ...(allowedModels === undefined ? {} : { allowedModels }),
     });
   }
 

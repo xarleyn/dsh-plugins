@@ -8,6 +8,9 @@
  * not a wizard.
  */
 export const QA_ADMIN_CONSOLE_STYLES = String.raw`
+.dsh-qa-model-policy__alternatives{display:grid;gap:8px;margin:16px 0;padding:12px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;min-width:0}
+.dsh-qa-model-policy__alternatives label{display:flex;align-items:center;gap:8px}
+.dsh-qa-model-policy__alternatives input{flex:none}
 .dsh-qa-admin__nav-group{display:flex;flex-direction:column;gap:4px;margin-bottom:14px}
 .dsh-qa-admin__page{display:flex;flex-direction:column;min-width:0;gap:20px}
 .dsh-qa-admin__panel{display:flex;flex-direction:column;gap:10px;padding:16px 18px;border:1px solid var(--dsw-alias-border-l2);border-radius:12px;background:var(--dsw-alias-bg-layer-3)}

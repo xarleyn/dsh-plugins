@@ -73,7 +73,11 @@ import type {
   StorageLike,
 } from "./types.js";
 import { QA_SESSION_IDLE_STATE } from "./types.js";
-import type { QaApprovalDecision, QaQuestionAnswerItem } from "../types.js";
+import type {
+  QaApprovalDecision,
+  QaQuestionAnswerItem,
+  QaModelPair,
+} from "../types.js";
 import { waitFor } from "./wait-for.js";
 import { QA_REGENERATE_MARKER } from "./QaTranscriptAdapter.js";
 import { readableSubagentName } from "./settlement.js";
@@ -276,6 +280,7 @@ function submissionImages(attachments: readonly QaAttachmentDraft[]): readonly {
 export class QaSessionController {
   private readonly listeners = new Set<() => void>();
   private readonly sessions: QaSessions;
+  private readonly modelApi: QaSessionsApi;
   private readonly createSessionRemote: QaCreateSession;
   private readonly forkSessionRemote?: QaForkSession;
   private forking = false;
@@ -408,6 +413,7 @@ export class QaSessionController {
 
   constructor(options: QaSessionControllerOptions) {
     this.sessions = options.sessions;
+    this.modelApi = options.api;
     this.createSessionRemote = options.createSession;
     this.forkSessionRemote = options.forkSession;
     this.conversation = options.conversation;
@@ -505,6 +511,33 @@ export class QaSessionController {
     this.selectedSubrole = subroleId;
     this.adminPreview = adminPreview;
     await this.startDraft(true);
+  }
+
+  /** Materialize a draft on demand and change only that chat's model. */
+  async selectModel(pair: QaModelPair): Promise<string> {
+    if (
+      this.disposed ||
+      this.state.phase === "running" ||
+      this.state.viewingSubagent !== null
+    )
+      throw new Error("Дождитесь завершения ответа, чтобы сменить модель.");
+    const target = await this.liveTarget();
+    if (target === undefined)
+      throw new Error("Не удалось открыть чат для смены модели.");
+    const id = String(target.sessionId);
+    const result = await this.modelApi.selectModel({
+      sessionId: target.sessionId,
+      provider: pair.provider,
+      model: pair.model,
+      ...(pair.reasoningEffort === undefined
+        ? {}
+        : { reasoningEffort: pair.reasoningEffort }),
+    });
+    if (!result.ok)
+      throw new Error(
+        "Не удалось сменить модель. Проверьте доступ и повторите выбор.",
+      );
+    return id;
   }
 
   /**

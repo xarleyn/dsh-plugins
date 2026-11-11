@@ -29,8 +29,13 @@ const repo = dirname(
 const compatibility = JSON.parse(
   await readFile(new URL("../compatibility.json", import.meta.url), "utf8"),
 );
-const dshVersion = compatibility.deepseekHarness.testedReleases.at(-1);
+const dshVersion =
+  process.env.DSH_QA_SMOKE_VERSION ??
+  compatibility.deepseekHarness.testedReleases.at(-1);
 const withBrowser = process.argv.includes("--browser");
+const modelSelectionOnly = process.argv.includes("--model-selection");
+if (modelSelectionOnly && !withBrowser)
+  throw new Error("--model-selection requires --browser");
 const presetScopedTool = process.platform === "win32" ? "pwsh" : "bash";
 const keepFailedSmoke = process.env.DSH_QA_KEEP_SMOKE === "1";
 const temporaryRoot = await mkdtemp(join(tmpdir(), "dsh-qa-packed-smoke-"));
@@ -983,7 +988,14 @@ try {
     "bin.js",
   );
   if (!(await stat(dshBin)).isFile()) throw new Error("DSH binary is missing");
-  const dshEnv = { ...process.env, DSH_HOME: dshHome };
+  const dshEnv = {
+    ...Object.fromEntries(
+      Object.entries(process.env).filter(
+        ([name]) => !modelSelectionOnly || !/_API_KEY$/u.test(name),
+      ),
+    ),
+    DSH_HOME: dshHome,
+  };
   await run(
     process.execPath,
     [
@@ -1158,15 +1170,17 @@ try {
     );
   }
 
-  await runLanPass({ dshBin, dshEnv, repo, hostLog });
+  if (!modelSelectionOnly) await runLanPass({ dshBin, dshEnv, repo, hostLog });
   if (withBrowser) {
-    await runBrowserPass({
-      origin,
-      authenticatedUrl: `${origin}/?token=${encodeURIComponent(token)}`,
-      cookie,
-      presetScopedTool,
-    });
+    if (!modelSelectionOnly)
+      await runBrowserPass({
+        origin,
+        authenticatedUrl: `${origin}/?token=${encodeURIComponent(token)}`,
+        cookie,
+        presetScopedTool,
+      });
     await runIntegrationFolderBrowserPass({
+      modelSelection: modelSelectionOnly,
       dshBin,
       dshEnv,
       root: temporaryRoot,

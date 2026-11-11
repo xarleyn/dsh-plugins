@@ -2,6 +2,18 @@ import { describe, expect, it } from "vitest";
 import { harness, refusal } from "./admin-service.helpers.js";
 
 describe("admin user management", () => {
+  it("preserves an explicit account override restricting models to the default", async () => {
+    const { service, admin, alice, accounts } = harness();
+    const detail = await service.updateUser(admin.token, alice.user.id, {
+      access: {
+        allowedSubroles: ["analyst"],
+        defaultSubrole: "analyst",
+        allowedModels: [],
+      },
+    });
+    expect(detail.user.access.allowedModels).toEqual([]);
+    expect(accounts.accessOf(alice.user.id)?.allowedModels).toEqual([]);
+  });
   it("lists accounts with their role, status and assignment counters", async () => {
     const { service, admin, alice } = harness();
     const page = await service.users(admin.token, {}, undefined, undefined);

@@ -162,6 +162,10 @@ export function RoleEditor(props: {
             testId="qa-admin-role-model"
             value={draft.model}
             onChange={(model) => setDraft({ ...draft, model })}
+            allowedModels={draft.allowedModels}
+            onAllowedModelsChange={(allowedModels) =>
+              setDraft({ ...draft, allowedModels })
+            }
           />
         </div>
       ) : tab === "tools" ? (

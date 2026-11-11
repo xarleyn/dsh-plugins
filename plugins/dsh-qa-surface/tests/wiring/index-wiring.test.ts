@@ -138,6 +138,9 @@ async function world(entry: Record<string, unknown> = {}) {
     list: () => [],
   } as never);
   ctx.provide("systemPrompt", {} as never);
+  ctx.provide("llm", {
+    resolveCallConfig: async (selection: unknown) => selection,
+  } as never);
   ctx.provide("workspaceRegistry", {
     get: (id: unknown) =>
       String(id) === "ws-1"

@@ -133,6 +133,17 @@ describe("QA composer", () => {
     );
   });
 
+  it("places the model control beside attachments without keyboard instructions", () => {
+    mount({ modelSelector: <button type="button">Qwen</button> });
+    const model = screen.getByRole("button", { name: "Qwen" });
+    expect(model.closest(".dsh-qa-composer__toolbar")).toBeTruthy();
+    expect(screen.getByTestId("qa-composer-attach").nextElementSibling).toBe(
+      model.parentElement,
+    );
+    expect(screen.queryByTestId("qa-composer-hint")).toBeNull();
+    expect(screen.queryByText(/Enter:/u)).toBeNull();
+  });
+
   it("sends a quick question from the empty-chat shortcuts", async () => {
     const send = vi.fn(async () => true);
     mount({

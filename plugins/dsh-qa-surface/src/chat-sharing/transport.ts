@@ -327,10 +327,13 @@ export class QaChatTransport {
   async selectModel(
     token: string,
     request: SessionSelectModelRequest,
+    select?: () => Promise<SessionSelectModelValue>,
   ): Promise<SessionSelectModelValue> {
-    return this.ownerOperation(token, String(request.sessionId), () =>
-      this.ctx.sessionController.selectModel(request),
-    );
+    return this.ownerOperation(token, String(request.sessionId), async () => {
+      return select === undefined
+        ? this.ctx.sessionController.selectModel(request)
+        : select();
+    });
   }
   async cancel(token: string, id: string): Promise<SessionCancelValue> {
     return this.ownerOperation(token, id, async () => {

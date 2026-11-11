@@ -14,10 +14,12 @@ export async function runIntegrationFolderBrowserPass(options) {
     launchToken,
     authenticateBrowser,
     hostLog,
+    modelSelection = false,
   } = options;
   const port = await freePort();
   const origin = `http://127.0.0.1:${port}`;
   const patch = join(root, "integration-folder.patch.yml");
+  const modelPass = modelSelection || process.env.DSH_QA_MODEL_SMOKE === "1";
   await writeFile(
     patch,
     `- id: dsh-qa-surface
@@ -30,7 +32,30 @@ export async function runIntegrationFolderBrowserPass(options) {
       requestTimeoutMs: 5000
     ui:
       showSessionList: true
-`,
+${
+  modelPass
+    ? `    session:
+      provider: qa-demo
+      model: deepseek-demo
+    lockdown:
+      allowSessionReset: true
+- id: llm-pi-ai
+  config:
+    providers:
+      qa-demo:
+        displayName: QA demo
+        api: openai-completions
+        baseURL: https://example.invalid/v1
+        models:
+          - id: deepseek-demo
+            name: DeepSeek demo
+          - id: qwen-demo
+            name: Qwen demo
+          - id: blocked-demo
+            name: Unassigned demo
+`
+    : ""
+}`,
   );
   const log = [];
   let host;
@@ -248,6 +273,177 @@ export async function runIntegrationFolderBrowserPass(options) {
       id: folderId,
       name: "Запросы API",
     });
+    if (modelPass) {
+      await page
+        .getByRole("button", { name: "Закрыть настройки", exact: true })
+        .click();
+      await page.setViewportSize({ width: 1280, height: 800 });
+      const snapshot = await rpc(
+        origin,
+        "qaSurface/accessAdminSnapshot",
+        { args: { token: session.token } },
+        cookie,
+      );
+      const general = snapshot.config.subroles.find(
+        (role) => role.id === "general",
+      );
+      assert.ok(general);
+      await rpc(
+        origin,
+        "qaSurface/accessUpdateSubrole",
+        {
+          args: {
+            token: session.token,
+            id: general.id,
+            input: {
+              ...general,
+              allowedModels: [{ provider: "qa-demo", model: "qwen-demo" }],
+            },
+          },
+        },
+        cookie,
+      );
+      await page.reload();
+      await deferOnboarding();
+      await page.getByTestId("qa-surface-sidebar-new").click();
+      const picker = page.getByRole("combobox", {
+        name: "Модель чата",
+        exact: true,
+      });
+      const modelKey = (model) => JSON.stringify(["qa-demo", model]);
+      assert.equal(
+        await picker
+          .locator("xpath=ancestor::*[@data-testid='qa-composer']")
+          .count(),
+        1,
+      );
+      assert.equal(await page.getByTestId("qa-composer-hint").count(), 0);
+      await waitFor(
+        async () => (await picker.inputValue()) === modelKey("deepseek-demo"),
+        "default chat model",
+      );
+      assert.equal(await picker.locator("option").count(), 2);
+      await picker.selectOption(modelKey("qwen-demo"));
+      try {
+        await waitFor(
+          async () => {
+            const error = page.getByTestId("qa-model-selector-error");
+            if (await error.count()) throw new Error(await error.textContent());
+            return (await picker.inputValue()) === modelKey("qwen-demo");
+          },
+          "chat-local Qwen selection",
+          15000,
+        );
+      } catch (error) {
+        if (evidence)
+          await page.screenshot({
+            path: join(evidence, "model-selection-failure.png"),
+          });
+        const owned = await rpc(
+          origin,
+          "qaSurface/accountsOwnedSessions",
+          { args: { token: session.token } },
+          cookie,
+        );
+        const id = owned.ids.find((candidate) => candidate !== routed[0]);
+        if (id) {
+          // A failed UI result is diagnosed by the same authenticated operation;
+          // selecting the same explicit pair again is idempotent for this rig.
+          await rpc(
+            origin,
+            "qaSurface/chatSelectModel",
+            {
+              args: {
+                token: session.token,
+                request: {
+                  sessionId: id,
+                  provider: "qa-demo",
+                  model: "qwen-demo",
+                },
+              },
+            },
+            cookie,
+          );
+        }
+        throw error;
+      }
+      const entries = await rpc(
+        origin,
+        "qaSurface/accountsOwnedSessions",
+        { args: { token: session.token } },
+        cookie,
+      );
+      const active = entries.ids.find((id) => id !== routed[0]);
+      assert.ok(active);
+      const selected = await rpc(
+        origin,
+        "qaSurface/accessUserModels",
+        {
+          args: {
+            token: session.token,
+            sessionId: active,
+            subroleId: null,
+            adminPreview: false,
+          },
+        },
+        cookie,
+      );
+      assert.equal(selected.selected.model, "qwen-demo");
+      await assert.rejects(
+        () =>
+          rpc(
+            origin,
+            "qaSurface/chatSelectModel",
+            {
+              args: {
+                token: session.token,
+                request: {
+                  sessionId: active,
+                  provider: "qa-demo",
+                  model: "blocked-demo",
+                },
+              },
+            },
+            cookie,
+          ),
+        /not allowed/u,
+      );
+      await page.reload();
+      await waitFor(
+        async () => (await picker.inputValue()) === modelKey("qwen-demo"),
+        "model selection after reload",
+      );
+      for (const theme of ["dark", "light"]) {
+        await page.emulateMedia({ colorScheme: theme });
+        for (const width of [1280, 390]) {
+          await page.setViewportSize({ width, height: 844 });
+          await picker.scrollIntoViewIfNeeded();
+          const bounds = await picker.boundingBox();
+          assert.ok(
+            bounds && bounds.x >= 0 && bounds.x + bounds.width <= width + 1,
+          );
+          await picker.focus();
+          await page.getByTestId("qa-composer-input").focus();
+          if (evidence)
+            await page.getByTestId("qa-composer").screenshot({
+              path: join(evidence, `model-composer-${theme}-${width}.png`),
+            });
+          if (evidence)
+            await page.screenshot({
+              path: join(evidence, `model-picker-${theme}-${width}.png`),
+            });
+        }
+      }
+      await page.setViewportSize({ width: 1280, height: 800 });
+      await page.getByTestId("qa-surface-sidebar-new").click();
+      await waitFor(
+        async () => (await picker.inputValue()) === modelKey("deepseek-demo"),
+        "unchanged default of a new chat",
+      );
+      console.log(
+        "packed QA model selection: filtered grants, per-chat change, rejection, reload persistence, unchanged new-chat default and phone geometry passed",
+      );
+    }
     console.log(
       "packed QA integration folders: browser setting, server persistence, HTTP API routing, reload and clear passed",
     );

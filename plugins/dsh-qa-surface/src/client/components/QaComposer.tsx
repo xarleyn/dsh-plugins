@@ -1,4 +1,5 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import type {
   QaAttachmentDraft,
   QaSlashView,
@@ -17,6 +18,7 @@ import { QaFileAttachment } from "./QaFileAttachment.js";
 import { isQaModalOpen } from "./QaModal.js";
 
 export interface QaComposerProps {
+  readonly modelSelector?: ReactNode;
   readonly fastMode?: boolean;
   readonly onFastModeChange?: (enabled: boolean) => void;
   readonly placeholder: string;
@@ -203,9 +205,7 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
 
   const hasContent = draft.trim() !== "" || attachments.length > 0;
   const hint =
-    submitting && files.length > 0
-      ? "Отправляю вложения…"
-      : (props.status ?? "Enter: отправить, Shift+Enter: новая строка");
+    submitting && files.length > 0 ? "Отправляю вложения…" : props.status;
   return (
     <div
       ref={focusOwner}
@@ -435,13 +435,21 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
           >
             <AttachIcon />
           </button>
-          <span
-            className="dsh-qa-composer__hint"
-            data-testid="qa-composer-hint"
-            aria-live="polite"
+          <div
+            className="dsh-qa-composer__context"
+            data-testid="qa-composer-context"
           >
-            {hint}
-          </span>
+            {props.modelSelector}
+            {hint === null ? null : (
+              <span
+                className="dsh-qa-composer__hint"
+                data-testid="qa-composer-hint"
+                aria-live="polite"
+              >
+                {hint}
+              </span>
+            )}
+          </div>
           {props.onFastModeChange === undefined ? null : (
             <button
               type="button"

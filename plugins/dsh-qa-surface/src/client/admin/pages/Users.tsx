@@ -471,6 +471,9 @@ export function AdminUserDetail(props: {
         allowedSubroles: allowed,
         defaultSubrole,
         ...(access.model === undefined ? {} : { model: access.model }),
+        ...(access.allowedModels === undefined
+          ? {}
+          : { allowedModels: access.allowedModels }),
       },
     });
   };
@@ -575,6 +578,7 @@ export function AdminUserDetail(props: {
               onChange={(event) =>
                 void write({
                   access: {
+                    ...access,
                     allowedSubroles: access.allowedSubroles,
                     defaultSubrole: event.currentTarget.value,
                     ...(access.model === undefined
@@ -598,12 +602,17 @@ export function AdminUserDetail(props: {
             disabled={busy}
             testId="qa-admin-user-model"
             value={access.model}
+            allowedModels={access.allowedModels}
+            onAllowedModelsChange={(allowedModels) =>
+              void write({ access: { ...access, allowedModels } })
+            }
             onChange={(model) =>
               void write({
                 access: {
+                  ...access,
                   allowedSubroles: access.allowedSubroles,
                   defaultSubrole: access.defaultSubrole,
-                  ...(model === undefined ? {} : { model }),
+                  model,
                 },
               })
             }

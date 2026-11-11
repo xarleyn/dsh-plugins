@@ -54,6 +54,37 @@ Corporate sign-in through Keycloak or another OpenID Connect provider is opt-in.
 The source tree includes `plugins/dsh-qa-surface/docs/oidc.md` with client settings,
 account linking, role admission, session limits and deployment acceptance.
 
+When a role or account has multiple permitted models, a **Model** selector
+appears inside the composer toolbar beside the attachment button, replacing
+keyboard instructions with the selected model's name. Choosing a model applies to the current chat and
+survives reopening it; new chats keep the configured default. Switching waits
+until the chat has finished its response and has no queued request. Readers,
+participants and delegated-agent views cannot change the owner's model.
+
+Administrators set the default and **Alternative models for the user** in the
+role's Model tab or the account's model settings. `model` keeps its existing
+priority: account, role, deployment. The optional `allowedModels` array adds
+provider/model pairs to that default. An omitted account array inherits its
+role's alternatives; `[]` explicitly restricts that account to its default.
+An omitted role array grants no alternatives. Saved policies keep their
+previous single-model behavior until an administrator grants alternatives.
+The server filters the catalog and validates every selection against the
+owner's current policy, including model replacement rules.
+
+Chat-local selection uses the Session controller's guarded selection commit
+capability, which records the native `model/selection` event and updates the
+next-request selection without saving the Host operator's global default.
+A Host without that capability rejects the switch rather than changing a
+deployment-wide preference. The rest of the QA surface remains available.
+
+The focused packed browser check is `pnpm --filter @yadsh/dsh-qa-surface
+e2e:browser --model-selection`. Set `DSH_QA_SMOKE_VERSION` to the Host version
+being checked, and optionally `DSH_QA_HISTORY_EVIDENCE_DIR` to a local evidence
+directory. This pass exercises synthetic model routes without real provider
+credentials, including access filtering, switching, reload persistence,
+new-chat defaults, and desktop/phone layout. It does not run the separate LAN
+deployment-overlay acceptance pass.
+
 - contributes one root-scoped entry to the additive `shell.overlay` slot;
 - stays invisible outside the configured route;
 - creates or restores one real DSH Session;
