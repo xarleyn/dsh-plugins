@@ -124,7 +124,9 @@ export function renderReviewHistory(
           ? rendered
           : ["- (no itemized findings were recorded)"]),
         ...(overflow > 0
-          ? [`- (${String(overflow)} further findings of this round were omitted for size)`]
+          ? [
+              `- (${String(overflow)} further findings of this round were omitted for size)`,
+            ]
           : []),
       ];
     }),

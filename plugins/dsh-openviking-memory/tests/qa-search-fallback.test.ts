@@ -62,7 +62,7 @@ function scopedWorld() {
         "/api/v1/search/search": (init) =>
           ok(
             (init?.headers as Record<string, string>)?.["X-OpenViking-User"] ===
-            "u1"
+              "u1"
               ? { rendered: SEED_RENDERED, entries: [], digest: "", stats: {} }
               : { rendered: "", entries: [], digest: "", stats: {} },
           ),

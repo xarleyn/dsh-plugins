@@ -67,9 +67,12 @@ describe("admin user detail card", () => {
       await screen.findByTestId("qa-admin-user-card", {}, MOUNT_TIMEOUT);
       if (field === "role") fireEvent.click(checkbox());
       else if (field === "slots")
-        fireEvent.change(screen.getByTestId("qa-admin-user-queue-slots-select"), {
-          target: { value: "inherit" },
-        });
+        fireEvent.change(
+          screen.getByTestId("qa-admin-user-queue-slots-select"),
+          {
+            target: { value: "inherit" },
+          },
+        );
       else
         fireEvent.change(
           await screen.findByTestId("qa-admin-user-model-pair"),

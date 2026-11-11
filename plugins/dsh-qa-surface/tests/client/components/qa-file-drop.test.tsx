@@ -175,10 +175,7 @@ describe("QA file drop ownership", () => {
           onOpen={vi.fn()}
         />,
       );
-      fileDrag(
-        "dragenter",
-        screen.getByLabelText("Прикрепить файлы: Files"),
-      );
+      fileDrag("dragenter", screen.getByLabelText("Прикрепить файлы: Files"));
       const { event } = fileDrag(
         "drop",
         screen.getByLabelText("Прикрепить файлы: Files"),

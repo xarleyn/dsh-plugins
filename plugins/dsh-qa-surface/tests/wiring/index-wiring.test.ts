@@ -440,7 +440,10 @@ describe("wiring: the request ceiling is counted on the Host", () => {
       second as unknown as Agent,
       new AbortController().signal,
     );
-    expect(surface.queueStatus("", "")).toMatchObject({ active: 2, full: true });
+    expect(surface.queueStatus("", "")).toMatchObject({
+      active: 2,
+      full: true,
+    });
     await dispose();
   });
 

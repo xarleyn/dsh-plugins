@@ -10,7 +10,11 @@ import { QaSurface } from "../../src/index.js";
  */
 describe("the host reads the queue chain per admission", () => {
   const agent = (sessionId: string): Agent =>
-    ({ id: sessionId, status: "running", session: { id: sessionId } }) as unknown as Agent;
+    ({
+      id: sessionId,
+      status: "running",
+      session: { id: sessionId },
+    }) as unknown as Agent;
 
   function surfaceWith(options: {
     readonly accountsEnabled: boolean;

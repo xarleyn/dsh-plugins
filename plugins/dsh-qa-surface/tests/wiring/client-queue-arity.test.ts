@@ -46,7 +46,10 @@ type QaQueueStatusFn = (
  * generated contract — the check `packages/api/gateway/src/client/index.ts`
  * performs before a Remote invocation leaves the browser.
  */
-function gatewayArity(expected: number, stub: QaQueueStatusFn): QaQueueStatusFn {
+function gatewayArity(
+  expected: number,
+  stub: QaQueueStatusFn,
+): QaQueueStatusFn {
   // A function expression on purpose: the check is the call's own argument
   // count, which an arrow function cannot see.
   return function (token: string, sessionId: string) {
@@ -163,7 +166,13 @@ describe("browser half queue-status arity", () => {
       async () =>
         ({
           ok: true as const,
-          value: { limit: 2, active: 1, full: true, waiting: true, position: 1 },
+          value: {
+            limit: 2,
+            active: 1,
+            full: true,
+            waiting: true,
+            position: 1,
+          },
         }) as RemoteResult<QaQueueStatus>,
     );
     const world = harness(gatewayArity(2, stub as unknown as QaQueueStatusFn));

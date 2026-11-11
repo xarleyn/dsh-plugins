@@ -10,7 +10,11 @@ import { resolveQueueSlots } from "../../src/access/queue-policy.js";
 describe("the queue-slots chain", () => {
   it("keeps the deployment's number while no layer above it speaks", () => {
     expect(
-      resolveQueueSlots({ account: undefined, subrole: undefined, deployment: 2 }),
+      resolveQueueSlots({
+        account: undefined,
+        subrole: undefined,
+        deployment: 2,
+      }),
     ).toEqual({ limit: 2, layer: "deployment" });
   });
 
