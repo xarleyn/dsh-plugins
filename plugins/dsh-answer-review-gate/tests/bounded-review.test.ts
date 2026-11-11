@@ -95,7 +95,7 @@ describe("bounded domain review", () => {
           result: {
             ...outcome.result,
             status: "error",
-            diagnostic: "max-tool-calls",
+            diagnostic: "expert execution stopped: max-tool-calls",
           },
         }),
       },
@@ -103,7 +103,7 @@ describe("bounded domain review", () => {
       limits,
     });
     await expect(backend.review(input())).rejects.toMatchObject({
-      reason: "expert-not-completed",
+      reason: "review-tool-limit",
     });
   });
 });

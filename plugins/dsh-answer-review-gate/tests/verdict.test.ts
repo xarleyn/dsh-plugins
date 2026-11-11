@@ -105,6 +105,36 @@ describe("parseReviewerVerdict", () => {
 });
 
 describe("deriveVerdictFromExpertResult", () => {
+  it.each([
+    ["expert execution stopped: review-timeout", "review-timeout"],
+    ["expert execution stopped: max-tool-calls", "review-tool-limit"],
+    [
+      "expert execution stopped: max-consecutive-refusals",
+      "review-refusal-limit",
+    ],
+    ["expert execution stopped: review-aborted", "reviewer-aborted"],
+    [
+      "expert execution stopped: review-timeout; activation disposal failed",
+      "review-timeout",
+    ],
+    ["max-tool-calls", "review-tool-limit"],
+    ["provider failed with private diagnostics", "expert-not-completed"],
+  ])(
+    "preserves the bounded stop reason %s without accepting a verdict",
+    (diagnostic, reason) => {
+      expect(() =>
+        deriveVerdictFromExpertResult({
+          status: "error",
+          structured: true,
+          summary: "VERDICT: PASS",
+          findings: [],
+          conflicts: [],
+          diagnostic,
+        }),
+      ).toThrow(expect.objectContaining({ reason }));
+    },
+  );
+
   it("passes an expert run with no findings and no conflicts", () => {
     const verdict = deriveVerdictFromExpertResult({
       status: "completed",

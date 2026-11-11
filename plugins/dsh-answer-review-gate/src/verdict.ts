@@ -131,6 +131,30 @@ export function deriveVerdictFromExpertResult(
   result: ExpertRunResult,
 ): ReviewVerdict {
   if (result.status !== "completed") {
+    const stopped =
+      /^(?:expert execution stopped: )?(review-timeout|max-tool-calls|max-consecutive-refusals|review-aborted)(?:; activation disposal failed)?$/u.exec(
+        result.diagnostic?.trim() ?? "",
+      )?.[1];
+    const failures: Record<string, readonly [string, string]> = {
+      "review-timeout": [
+        "review-timeout",
+        "the independent review exceeded its time budget",
+      ],
+      "max-tool-calls": [
+        "review-tool-limit",
+        "the independent review exhausted its tool-call budget",
+      ],
+      "max-consecutive-refusals": [
+        "review-refusal-limit",
+        "the independent review stopped after consecutive tool refusals",
+      ],
+      "review-aborted": [
+        "reviewer-aborted",
+        "the independent review was cancelled",
+      ],
+    };
+    const failure = stopped === undefined ? undefined : failures[stopped];
+    if (failure !== undefined) throw new ReviewerFailure(...failure);
     throw new ReviewerFailure(
       "expert-not-completed",
       `expert run ended with status "${result.status}"`,
