@@ -698,6 +698,30 @@ async function runBrowserPass({
     }
     await deferModelSetup();
     await runFileDropBrowserPass(page);
+    // Exercise the real packed form poller even before any draft exists. A
+    // domain refusal stays HTTP 200, so this also proves it is unwrapped.
+    const formRoute = "**/api/qaSurface/listForms";
+    await page.route(formRoute, async (route) => {
+      const response = await route.fetch();
+      const envelope = await response.json();
+      envelope.result = {
+        ok: true,
+        value: {
+          ok: false,
+          error: { code: "INTERACTION_UNAVAILABLE", message: "Smoke refusal" },
+        },
+      };
+      await route.fulfill({ response, json: envelope });
+    });
+    const formRetry = page.getByRole("button", {
+      name: "Повторить загрузку форм",
+      exact: true,
+    });
+    await formRetry.waitFor({ timeout: 10_000 });
+    await page.unroute(formRoute);
+    await formRetry.click();
+    await formRetry.waitFor({ state: "detached" });
+    console.log("packed QA forms: owner poll refusal and recovery passed");
     await page.getByRole("button", { name: "Убрать spec.md" }).click();
     await waitFor(
       async () => (await fileNames.count()) === 1,
@@ -1099,6 +1123,8 @@ try {
     ui:
       showReset: false
       showSessionList: true
+    forms:
+      enabled: true
     lockdown:
       enabled: true
       sandboxMode: read-only
@@ -1225,6 +1251,10 @@ try {
         cookie,
         presetScopedTool,
       });
+    // The account/form round owns this same home next. Close the first Host
+    // before seeding its durable fixture: there must be only one writer.
+    await stopProcess(host);
+    host = undefined;
     await runIntegrationFolderBrowserPass({
       modelSelection: modelSelectionOnly,
       dshBin,

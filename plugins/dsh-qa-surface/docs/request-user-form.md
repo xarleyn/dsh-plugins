@@ -12,7 +12,15 @@ already earned QA activation. Existing role and tool allowlists still apply:
 grant `request_user_form` explicitly to the intended role. Disabling the feature
 removes its catalog entry, ends waits without success and preserves saved data.
 A recent owner-scoped `listForms` poll attests an interactive QA client for the
-chat. Calls without that client fail immediately. Delegated agents cannot create
+chat. The QA prompt path awaits this poll before sending, including a new chat's
+first prompt; it does not rely on the renderer mounting before the agent runs.
+The renderer also polls while mounted, refreshes on focus/visibility restoration,
+and displays failures with a retry action even when no form exists yet. Existing
+drafts stay visible during a polling failure.
+Calls without a poll in the last 30 seconds fail immediately. This refusal means
+the server has no fresh form-client confirmation, not that it has identified the
+browser's surface. If it occurs inside QA, reload and retry, and inspect failed
+`listForms` requests or an outdated client bundle. Delegated agents cannot create
 or resume forms. Only the chat owner reads and edits form resources.
 
 File forms require QA accounts, the protected upload carrier, Host `fileUploads`
@@ -42,10 +50,47 @@ implementation. Ordinary uploads and questions retain their existing behavior.
 }
 ```
 
+Before creating, validate without collecting input. For example, this complete
+file-only optional schema needs no `answer`:
+
+```json
+{
+  "action": "validate",
+  "form": {
+    "schema_version": 1,
+    "title": "Document check",
+    "steps": [{
+      "id": "documents", "title": "Documents",
+      "items": [{
+        "id": "document", "title": "Supporting document",
+        "files": { "requirement": "optional", "max_count": 1,
+          "accept": [".txt"], "max_file_size_bytes": 1000000 }
+      }]
+    }]
+  }
+}
+```
+
+The same form object can be supplied to create. Validation needs
+no `request_key`, creates no form or waiter, and can run beside an existing draft
+or without a fresh UI poll. Feature, tool and main-agent admission still apply.
+The result has `status: "validated"`, `valid`, `issues: [{ path, code, message }]`,
+the effective `policy`, `interactive_client_ready`, and `file_upload_available`.
+`valid` describes the schema only: it does not attest uploads, user answers,
+request-key availability or a future create. Capability flags are current
+snapshots; creation retains its own admission, presence and concurrency checks.
+
 Resume: `{ "action": "resume", "form_id": "<saved form id>" }`.
+For a draft this parks the collection call again; for a submitted form it returns
+the same immutable submission immediately, without reopening or adding answers.
+Use a new `request_key` when collecting genuinely new input after submission.
 The agent supplies no account/session identity, path, receipt or readiness flag.
 Repeating a key and schema returns the same form; changed requirements under a
 key fail. Choosing a different key cannot bypass an existing draft.
+
+The root `form.title` is required independently of step and item titles. File-only
+items may omit `answer` when `files.requirement` is `optional` or `required`.
+An item with `files.requirement: "none"` needs an answer specification.
 
 Answers support `text`, `textarea`, `single_select`, `multi_select`. Choice values
 are stable identifiers distinct from labels. Recommended options never create
@@ -57,7 +102,19 @@ may be empty; nonempty input must satisfy its rules.
 File policies are `none`, `required`, `optional`. Non-`none` policies require an
 explicit count, extensions and byte limit; `required` additionally requires
 `min_count`. `optional` rejects `min_count`, `none` rejects extra file settings.
+For an optional file item, omit `min_count` even when it would be zero. The
+supported formats do not include `.md` or `.log`; use `.txt` for a text-file
+check. Changing the configured allowlist alone does not add a format validator.
 Agent-provided limits can narrow server policy, never raise it.
+`accept` contains lowercase file extensions (`[".pdf", ".txt"]`), not MIME types
+(`application/pdf`, `text/plain`) or wildcards. A minimal optional file policy is
+`{ "requirement": "optional", "max_count": 1, "accept": [".txt"], "max_file_size_bytes": 1000000 }`.
+A required policy additionally needs a positive `min_count` no greater than
+`max_count`. Merely setting `requirement` does not supply the other fields.
+Schema failures report indexed field paths and constraints, including policy
+conflicts; Remote domain failures carry `schema_errors`, and validate-only
+results carry the same diagnostics in `issues`. Diagnostics are bounded to
+50 entries and do not echo rejected values.
 
 ## Storage and upload boundary
 
@@ -129,6 +186,14 @@ a closed discriminated command for save, begin/cancel upload, remove, pause and
 submit. It cannot replace schema, owner, file metadata or submission. Domain
 refusals use codes inside `QaFormResult`; Typert adds its outer transport result.
 Unexpected errors are redacted.
+
+The UI groups each item's answer, file policy and validation together. File
+inputs appear only for items with a non-`none` file policy; they are not ordinary
+composer attachments. A required file blocks step progression until the server
+confirms the upload. Users can replace or remove a saved file from its own item.
+After submission, **Скрыть** dismisses the confirmation for this browser tab,
+including reloads. It does not delete, archive or edit the submitted form, and
+does not start another agent turn.
 
 After restart the user opens and finishes the saved draft. The explicit continue
 action sends an ordinary session-controller request telling the main agent to

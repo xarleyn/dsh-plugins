@@ -177,11 +177,11 @@ describe("QA file drop ownership", () => {
       );
       fileDrag(
         "dragenter",
-        screen.getByLabelText("Добавить файлы или перетащить сюда"),
+        screen.getByLabelText("Прикрепить файлы: Files"),
       );
       const { event } = fileDrag(
         "drop",
-        screen.getByLabelText("Добавить файлы или перетащить сюда"),
+        screen.getByLabelText("Прикрепить файлы: Files"),
       );
       expect(event.defaultPrevented).toBe(true);
       expect(upload).toHaveBeenCalledTimes(disabled ? 0 : 1);

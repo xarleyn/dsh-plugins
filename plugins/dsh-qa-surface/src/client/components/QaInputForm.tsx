@@ -8,7 +8,7 @@ import type {
 import { DEFAULT_FORM_POLICY } from "../../forms/schema.js";
 import { validateForm } from "../../forms/validation.js";
 import { QaFormClientError, unwrapForm, type QaFormApi } from "../forms.js";
-import { QaFormItem } from "./QaFormItem.js";
+import { QaFormItem, formFileSize } from "./QaFormItem.js";
 
 interface Props {
   policy?: Readonly<import("../../forms/types.js").QaFormPolicy>;
@@ -20,6 +20,11 @@ interface Props {
   onStop(): Promise<void>;
   onResume(id: string): void;
   onTakeover(active: boolean): void;
+  onDismiss?(): void;
+}
+
+function stepTitle(title: string, index: number): string {
+  return title.replace(new RegExp(`^\\s*${index + 1}[.)]\\s*`, "u"), "");
 }
 type Operation =
   | { action: "save"; answers: Record<string, unknown>; step: number }
@@ -51,6 +56,29 @@ export function QaInputForm(props: Props) {
   const [error, setError] = useState(""),
     [saving, setSaving] = useState(false),
     [collapsed, setCollapsed] = useState(!props.form.waiting);
+  const [hidden, setHidden] = useState(false);
+  const content = useRef<HTMLDivElement>(null);
+  const navigation = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (content.current) content.current.scrollTop = 0;
+  }, [record.step]);
+  useEffect(() => {
+    const nav = navigation.current;
+    if (!nav) return;
+    const reveal = () => {
+      const active = nav.querySelector<HTMLElement>("[aria-current=step]");
+      if (!active) return;
+      const row = nav.getBoundingClientRect(),
+        button = active.getBoundingClientRect();
+      const after = button.right - row.right + 16,
+        before = button.left - row.left - 16;
+      if (after > 0) nav.scrollLeft += after;
+      else if (before < 0) nav.scrollLeft += before;
+    };
+    reveal();
+    window.addEventListener("resize", reveal);
+    return () => window.removeEventListener("resize", reveal);
+  }, [record.step, record.status, collapsed]);
   const queue = useRef<Promise<unknown>>(Promise.resolve()),
     alive = useRef(true);
   const transfers = useRef(new Map<string, AbortController>());
@@ -265,71 +293,106 @@ export function QaInputForm(props: Props) {
     for (const a of transfers.current.values()) a.abort();
     void props.onStop().catch(report);
   };
+  if (hidden) return null;
   if (record.status === "submitted")
     return (
-      <section className="dsh-qa-form" aria-label={record.schema.title}>
-        <strong>{record.schema.title}</strong>
-        <p>Данные переданы · {record.submission?.submitted_at}</p>
-        {!record.waiting && (
-          <button type="button" onClick={() => props.onResume(record.id)}>
-            Продолжить подготовку
-          </button>
-        )}
+      <section
+        className="dsh-qa-form dsh-qa-form--summary"
+        aria-label={record.schema.title}
+      >
+        <div>
+          <strong className="title-3">{record.schema.title}</strong>
+          <p className="dsh-qa-form__hint">
+            Данные переданы агенту
+            {record.submission?.submitted_at
+              ? ` · ${new Date(record.submission.submitted_at).toLocaleString("ru-RU", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })}`
+              : ""}
+          </p>
+        </div>
+        <button
+          type="button"
+          aria-label="Скрыть отправленную форму"
+          onClick={() => {
+            setHidden(true);
+            props.onDismiss?.();
+          }}
+        >
+          Скрыть
+        </button>
       </section>
     );
   if (collapsed)
     return (
-      <section className="dsh-qa-form">
-        <strong>{record.schema.title}</strong>
-        <p>Черновик сохранён. Сбор данных не завершён.</p>
-        <button type="button" onClick={() => setCollapsed(false)}>
-          Открыть форму
-        </button>
-        {!record.waiting && (
-          <button type="button" onClick={() => props.onResume(record.id)}>
-            Продолжить с агентом
+      <section className="dsh-qa-form dsh-qa-form--summary">
+        <div>
+          <strong className="title-3">{record.schema.title}</strong>
+          <p className="dsh-qa-form__hint">
+            Черновик сохранён. Сбор данных не завершён.
+          </p>
+        </div>
+        <div className="dsh-qa-form__file-actions">
+          <button type="button" onClick={() => setCollapsed(false)}>
+            Открыть форму
           </button>
-        )}
+          {!record.waiting && (
+            <button type="button" onClick={() => props.onResume(record.id)}>
+              Продолжить с агентом
+            </button>
+          )}
+        </div>
       </section>
     );
   return (
     <section className="dsh-qa-form" aria-label={record.schema.title}>
       <header>
-        <strong>{record.schema.title}</strong>
-        <span>
+        <div className="dsh-qa-form__heading">
+          <strong className="title-3">{record.schema.title}</strong>
+          {record.schema.description && (
+            <p className="dsh-qa-form__description">
+              {record.schema.description}
+            </p>
+          )}
+        </div>
+        <span className="dsh-qa-form__badge caption-5">
           {review
             ? "Проверка перед отправкой"
             : `Шаг ${record.step + 1} из ${record.schema.steps.length}`}
         </span>
       </header>
-      <div className="dsh-qa-form__content">
-        {record.schema.description && <p>{record.schema.description}</p>}
-        <p role="status">
+      <div className="dsh-qa-form__status" role="status">
+        <span>
           Обязательные пункты:{" "}
           {required.filter((i) => !incomplete.has(i.id)).length} из{" "}
-          {required.length}.{" "}
+          {required.length}
+        </span>
+        <span>
           {saving
             ? "Сохранение…"
             : dirty.current
               ? "Есть несохранённые изменения"
               : "Черновик сохранён"}{" "}
-          ·{" "}
+        </span>
+        <span>
           {record.waiting
             ? "Агент ожидает данные"
             : "Агент не ожидает — сохранённый черновик"}
-        </p>
-        <nav aria-label="Шаги формы">
-          {record.schema.steps.map((s, index) => (
-            <button
-              key={s.id}
-              type="button"
-              aria-current={index === record.step ? "step" : undefined}
-              onClick={() => action(() => save(index))}
-            >
-              {index + 1}. {s.title}
-            </button>
-          ))}
-        </nav>
+        </span>
+      </div>
+      <nav aria-label="Шаги формы" ref={navigation}>
+        {record.schema.steps.map((s, index) => (
+          <button
+            key={s.id}
+            type="button"
+            aria-current={index === record.step ? "step" : undefined}
+            disabled={saving}
+            onClick={() => action(() => save(index))}
+          >
+            <span className="dsh-qa-form__step-number">{index + 1}</span>
+            <span>{stepTitle(s.title, index)}</span>
+          </button>
+        ))}
+      </nav>
+      <div className="dsh-qa-form__content" ref={content}>
         {error && (
           <div role="alert">
             <p>{error}</p>
@@ -369,41 +432,56 @@ export function QaInputForm(props: Props) {
         )}
         {review ? (
           <div className="dsh-qa-form__review">
-            <h3>Проверьте данные</h3>
+            <h3 className="title-3">Проверьте данные</h3>
             {record.schema.steps.map((s) => (
-              <div key={s.id}>
-                <h4>{s.title}</h4>
+              <div key={s.id} className="dsh-qa-form__review-step">
+                <h4 className="title-3">{s.title}</h4>
                 {s.items.map((i) => {
                   const a = answers[i.id];
                   return (
-                    <div key={i.id}>
-                      <strong>{i.title}</strong>
-                      <p>
-                        {a
-                          ? "text" in a
-                            ? a.text
-                            : [
-                                ...a.selected.map((v) =>
-                                  i.answer && "options" in i.answer
-                                    ? (i.answer.options.find(
-                                        (o) => o.value === v,
-                                      )?.label ?? v)
-                                    : v,
-                                ),
-                                a.other_text,
-                              ]
-                                .filter(Boolean)
-                                .join(", ")
-                          : "Ответ не указан"}
-                      </p>
+                    <div key={i.id} className="dsh-qa-form__review-item">
+                      <strong className="title-4">{i.title}</strong>
+                      {i.answer && (
+                        <p>
+                          {a
+                            ? "text" in a
+                              ? a.text
+                              : [
+                                  ...a.selected.map((v) =>
+                                    i.answer && "options" in i.answer
+                                      ? (i.answer.options.find(
+                                          (o) => o.value === v,
+                                        )?.label ?? v)
+                                      : v,
+                                  ),
+                                  a.other_text,
+                                ]
+                                  .filter(Boolean)
+                                  .join(", ")
+                            : "Ответ не указан"}
+                        </p>
+                      )}
                       {(record.attachments[i.id] ?? []).map((f) => (
                         <p key={f.resource_id}>
-                          {f.name} · версия {f.version} · {f.size_bytes} Б
+                          {f.name} · {formFileSize(f.size_bytes)} · версия{" "}
+                          {f.version}
                         </p>
                       ))}
-                      {!a && !record.attachments[i.id]?.length && (
-                        <p>Необязательный пункт оставлен пустым</p>
-                      )}
+                      {!a &&
+                        !record.attachments[i.id]?.length &&
+                        !incomplete.has(i.id) && (
+                          <p>Необязательный пункт оставлен пустым</p>
+                        )}
+                      {fieldErrors
+                        .filter((e) => e.item_id === i.id)
+                        .map((e) => (
+                          <p
+                            className="dsh-qa-form__field-errors"
+                            key={`${e.component}:${e.code}`}
+                          >
+                            {e.message}
+                          </p>
+                        ))}
                     </div>
                   );
                 })}
@@ -411,9 +489,13 @@ export function QaInputForm(props: Props) {
             ))}
           </div>
         ) : (
-          <div>
-            <h3>{step.title}</h3>
-            {step.description && <p>{step.description}</p>}
+          <div className="dsh-qa-form__step">
+            <div className="dsh-qa-form__step-heading">
+              <h3 className="title-3">{stepTitle(step.title, record.step)}</h3>
+              {step.description && (
+                <p className="dsh-qa-form__description">{step.description}</p>
+              )}
+            </div>
             {step.items.map((item) => (
               <QaFormItem
                 key={item.id}
@@ -421,6 +503,7 @@ export function QaInputForm(props: Props) {
                 answer={answers[item.id] ?? null}
                 files={record.attachments[item.id] ?? []}
                 uploads={record.uploads.filter((u) => u.item_id === item.id)}
+                errors={fieldErrors.filter((e) => e.item_id === item.id)}
                 disabled={false}
                 onAnswer={(answer) => {
                   dirty.current = true;
@@ -451,55 +534,64 @@ export function QaInputForm(props: Props) {
             ))}
           </div>
         )}
-        {fieldErrors
-          .filter((e) => review || e.step_id === step?.id)
-          .map((e) => (
-            <p className="dsh-qa-form__hint" key={`${e.item_id}:${e.code}`}>
-              {e.message}
-            </p>
-          ))}
       </div>
       <footer>
-        <button
-          type="button"
-          disabled={record.step === 0 || saving}
-          onClick={() => action(() => save(record.step - 1))}
-        >
-          Назад
-        </button>
-        <button
-          type="button"
-          disabled={saving || blocked}
-          onClick={() =>
-            action(async () => {
-              await save();
-              if (review) {
-                await mutate({ action: "submit" });
-              } else {
-                await save(record.step + 1);
-              }
-            })
-          }
-        >
-          {review ? (record.schema.submit_label ?? "Передать данные") : "Далее"}
-        </button>
-        <button
-          type="button"
-          onClick={() =>
-            action(async () => {
-              await save();
-              await mutate({ action: "pause" });
-              setCollapsed(true);
-            })
-          }
-        >
-          Сохранить и выйти
-        </button>
-        {props.canStop && (
-          <button type="button" onClick={stop}>
-            Остановить
-          </button>
+        {blocked && (
+          <p className="dsh-qa-form__hint">
+            {review
+              ? "Исправьте отмеченные пункты перед отправкой."
+              : "Заполните обязательные поля и приложите нужные файлы этого шага."}
+          </p>
         )}
+        <div className="dsh-qa-form__actions">
+          <div className="dsh-qa-form__navigation">
+            <button
+              type="button"
+              disabled={record.step === 0 || saving}
+              onClick={() => action(() => save(record.step - 1))}
+            >
+              Назад
+            </button>
+            <button
+              type="button"
+              className="dsh-qa-form__primary"
+              disabled={saving || blocked}
+              onClick={() =>
+                action(async () => {
+                  await save();
+                  if (review) {
+                    await mutate({ action: "submit" });
+                  } else {
+                    await save(record.step + 1);
+                  }
+                })
+              }
+            >
+              {review
+                ? (record.schema.submit_label ?? "Передать данные")
+                : "Далее"}
+            </button>
+          </div>
+          <div className="dsh-qa-form__secondary">
+            <button
+              type="button"
+              onClick={() =>
+                action(async () => {
+                  await save();
+                  await mutate({ action: "pause" });
+                  setCollapsed(true);
+                })
+              }
+            >
+              Сохранить и выйти
+            </button>
+            {props.canStop && (
+              <button type="button" onClick={stop}>
+                Остановить
+              </button>
+            )}
+          </div>
+        </div>
       </footer>
     </section>
   );
@@ -508,27 +600,89 @@ export function QaInputForm(props: Props) {
 /** Session/identity-keyed parent discards account-local state and aborts transfers on switch. */
 export function QaInputForms(props: Omit<Props, "form">) {
   const [forms, setForms] = useState<QaFormView[]>([]);
+  const [loadError, setLoadError] = useState(false);
+  const [retry, setRetry] = useState(0);
+  const dismissKey = `dsh-qa-surface:forms:hidden:${props.session}`;
+  const [dismissed, setDismissed] = useState<Set<string>>(() => {
+    try {
+      const saved: unknown = JSON.parse(
+        sessionStorage.getItem(dismissKey) ?? "[]",
+      );
+      return new Set(
+        Array.isArray(saved)
+          ? saved.filter((id): id is string => typeof id === "string")
+          : [],
+      );
+    } catch {
+      return new Set();
+    }
+  });
   useEffect(() => {
     let active = true;
+    let pending = false;
     const refresh = async () => {
+      if (pending) return;
+      pending = true;
       try {
         const list = unwrapForm(
           await props.api.list(props.token, props.session),
         );
-        if (active) setForms(list);
+        if (active) {
+          setForms(list);
+          setLoadError(false);
+        }
       } catch {
-        /* Existing cards keep their explicit error/retry state. */
+        if (active) setLoadError(true);
+      } finally {
+        pending = false;
       }
     };
     void refresh();
     const timer = setInterval(() => {
       void refresh();
     }, 1500);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    window.addEventListener("focus", onVisible);
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       active = false;
       clearInterval(timer);
+      window.removeEventListener("focus", onVisible);
+      document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [props.api, props.token, props.session]);
+  }, [props.api, props.token, props.session, retry]);
   const form = forms.find((r) => r.status === "draft") ?? forms[0];
-  return form ? <QaInputForm key={form.id} {...props} form={form} /> : null;
+  return (
+    <>
+      {loadError && (
+        <div role="alert" className="dsh-qa-error">
+          <span>
+            Не удалось загрузить пошаговые формы. Проверьте соединение и
+            повторите загрузку.
+          </span>
+          <button type="button" onClick={() => setRetry((value) => value + 1)}>
+            Повторить загрузку форм
+          </button>
+        </div>
+      )}
+      {form && !dismissed.has(form.id) && (
+        <QaInputForm
+          key={form.id}
+          {...props}
+          form={form}
+          onDismiss={() => {
+            const next = new Set(dismissed).add(form.id);
+            setDismissed(next);
+            try {
+              sessionStorage.setItem(dismissKey, JSON.stringify([...next]));
+            } catch {
+              /* The current page can still dismiss when browser storage is unavailable. */
+            }
+          }}
+        />
+      )}
+    </>
+  );
 }

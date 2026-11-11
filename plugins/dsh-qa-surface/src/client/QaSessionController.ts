@@ -56,6 +56,7 @@ import { attestQaPolicy } from "./session-admission.js";
 import { QaHostSourceBridge } from "./session-sources.js";
 import { QaHostApprovalBridge } from "./approvals.js";
 import { QaHostQuestionBridge } from "./questions.js";
+import { unwrapForm, type QaFormApi } from "./forms.js";
 import { StreamPublisher } from "./stream-publisher.js";
 import type {
   QaApprovalApi,
@@ -146,6 +147,8 @@ export interface QaSessionControllerOptions {
    * does not answer questions: the surface then only renders what it can.
    */
   readonly questionApi?: QaQuestionApi;
+  /** Confirm this owner's form renderer before a prompt can request input. */
+  readonly formApi?: Pick<QaFormApi, "list">;
   /**
    * The slash half of the Host namespace. Absent on a page whose Host build
    * predates it: the palette then never appears and ordinary prompts keep
@@ -292,6 +295,7 @@ export class QaSessionController {
   private readonly connection: ConnectionGenerationState;
   private readonly config: ResolvedQaSurfaceConfig;
   private readonly secureSessionRemote: QaSecureSession;
+  private readonly formApi: Pick<QaFormApi, "list"> | undefined;
   private readonly sourceApi: QaSourceApi;
   private readonly chats: QaChatIndex;
   private readonly accounts: QaAccountsFacade | undefined;
@@ -424,6 +428,7 @@ export class QaSessionController {
     this.connection = options.connection;
     this.config = options.config;
     this.secureSessionRemote = options.secureSession;
+    this.formApi = options.formApi;
     this.sourceApi =
       options.sourceApi ??
       ({
@@ -591,6 +596,23 @@ export class QaSessionController {
       String(target.sessionId) !== attestedId
     ) {
       return undefined;
+    }
+    if (this.config.forms.enabled && this.formApi !== undefined) {
+      try {
+        // The first prompt may reach the agent before React mounts its poller.
+        // Await the same owner-scoped poll here; never fabricate UI presence
+        // from admission, tool activation or an integration API request.
+        unwrapForm(
+          await this.formApi.list(this.accounts?.token() ?? "", attestedId),
+        );
+      } catch {
+        if (!this.disposed && this.session === target)
+          this.refuseSend(
+            "Не удалось подключить пошаговые формы. Повторите отправку; если ошибка сохраняется, обновите страницу.",
+          );
+        return undefined;
+      }
+      if (this.disposed || this.session !== target) return undefined;
     }
     return target;
   }

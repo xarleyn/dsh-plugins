@@ -568,6 +568,7 @@ export function QaSurface(props: QaSurfaceProps) {
       ...(props.questionApi === undefined
         ? {}
         : { questionApi: props.questionApi }),
+      ...(props.formApi === undefined ? {} : { formApi: props.formApi }),
       ...(props.slashApi === undefined ? {} : { slashApi: props.slashApi }),
       ...(props.queueStatus === undefined
         ? {}
@@ -599,6 +600,7 @@ export function QaSurface(props: QaSurfaceProps) {
     props.fileUpload,
     props.approvalApi,
     props.questionApi,
+    props.formApi,
     props.queueStatus,
     props.secureSession,
     props.sourceApi,

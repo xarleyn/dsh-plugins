@@ -4,7 +4,11 @@ import { z } from "zod";
 import { formAssert, QaFormError } from "./errors.js";
 import { parseFormSchema } from "./schema.js";
 import type { QaFormService } from "./service.js";
-import type { QaFormRecord, QaFormSubmission } from "./types.js";
+import type {
+  QaFormRecord,
+  QaFormSubmission,
+  QaFormValidation,
+} from "./types.js";
 
 const argsParser = z.discriminatedUnion("action", [
   z
@@ -15,13 +19,15 @@ const argsParser = z.discriminatedUnion("action", [
     })
     .strict(),
   z.object({ action: z.literal("resume"), form_id: z.string() }).strict(),
+  z.object({ action: z.literal("validate"), form: z.unknown() }).strict(),
 ]);
-type Outcome =
+type CollectionOutcome =
   QaFormSubmission | { status: "paused"; form_id: string; reason: string };
+type Outcome = CollectionOutcome | QaFormValidation;
 interface Waiter {
   session: string;
   call: string;
-  finish: (outcome?: Outcome) => void;
+  finish: (outcome?: CollectionOutcome) => void;
 }
 
 /** A parked tool call is transient. Never reconstruct one from a saved draft. */
@@ -53,6 +59,9 @@ export class QaFormGate {
   touch(session: string): void {
     this.clients.set(session, Date.now());
   }
+  private clientReady(session: string): boolean {
+    return Date.now() - (this.clients.get(session) ?? 0) < 30000;
+  }
   hasSession(session: string): boolean {
     return [...this.waiters.values()].some((w) => w.session === session);
   }
@@ -61,7 +70,7 @@ export class QaFormGate {
     formAssert(
       parsed.success,
       "INVALID_SCHEMA",
-      "Provide create with a schema, or resume with a form_id.",
+      "Provide create with request_key and form, validate with form, or resume with form_id.",
     );
     exec.signal.throwIfAborted();
     formAssert(
@@ -81,12 +90,33 @@ export class QaFormGate {
     );
     const service = this.service();
     service.enabled();
-    formAssert(
-      Date.now() - (this.clients.get(session) ?? 0) < 30000,
-      "INTERACTION_UNAVAILABLE",
-      "Open this chat in the QA interface before requesting a form.",
-    );
     const args = parsed.data;
+    if (args.action === "validate") {
+      const result: QaFormValidation = {
+        status: "validated",
+        valid: false,
+        interactive_client_ready: this.clientReady(session),
+        file_upload_available: this.filesAvailable(),
+        policy: service.policy(),
+        issues: [],
+      };
+      try {
+        parseFormSchema(args.form, result.policy);
+        result.valid = true;
+      } catch (error) {
+        if (!(error instanceof QaFormError) || error.code !== "INVALID_SCHEMA")
+          throw error;
+        result.issues = error.schemaIssues ?? [
+          { path: "form", code: error.code, message: error.message },
+        ];
+      }
+      return result;
+    }
+    formAssert(
+      this.clientReady(session),
+      "INTERACTION_UNAVAILABLE",
+      "No recent QA form poll was received for this chat. If the chat is already open in QA, reload it and retry; form loading or the connection may have failed. Otherwise open the chat in QA. This does not indicate a schema error.",
+    );
     formAssert(
       !this.hasSession(session) && !this.busy(session),
       "INTERACTION_BUSY",
@@ -123,9 +153,9 @@ export class QaFormGate {
       "INTERACTION_BUSY",
       "Finish the current interactive request before opening this form.",
     );
-    return new Promise<Outcome>((resolve, reject) => {
+    return new Promise<CollectionOutcome>((resolve, reject) => {
       const abort = () => finish();
-      const finish = (outcome?: Outcome) => {
+      const finish = (outcome?: CollectionOutcome) => {
         if (!this.waiters.delete(r.id)) return;
         exec.signal.removeEventListener("abort", abort);
         if (outcome === undefined)

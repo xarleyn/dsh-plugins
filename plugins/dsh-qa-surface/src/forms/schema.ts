@@ -1,6 +1,7 @@
 import { z } from "zod";
-import { formAssert, QaFormError } from "./errors.js";
-import type { QaFormPolicy, QaFormSchema } from "./types.js";
+import { formAssert } from "./errors.js";
+import { formSchemaError, formSchemaIssues } from "./schema-errors.js";
+import type { QaFormPolicy, QaFormSchema, QaFormSchemaIssue } from "./types.js";
 
 export const DEFAULT_FORM_POLICY: Readonly<QaFormPolicy> = Object.freeze({
   enabled: false,
@@ -134,62 +135,109 @@ export function parseFormSchema(
 ): QaFormSchema {
   const parsed = formSchemaParser.safeParse(input);
   if (!parsed.success)
-    throw new QaFormError(
-      "INVALID_SCHEMA",
-      "The form schema is invalid; provide explicit requirements and supported fields.",
-    );
+    throw formSchemaError(formSchemaIssues(parsed.error.issues));
   const schema = parsed.data;
-  const check = (ok: unknown) =>
-    formAssert(
-      ok,
-      "INVALID_SCHEMA",
-      "The form schema exceeds policy or contains conflicting requirements.",
-    );
+  const issues: QaFormSchemaIssue[] = [];
+  const check = (ok: unknown, path: string, message: string) => {
+    if (!ok) issues.push({ path, code: "policy_or_conflict", message });
+  };
   check(
     new TextEncoder().encode(JSON.stringify(schema)).length <=
       policy.maxSchemaBytes,
+    "form",
+    `Schema must fit within ${policy.maxSchemaBytes} bytes.`,
   );
-  check(schema.steps.length <= policy.maxSteps);
+  check(
+    schema.steps.length <= policy.maxSteps,
+    "form.steps",
+    `Use at most ${policy.maxSteps} steps.`,
+  );
   const stepIds = new Set<string>(),
     itemIds = new Set<string>();
-  for (const step of schema.steps) {
-    check(!stepIds.has(step.id));
+  for (const [stepIndex, step] of schema.steps.entries()) {
+    const stepPath = `form.steps[${stepIndex}]`;
+    check(!stepIds.has(step.id), `${stepPath}.id`, "Step IDs must be unique.");
     stepIds.add(step.id);
-    for (const item of step.items) {
-      check(!itemIds.has(item.id));
+    for (const [itemIndex, item] of step.items.entries()) {
+      const itemPath = `${stepPath}.items[${itemIndex}]`;
+      check(
+        !itemIds.has(item.id),
+        `${itemPath}.id`,
+        "Item IDs must be unique across the form.",
+      );
       itemIds.add(item.id);
-      check(item.answer !== undefined || item.files.requirement !== "none");
+      check(
+        item.answer !== undefined || item.files.requirement !== "none",
+        itemPath,
+        "Provide an answer specification or a non-none file requirement. File-only items do not need answer.",
+      );
       const a = item.answer;
       if (a?.type === "text" || a?.type === "textarea") {
-        check((a.max_length ?? policy.maxTextLength) <= policy.maxTextLength);
-        check((a.min_length ?? 0) <= (a.max_length ?? policy.maxTextLength));
+        check(
+          (a.max_length ?? policy.maxTextLength) <= policy.maxTextLength,
+          `${itemPath}.answer.max_length`,
+          `Must not exceed ${policy.maxTextLength}.`,
+        );
+        check(
+          (a.min_length ?? 0) <= (a.max_length ?? policy.maxTextLength),
+          `${itemPath}.answer.min_length`,
+          "Must not exceed max_length or the server text limit.",
+        );
       } else if (a !== undefined) {
-        check(a.options.length <= policy.maxOptionsPerItem);
-        check(new Set(a.options.map((o) => o.value)).size === a.options.length);
+        check(
+          a.options.length <= policy.maxOptionsPerItem,
+          `${itemPath}.answer.options`,
+          `Use at most ${policy.maxOptionsPerItem} options.`,
+        );
+        check(
+          new Set(a.options.map((o) => o.value)).size === a.options.length,
+          `${itemPath}.answer.options`,
+          "Option values must be unique.",
+        );
         if (a.type === "multi_select") {
           const maximum =
             a.max_selected ?? a.options.length + (a.allow_other ? 1 : 0);
           check(
             (a.min_selected ?? 0) <= maximum &&
               maximum <= a.options.length + (a.allow_other ? 1 : 0),
+            `${itemPath}.answer.max_selected`,
+            "Selection bounds must be ordered and fit the options plus one allowed custom choice.",
           );
         }
       }
       const f = item.files;
       if (f.requirement !== "none") {
         check(
-          f.max_count <= policy.maxFilesPerItem &&
-            f.max_file_size_bytes <= policy.maxFileSizeBytes,
+          f.max_count <= policy.maxFilesPerItem,
+          `${itemPath}.files.max_count`,
+          `Must not exceed ${policy.maxFilesPerItem}.`,
+        );
+        check(
+          f.max_file_size_bytes <= policy.maxFileSizeBytes,
+          `${itemPath}.files.max_file_size_bytes`,
+          `Must not exceed ${policy.maxFileSizeBytes} bytes.`,
         );
         check(
           f.accept.every((ext) => policy.allowedExtensions.includes(ext)) &&
             new Set(f.accept).size === f.accept.length,
+          `${itemPath}.files.accept`,
+          `Use unique allowed extensions: ${policy.allowedExtensions.join(", ")}.`,
         );
-        if (f.requirement === "required") check(f.min_count <= f.max_count);
+        if (f.requirement === "required")
+          check(
+            f.min_count <= f.max_count,
+            `${itemPath}.files.min_count`,
+            "Must not exceed max_count.",
+          );
       }
     }
   }
-  check(itemIds.size <= policy.maxItemsPerForm);
+  check(
+    itemIds.size <= policy.maxItemsPerForm,
+    "form.steps",
+    `Use at most ${policy.maxItemsPerForm} items across all steps.`,
+  );
+  if (issues.length) throw formSchemaError(issues);
   return schema;
 }
 
