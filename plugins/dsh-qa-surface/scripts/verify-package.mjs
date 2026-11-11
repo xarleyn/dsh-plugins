@@ -29,6 +29,7 @@ const required = [
   "lib/typert.remote-client.d.ts",
   "lib/personal-skills/index.js",
   "lib/personal-skills/service.js",
+  "lib/personal-skills/shared-seed.js",
   "lib/personal-skills/provider.js",
   "lib/personal-skills/skill-file.js",
   "lib/personal-skills/skill-format.js",
