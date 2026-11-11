@@ -79,6 +79,23 @@ export interface ReviewVerdict {
 }
 
 /**
+ * One completed review round whose findings the next round must resolve.
+ * Records accumulate per user turn, oldest first, and travel into the next
+ * round's reviewer task: without them every round re-reviews the candidate
+ * from scratch, the objection count grows between rounds instead of
+ * converging, and the loop spends its whole budget re-finding the same
+ * material.
+ */
+export interface ReviewRoundRecord {
+  /** 1-based number of the completed review round within the user turn. */
+  readonly round: number;
+  /** The reviewer's summary for that round. */
+  readonly summary: string;
+  /** The findings that demanded a revision. */
+  readonly issues: readonly ReviewIssue[];
+}
+
+/**
  * A reviewer run that produced no usable verdict. This is a reviewer
  * infrastructure failure, never a PASS (`SPEC.md`, "Security"): the
  * configured failure policy decides what happens to the candidate.
@@ -158,6 +175,12 @@ export interface ReviewInput {
   readonly onRecovery?: () => void;
   readonly conversationContext?: string;
   readonly primaryTools?: readonly string[];
+  /**
+   * Findings of the completed revision rounds of this user turn, oldest
+   * first. Empty for a first review: the reviewer then runs without prior
+   * context, exactly as it did before revisions existed.
+   */
+  readonly reviewHistory?: readonly ReviewRoundRecord[];
   /** Session id of the reviewed (primary) agent. */
   readonly sessionId: string;
   /** Current turn number of the reviewed agent. */

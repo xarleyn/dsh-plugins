@@ -243,3 +243,102 @@ describe("server request admission", () => {
     dispose();
   });
 });
+
+/**
+ * A role or an account may raise — or drop — the ceiling its own turns fill
+ * against. The scheduler reads the number per admission, so the deployment's
+ * value stays the last layer and nobody's override reaches another
+ * principal's turn except by occupying a shared place.
+ */
+describe("per-principal ceilings", () => {
+  function overrideFixture(
+    limit = 2,
+    overrides: Readonly<Record<string, number>> = {},
+  ) {
+    const clock = 0;
+    const roots: Agent[] = [];
+    const queue = new QaRequestScheduler(
+      () => limit,
+      () => roots,
+      () => clock,
+      () => false,
+      (item) => overrides[String(item.id)],
+    );
+    const request = (id: string) => {
+      const item = agent(id);
+      roots.push(item);
+      const abort = new AbortController();
+      return { agent: item, abort, ready: queue.acquire(item, abort.signal) };
+    };
+    return { queue, roots, request };
+  }
+
+  it("admits a raised-ceiling turn while the deployment's places are full", async () => {
+    const f = overrideFixture(2, { vip: 5 });
+    const first = f.request("a"),
+      second = f.request("b"),
+      vip = f.request("vip"),
+      next = f.request("c");
+    await Promise.all([first.ready, second.ready]);
+    // Two deployment places are taken; the VIP's own ceiling of five still
+    // has room, and a regular arrival behind it does not.
+    await vip.ready;
+    expect(f.queue.status("c")).toMatchObject({
+      limit: 2,
+      active: 3,
+      waiting: true,
+    });
+    expect(f.queue.status("vip", 5)).toMatchObject({
+      limit: 5,
+      active: 3,
+      full: false,
+    });
+    const rejected = expect(next.ready).rejects.toThrow("unloaded");
+    f.queue.dispose();
+    await rejected;
+  });
+
+  it("does not starve the queue behind one full principal", async () => {
+    const f = overrideFixture(1, { vip: 3 });
+    const first = f.request("a"),
+      waiting = f.request("b"),
+      vip = f.request("vip");
+    await first.ready;
+    // The regular arrival waits on the deployment's single place; the VIP is
+    // queued behind it and still fits under its own ceiling.
+    expect(f.queue.status("b").waiting).toBe(true);
+    await vip.ready;
+    expect(f.queue.status("b").position).toBe(1);
+    f.queue.release(vip.agent, true);
+    f.queue.release(first.agent, true);
+    await waiting.ready;
+    f.queue.dispose();
+  });
+
+  it("honours a zero override where the deployment sets a ceiling", async () => {
+    const f = overrideFixture(1, { bulk: 0 });
+    const first = f.request("a"),
+      bulk = f.request("bulk");
+    await first.ready;
+    // 0 is a real value: this principal's turns lift the ceiling outright.
+    await bulk.ready;
+    expect(f.queue.status("bulk", 0)).toMatchObject({ limit: 0, full: false });
+    f.queue.dispose();
+  });
+
+  it("keeps the single-ceiling behaviour when no override speaks", async () => {
+    const f = overrideFixture(1);
+    const first = f.request("a"),
+      second = f.request("b"),
+      third = f.request("c");
+    await first.ready;
+    expect(f.queue.status("b").waiting).toBe(true);
+    expect(f.queue.status("c").waiting).toBe(true);
+    f.queue.release(first.agent, true);
+    await second.ready;
+    expect(f.queue.status("c").waiting).toBe(true);
+    const rejected = expect(third.ready).rejects.toThrow("unloaded");
+    f.queue.dispose();
+    await rejected;
+  });
+});

@@ -19,6 +19,7 @@ const CONFIG = {
   persona: "",
   agentPreset: "",
   allowedTools: [],
+  roundTimeoutMs: 0,
 };
 
 function reviewInput(): ReviewInput {

@@ -317,6 +317,10 @@ export function createSubagentBackend(deps: {
                 ...(input.primaryTools === undefined
                   ? {}
                   : { primaryTools: input.primaryTools }),
+                ...(input.reviewHistory === undefined ||
+                input.reviewHistory.length === 0
+                  ? {}
+                  : { reviewHistory: input.reviewHistory }),
                 requestText: input.requestText,
                 requestAttachments: input.requestAttachments,
                 candidateText: input.candidateText,

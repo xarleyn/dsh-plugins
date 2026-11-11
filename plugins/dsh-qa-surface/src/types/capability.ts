@@ -156,6 +156,12 @@ export interface QaSubrole {
   readonly model?: QaModelPair;
   /** Additional user-selectable pairs. The default model stays available. */
   readonly allowedModels?: readonly QaModelPair[];
+  /**
+   * How many of the stand's slots this role's turns may fill at once, ahead of
+   * the deployment's `session.maxActiveRequests`. 0 lifts the ceiling for this
+   * role's turns; absent keeps the deployment's number.
+   */
+  readonly maxActiveRequests?: number;
   readonly ui?: {
     readonly icon?: string;
     readonly accent?: string;
@@ -197,6 +203,12 @@ export interface QaUserAccess {
   readonly model?: QaModelPair;
   /** Overrides the role's alternatives; [] permits only the default model. */
   readonly allowedModels?: readonly QaModelPair[];
+  /**
+   * How many of the stand's slots this account's turns may fill at once,
+   * ahead of what its role says. 0 lifts the ceiling for this account's
+   * turns; absent keeps the role's or the deployment's number.
+   */
+  readonly maxActiveRequests?: number;
 }
 
 /** Filtered model choices for one owned chat or the caller's next chat. */

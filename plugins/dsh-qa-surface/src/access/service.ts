@@ -46,12 +46,14 @@ import {
 import {
   enabledSubroles,
   normalizeCapabilityConfig,
+  normalizeQueueSlots,
   normalizeUserAccess,
   personalUserSkillNames,
   resolveCapabilityPolicy,
   resolveSkillAccess,
   withdrawnSkillNames,
 } from "./model.js";
+import { resolveQueueSlots } from "./queue-policy.js";
 import {
   QaCapabilityCatalog,
   withMissingCapabilities,
@@ -155,11 +157,16 @@ function requireExactAssignment(
     input.allowedModels,
     "assignment allowedModels",
   );
+  const maxActiveRequests = normalizeQueueSlots(
+    input.maxActiveRequests,
+    "assignment maxActiveRequests",
+  );
   return Object.freeze({
     allowedSubroles: Object.freeze(allowed),
     defaultSubrole: input.defaultSubrole,
     ...(model === undefined ? {} : { model }),
     ...(allowedModels === undefined ? {} : { allowedModels }),
+    ...(maxActiveRequests === undefined ? {} : { maxActiveRequests }),
   });
 }
 
@@ -1057,6 +1064,64 @@ export class QaAccessService {
       alternatives,
       replacements,
     );
+  }
+
+  /**
+   * The request ceiling one chat's turns fill against: the account's override,
+   * else the role the chat runs under, else the deployment's — the same layers
+   * {@link modelPolicyFor} folds, read per admission rather than once at boot.
+   * @param sessionId - the chat whose turn is being admitted or reported.
+   */
+  queueSlotsFor(sessionId: string): number {
+    return resolveQueueSlots(this.queueLayersFor(sessionId, undefined)).limit;
+  }
+
+  /**
+   * The request ceiling one account's not-yet-created chats ask against: the
+   * pre-send read has a token but no chat to name, so the role layer is the
+   * account's default role.
+   * @param userId - the account the read is for; without one the deployment
+   *   default speaks.
+   */
+  queueSlotsForUser(userId: string): number {
+    return resolveQueueSlots(this.queueLayersFor(undefined, userId)).limit;
+  }
+
+  /**
+   * The named layers behind one chat's ceiling, for the resolver.
+   * @param sessionId - the chat, or nothing for the account-only read.
+   * @param userId - the account whose own chain answers when no chat exists.
+   */
+  private queueLayersFor(
+    sessionId: string | undefined,
+    userId: string | undefined,
+  ): {
+    readonly account?: number | undefined;
+    readonly subrole?: number | undefined;
+    readonly deployment: number;
+  } {
+    const config = this.roles.snapshot();
+    const accounts = this.options.accounts();
+    const ownerId =
+      sessionId !== undefined ? accounts?.ownerIdOf(sessionId) : userId;
+    const assignment =
+      ownerId === undefined || accounts === undefined
+        ? undefined
+        : normalizeUserAccess(accounts.accessOf(ownerId), config);
+    const subroleId =
+      sessionId === undefined
+        ? assignment?.defaultSubrole
+        : (accounts?.sessionAccess(sessionId)?.subroleId ??
+          assignment?.defaultSubrole);
+    return {
+      account: assignment?.maxActiveRequests,
+      subrole:
+        subroleId === undefined
+          ? undefined
+          : config.subroles.find(({ id }) => id === subroleId)
+              ?.maxActiveRequests,
+      deployment: this.options.config().session.maxActiveRequests,
+    };
   }
 
   /**

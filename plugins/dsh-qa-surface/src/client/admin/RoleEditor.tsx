@@ -16,6 +16,16 @@ import {
   type ToolBucket,
 } from "./capability-selection.js";
 
+/**
+ * Drop the queue-slots override from a draft: an optional field that is absent
+ * means the role keeps no opinion, and with exact optional properties an
+ * explicit `undefined` is not the same as absent.
+ */
+function withoutQueueSlots(role: QaSubrole): QaSubrole {
+  const { maxActiveRequests: _withdrawn, ...rest } = role;
+  return rest;
+}
+
 export function RoleEditor(props: {
   readonly role: QaSubrole | null;
   readonly api: QaAccessApi;
@@ -167,6 +177,53 @@ export function RoleEditor(props: {
               setDraft({ ...draft, allowedModels })
             }
           />
+          <section data-testid="qa-admin-role-queue-slots">
+            <h3>Слоты очереди этой роли</h3>
+            <label
+              className="dsh-qa-role-editor__check"
+              data-testid="qa-admin-role-queue-slots-override"
+            >
+              <input
+                type="checkbox"
+                checked={draft.maxActiveRequests !== undefined}
+                onChange={(event) =>
+                  setDraft((current) =>
+                    event.currentTarget.checked
+                      ? {
+                          ...current,
+                          maxActiveRequests: current.maxActiveRequests ?? 0,
+                        }
+                      : withoutQueueSlots(current),
+                  )
+                }
+              />
+              Переопределить потолок стенда для этой роли
+            </label>
+            {draft.maxActiveRequests === undefined ? null : (
+              <label data-testid="qa-admin-role-queue-slots-field">
+                Максимум одновременных вопросов роли
+                <input
+                  type="number"
+                  min={0}
+                  max={50}
+                  step={1}
+                  data-testid="qa-admin-role-queue-slots-input"
+                  value={draft.maxActiveRequests}
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      maxActiveRequests: Number(event.currentTarget.value),
+                    }))
+                  }
+                />
+              </label>
+            )}
+            <p className="dsh-qa-role-skills__hint">
+              Сколько вопросов стенд отвечает сразу, когда ход открывает чат
+              этой роли. 0 снимает потолок для роли; пусто — число развёртывания
+              из настроек «Сессия». Аккаунт со своим числом сильнее роли.
+            </p>
+          </section>
         </div>
       ) : tab === "tools" ? (
         <div

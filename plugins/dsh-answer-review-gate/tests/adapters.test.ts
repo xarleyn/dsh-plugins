@@ -40,6 +40,7 @@ const EXPERT_CONFIG = {
   persona: "",
   agentPreset: "",
   allowedTools: [],
+  roundTimeoutMs: 0,
 };
 
 const SUBAGENT_CONFIG = {

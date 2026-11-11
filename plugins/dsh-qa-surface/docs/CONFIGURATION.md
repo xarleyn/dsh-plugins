@@ -222,6 +222,15 @@ how many chat turns the stand answers simultaneously. A deployment hosting its
 model on a single card needs it: the third question does not add capacity, it
 slows the two already running.
 
+That number is the profile's default, and two layers above it override it per
+turn — `maxActiveRequests` on a subrole (set on the admin console's «Саброли»
+page), then on an account (the user card's «Слоты очереди этого аккаунта»).
+The account wins over the role, the role wins over the deployment, 0 is a real
+override that lifts the ceiling for that principal's turns, and a field left
+absent keeps the layer below it. The value is read where a turn is admitted and
+where `qaSurface/queueStatus` answers, so a change applies to the next turn
+without reloading the plugin.
+
 The count is read from the Host, because only the Host can see it. It is the
 harness's own `running` on the top-level agents, so a question that arrived
 through the HTTP API occupies a place, a chat another account is reading does,

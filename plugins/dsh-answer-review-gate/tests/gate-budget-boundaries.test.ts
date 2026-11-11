@@ -68,6 +68,7 @@ function config(
       persona: "",
       agentPreset: "",
       allowedTools: [],
+      roundTimeoutMs: 0,
     },
     maxReviewRounds: 2,
     maxToolCallsPerRound: 0,

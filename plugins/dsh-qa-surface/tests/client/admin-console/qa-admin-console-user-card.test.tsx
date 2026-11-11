@@ -45,6 +45,50 @@ function checkbox(): HTMLInputElement {
 }
 
 describe("admin user detail card", () => {
+  it.each(["role", "slots", "model"] as const)(
+    "preserves independent model grants and queue overrides when editing %s",
+    async (field) => {
+      const access = {
+        allowedSubroles: ["general"],
+        defaultSubrole: "general",
+        model: { provider: "demo", model: "demo-model" },
+        allowedModels: [{ provider: "local", model: "demo-alternative" }],
+        maxActiveRequests: 2,
+      };
+      const value = detail({ user: { ...detail().user, access } });
+      const user = vi.fn(async () => ({ ok: true as const, value }));
+      const updateUser = vi.fn(
+        async (_token: string, _id: string, _update: unknown) => ({
+          ok: true as const,
+          value,
+        }),
+      );
+      renderConsole(adminApi({ user, updateUser }), "/qa/admin/users/u1");
+      await screen.findByTestId("qa-admin-user-card", {}, MOUNT_TIMEOUT);
+      if (field === "role") fireEvent.click(checkbox());
+      else if (field === "slots")
+        fireEvent.change(screen.getByTestId("qa-admin-user-queue-slots-select"), {
+          target: { value: "inherit" },
+        });
+      else
+        fireEvent.change(
+          await screen.findByTestId("qa-admin-user-model-pair"),
+          { target: { value: "" } },
+        );
+      await waitFor(() => expect(updateUser).toHaveBeenCalledTimes(1));
+      const { model, maxActiveRequests, ...rest } = access;
+      expect(updateUser.mock.calls[0]?.[2]).toEqual({
+        access: {
+          ...rest,
+          allowedSubroles:
+            field === "role" ? ["general", "analyst"] : access.allowedSubroles,
+          ...(field === "model" ? {} : { model }),
+          ...(field === "slots" ? {} : { maxActiveRequests }),
+        },
+      });
+    },
+  );
+
   it("reports the message count as unknown instead of reading the logs", async () => {
     const user = vi.fn(async () => ({ ok: true as const, value: detail() }));
     renderConsole(adminApi({ user }), "/qa/admin/users/u1");

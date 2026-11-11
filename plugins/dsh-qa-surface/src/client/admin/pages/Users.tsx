@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type {
   QaAccountRole,
   QaAdminUserRow,
+  QaModelPair,
   QaPasswordResetRequest,
   QaUserAccess,
 } from "../../../types.js";
@@ -21,6 +22,38 @@ const PAGE_SIZE = 25;
 
 /** The Host's floor; the queue answers a shorter password before the round trip. */
 const MIN_PASSWORD_LENGTH = 8;
+
+/**
+ * The assignment one card write sends. A control that owns an override names
+ * the key even to clear it (`{ model: undefined }`), while a key left out
+ * carries the stored value along — so toggling a role can never silently drop
+ * what the operator set beside it.
+ */
+function assignmentWith(
+  access: QaUserAccess,
+  fields: {
+    readonly allowedSubroles?: readonly string[];
+    readonly defaultSubrole?: string;
+  } & Partial<{
+    readonly model: QaModelPair | undefined;
+    readonly maxActiveRequests: number | undefined;
+  }>,
+): QaUserAccess {
+  const model = "model" in fields ? fields.model : access.model;
+  const maxActiveRequests =
+    "maxActiveRequests" in fields
+      ? fields.maxActiveRequests
+      : access.maxActiveRequests;
+  return {
+    allowedSubroles: fields.allowedSubroles ?? access.allowedSubroles,
+    defaultSubrole: fields.defaultSubrole ?? access.defaultSubrole,
+    ...(access.allowedModels === undefined
+      ? {}
+      : { allowedModels: access.allowedModels }),
+    ...(model === undefined ? {} : { model }),
+    ...(maxActiveRequests === undefined ? {} : { maxActiveRequests }),
+  };
+}
 
 /**
  * The forgotten-password queue: an account asked for a reset from the sign-in
@@ -467,14 +500,10 @@ export function AdminUserDetail(props: {
       ? access.defaultSubrole
       : (allowed[0] as string);
     void write({
-      access: {
+      access: assignmentWith(access, {
         allowedSubroles: allowed,
         defaultSubrole,
-        ...(access.model === undefined ? {} : { model: access.model }),
-        ...(access.allowedModels === undefined
-          ? {}
-          : { allowedModels: access.allowedModels }),
-      },
+      }),
     });
   };
 
@@ -577,14 +606,9 @@ export function AdminUserDetail(props: {
               disabled={busy || access.allowedSubroles.length === 0}
               onChange={(event) =>
                 void write({
-                  access: {
-                    ...access,
-                    allowedSubroles: access.allowedSubroles,
+                  access: assignmentWith(access, {
                     defaultSubrole: event.currentTarget.value,
-                    ...(access.model === undefined
-                      ? {}
-                      : { model: access.model }),
-                  },
+                  }),
                 })
               }
             >
@@ -608,15 +632,53 @@ export function AdminUserDetail(props: {
             }
             onChange={(model) =>
               void write({
-                access: {
-                  ...access,
-                  allowedSubroles: access.allowedSubroles,
-                  defaultSubrole: access.defaultSubrole,
-                  model,
-                },
+                access: assignmentWith(access, { model }),
               })
             }
           />
+          <h3>Слоты очереди этого аккаунта</h3>
+          <FilterField
+            label="Переопределение потолка стенда"
+            testId="qa-admin-user-queue-slots"
+          >
+            <select
+              data-testid="qa-admin-user-queue-slots-select"
+              value={
+                access.maxActiveRequests === undefined
+                  ? "inherit"
+                  : String(access.maxActiveRequests)
+              }
+              disabled={busy}
+              onChange={(event) =>
+                void write({
+                  access: assignmentWith(access, {
+                    maxActiveRequests:
+                      event.currentTarget.value === "inherit"
+                        ? undefined
+                        : Number(event.currentTarget.value),
+                  }),
+                })
+              }
+            >
+              <option value="inherit">Как у роли</option>
+              <option value="0">Без ограничения</option>
+              {Array.from({ length: 50 }, (_, index) => index + 1).map(
+                (value) => (
+                  <option key={value} value={String(value)}>
+                    {String(value)}
+                  </option>
+                ),
+              )}
+            </select>
+          </FilterField>
+          <p
+            className="dsh-qa-admin__metric-hint"
+            data-testid="qa-admin-user-queue-slots-hint"
+          >
+            Сколько вопросов стенд отвечает сразу для чатов этого аккаунта. «Как
+            у роли» — число роли, а без её числа — число развёртывания из
+            настроек «Сессия».
+          </p>
           <h3>Действующие возможности</h3>
           <ul
             className="dsh-qa-admin__effective"
