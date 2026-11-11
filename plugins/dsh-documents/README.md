@@ -42,6 +42,13 @@ survive interruption. Independent review and authenticated human approval refer
 to the exact draft hash. A changed draft or template must be reviewed again.
 An active managed workflow refuses finalisation through the general converters.
 
+Long content templates are returned in bounded pages. Every workflow response
+includes `templatePage` with `offset`, `returnedChars`, `totalChars` and
+`nextOffset`. Continue with `document_workflow_read(workflowId, templateOffset)`
+using the returned offset until `nextOffset` is null. Offsets count UTF-16
+characters; paging does not change the revision. Draft previews remain bounded
+and identify the saved Markdown file for complete reading.
+
 Workflow state lives under `$DSH_HOME/document-workflows` (or the Host user's
 `.dsh/document-workflows`) outside the model-writable workspace. Include it in
 the deployment backup. Markdown drafts remain in the session workspace and are
@@ -73,18 +80,18 @@ for another document kind or product version is refused. Price and quantity
 inputs require explicit sources; totals use exact decimal arithmetic with
 half-up rounding per line to two decimals. No price or tax treatment is inferred.
 
-| Tool | What it does |
-| --- | --- |
-| `document_create` | Markdown → DOCX and/or PDF through a registered template, as one artifact bundle |
-| `document_to_markdown` | DOCX/PDF → Markdown, with tables, assets and OCR policy |
-| `document_from_url` | Fetch an online document or attachment and store its text as an artifact |
-| `document_convert` | A supported document to another supported format (`md → docx/pdf`, `docx → pdf/md`, `pdf → md`) |
-| `document_inspect` | Type, metadata, page/heading/table counts, encryption and macro flags — without converting |
-| `document_compare` | Two documents → a deterministic comparison artifact, a summary and a bounded preview |
-| `document_diff_read` | Pages of a comparison's changes, filtered by section, kind and signal |
-| `spreadsheet_inspect` | Sheets and dimensions of XLSX/ODS/FODS or a CSV/TSV table, with delimiter/encoding discovery |
-| `spreadsheet_read` | Bounded pages of one sheet, typed values, cell addresses, formulas and cached results |
-| `spreadsheet_create` | A new XLSX/ODS/FODS workbook or single-table CSV/TSV attachment |
+| Tool                   | What it does                                                                                    |
+| ---------------------- | ----------------------------------------------------------------------------------------------- |
+| `document_create`      | Markdown → DOCX and/or PDF through a registered template, as one artifact bundle                |
+| `document_to_markdown` | DOCX/PDF → Markdown, with tables, assets and OCR policy                                         |
+| `document_from_url`    | Fetch an online document or attachment and store its text as an artifact                        |
+| `document_convert`     | A supported document to another supported format (`md → docx/pdf`, `docx → pdf/md`, `pdf → md`) |
+| `document_inspect`     | Type, metadata, page/heading/table counts, encryption and macro flags — without converting      |
+| `document_compare`     | Two documents → a deterministic comparison artifact, a summary and a bounded preview            |
+| `document_diff_read`   | Pages of a comparison's changes, filtered by section, kind and signal                           |
+| `spreadsheet_inspect`  | Sheets and dimensions of XLSX/ODS/FODS or a CSV/TSV table, with delimiter/encoding discovery    |
+| `spreadsheet_read`     | Bounded pages of one sheet, typed values, cell addresses, formulas and cached results           |
+| `spreadsheet_create`   | A new XLSX/ODS/FODS workbook or single-table CSV/TSV attachment                                 |
 
 Each producing tool reports its files by their path **inside the session
 workspace** — `.qa/artifacts/documents/<id>/report.docx` — which is also the
@@ -248,16 +255,16 @@ of this plugin's row on the host **Plugins** page — or declaratively:
 
 ```yaml
 - id: documents
-  name: '@yadsh/dsh-documents'
+  name: "@yadsh/dsh-documents"
   config:
     enabled: true
     storage:
-      root: null            # null = <session workspace>/.qa/artifacts/documents
+      root: null # null = <session workspace>/.qa/artifacts/documents
       retainSource: true
       retainInputs: true
     extraction:
       defaultMode: accurate # auto | fast | accurate
-      ocr: auto             # auto | off | force
+      ocr: auto # auto | off | force
       extractImages: true
       maxInlineChars: 200000
     docling:
@@ -275,7 +282,7 @@ of this plugin's row on the host **Plugins** page — or declaratively:
       maxPages: 1000
     comparison:
       enabled: true
-      defaultMode: contract    # contract | default
+      defaultMode: contract # contract | default
       detectMoves: true
       includeHeaders: true
       includeFooters: true
@@ -336,18 +343,18 @@ switch that decides whether a chat can write documents at all, and
 Environment wins over the settings namespace at startup, which is how a
 container pins a shared volume or a service address without editing settings:
 
-| Variable | Effect |
-| --- | --- |
-| `DSH_DOCUMENTS_ENABLED` | enable/disable the pipeline |
-| `DSH_DOCUMENTS_STORAGE_ROOT` | absolute artifact root |
-| `DSH_DOCUMENTS_TEMPLATES_ROOT` | absolute template root |
-| `DSH_DOCUMENTS_DOCLING_BASE_URL` | docling-serve address |
-| `DSH_DOCUMENTS_DOCLING_TIMEOUT_MS` | Docling request timeout |
-| `DSH_DOCUMENTS_PANDOC_EXECUTABLE` | pandoc binary |
-| `DSH_DOCUMENTS_LIBREOFFICE_EXECUTABLE` | LibreOffice binary |
-| `DSH_DOCUMENTS_MARKITDOWN_EXECUTABLE` | markitdown binary |
-| `DSH_DOCUMENTS_OCR_LANGUAGES` | comma-separated OCR languages |
-| `DSH_DOCUMENTS_MAX_INPUT_BYTES` | input file cap |
+| Variable                               | Effect                        |
+| -------------------------------------- | ----------------------------- |
+| `DSH_DOCUMENTS_ENABLED`                | enable/disable the pipeline   |
+| `DSH_DOCUMENTS_STORAGE_ROOT`           | absolute artifact root        |
+| `DSH_DOCUMENTS_TEMPLATES_ROOT`         | absolute template root        |
+| `DSH_DOCUMENTS_DOCLING_BASE_URL`       | docling-serve address         |
+| `DSH_DOCUMENTS_DOCLING_TIMEOUT_MS`     | Docling request timeout       |
+| `DSH_DOCUMENTS_PANDOC_EXECUTABLE`      | pandoc binary                 |
+| `DSH_DOCUMENTS_LIBREOFFICE_EXECUTABLE` | LibreOffice binary            |
+| `DSH_DOCUMENTS_MARKITDOWN_EXECUTABLE`  | markitdown binary             |
+| `DSH_DOCUMENTS_OCR_LANGUAGES`          | comma-separated OCR languages |
+| `DSH_DOCUMENTS_MAX_INPUT_BYTES`        | input file cap                |
 
 The card shows what the browser wrote; the Host logs the values it resolved.
 

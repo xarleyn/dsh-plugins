@@ -168,12 +168,29 @@ function primaryTools(exec: DocumentToolExec): readonly string[] | undefined {
       ].sort();
 }
 
-function renderView(value: unknown): { type: "text"; text: string }[] {
+function renderView(
+  value: unknown,
+  templateOffset = 0,
+): { type: "text"; text: string }[] {
   const view = value as DocumentWorkflowView;
+  const template = view.templateContent;
+  const offset = Math.min(templateOffset, template?.length ?? 0);
+  const end = Math.min(offset + 12_000, template?.length ?? 0);
+  const nextOffset = end < (template?.length ?? 0) ? end : null;
   const bounded = {
     ...view,
     markdown: view.markdown?.slice(0, 12_000),
-    templateContent: view.templateContent?.slice(0, 12_000),
+    templateContent: template?.slice(offset, end),
+    ...(template === undefined
+      ? {}
+      : {
+          templatePage: {
+            offset,
+            returnedChars: end - offset,
+            totalChars: template.length,
+            nextOffset,
+          },
+        }),
   };
   return [
     {
@@ -205,6 +222,11 @@ function renderView(value: unknown): { type: "text"; text: string }[] {
               `draft-sha256: ${view.draft.sha256}`,
             ]),
         JSON.stringify(bounded, null, 2),
+        ...(nextOffset === null
+          ? []
+          : [
+              `Template preview is incomplete. Call document_workflow_read with workflowId ${view.id} and templateOffset ${nextOffset}; follow templatePage.nextOffset until null. Offsets count UTF-16 characters. Read all pages before drafting; a partial preview is not the complete template.`,
+            ]),
         "Update facts with their exact keys. For proposals, pricingDecision.value must be exactly priced or unpriced; put the customer's explanation in evidence.quote. unresolved contains blocking questions only: use [] when they have been resolved or explicitly accepted as documented limitations. Capability evidence needs productVersion equal to this workflow's version.",
         "facts and requirements are arrays of objects, never keyed dictionaries. For specifications and unpriced proposals, omit commercial; never send commercial:{value:unpriced}. A specification does not require a pricingDecision fact.",
         "To revise a saved draft, pass the complete new Markdown to document_workflow_draft. Do not edit or overwrite its saved file directly: that invalidates its recorded hash.",
@@ -239,7 +261,17 @@ export function createWorkflowTools(
   };
   const output = {
     schema: { type: "object" as const, additionalProperties: true as const },
-    render: (_args: unknown, value: unknown) => renderView(value),
+    render: (args: unknown, value: unknown) => {
+      const offset = (args as { templateOffset?: unknown })?.templateOffset;
+      return renderView(
+        value,
+        typeof offset === "number" &&
+          Number.isSafeInteger(offset) &&
+          offset >= 0
+          ? offset
+          : 0,
+      );
+    },
   };
   return [
     defineTool({
@@ -277,8 +309,15 @@ export function createWorkflowTools(
     defineTool({
       name: "document_workflow_read",
       description:
-        "Recover the persisted requirements, facts, open questions and current draft after an interruption; continue the same workflow instead of asking answered questions again.",
-      parameters: { workflowId: common.workflowId },
+        "Recover the persisted requirements, facts, open questions and current draft after an interruption. Template content is paged: follow templatePage.nextOffset by passing templateOffset until null to read the complete template. Offsets are zero-based UTF-16 character counts; reading does not change the revision.",
+      parameters: {
+        workflowId: common.workflowId,
+        templateOffset: {
+          type: "integer",
+          description:
+            "Zero-based UTF-16 character offset in templateContent, default 0. Copy templatePage.nextOffset exactly to continue the template; the draft remains a preview with its own saved file path.",
+        },
+      },
       output,
       execute: async (args, exec) =>
         workflows

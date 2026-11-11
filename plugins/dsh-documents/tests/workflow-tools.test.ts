@@ -47,6 +47,44 @@ function exec() {
   } as unknown as ToolRunContext;
 }
 describe("workflow tools and conversion boundary", () => {
+  it("reads every character of a long template through explicit continuation pages", async () => {
+    const { writeFile } = await import("node:fs/promises");
+    const template = `# Template\n${"😀 multi-line source\n".repeat(1500)}END OF TEMPLATE`;
+    await writeFile(path.join(fixture.templates, "content.md"), template);
+    const started = await fixture.service.start(fixture.scope, {
+      kind: "proposal",
+      template: "proposal",
+      productVersion: "1.0",
+      request: "Synthetic pagination test",
+    });
+    const tool = createWorkflowTools(
+      { runtime: fixture.runtime },
+      fixture.service,
+    ).find((t) => t.name === "document_workflow_read")!;
+    const pages: string[] = [];
+    let offset: number | null = 0;
+    while (offset !== null) {
+      const args = { workflowId: started.id, templateOffset: offset };
+      const result = await tool.execute(args, exec());
+      const rendered = tool.output.render(args, result as never);
+      const text = rendered.find((b) => b.type === "text")!.text;
+      const json = text.slice(text.indexOf("{\n"));
+      const view = JSON.parse(json.slice(0, json.indexOf("\n}\n") + 2));
+      expect(view.revision).toBe(started.revision);
+      expect(view.templatePage.offset).toBe(offset);
+      expect(view.templatePage.returnedChars).toBe(view.templateContent.length);
+      expect(view.templatePage.totalChars).toBe(template.length);
+      expect(view.templateContent.length).toBeLessThanOrEqual(12_000);
+      pages.push(view.templateContent);
+      offset = view.templatePage.nextOffset;
+      if (offset !== null)
+        expect(text).toContain("Template preview is incomplete");
+    }
+    expect(pages.length).toBeGreaterThan(2);
+    expect(pages.join("")).toBe(template);
+    expect(pages.at(-1)).toContain("END OF TEMPLATE");
+  });
+
   it("publishes an executable update schema that rejects keyed facts and fake commercial decisions", () => {
     const tool = createWorkflowTools(
       { runtime: fixture.runtime },
