@@ -99,6 +99,7 @@ describe("buildMcpConfig", () => {
     // the values the plugin already resolved can travel on.
     expect(config.env).toEqual({
       ELECTRON_RUN_AS_NODE: "1",
+      OPENVIKING_TIMEOUT_MS: "10000",
       OPENVIKING_URL: "http://ov.local",
       OPENVIKING_API_KEY: "k",
       OPENVIKING_ACCOUNT: "a",
@@ -141,6 +142,7 @@ describe("buildMcpConfig", () => {
 
     expect(config.env).toEqual({
       ELECTRON_RUN_AS_NODE: "1",
+      OPENVIKING_TIMEOUT_MS: "10000",
       OPENVIKING_URL: "http://127.0.0.1:1933",
     });
   });

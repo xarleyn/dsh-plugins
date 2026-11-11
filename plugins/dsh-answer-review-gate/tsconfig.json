@@ -1,4 +1,5 @@
 {
   "extends": "@yadsh/dsh-config/tsconfig/node",
+  "compilerOptions": { "jsx": "react-jsx" },
   "include": ["src", "tests"]
 }

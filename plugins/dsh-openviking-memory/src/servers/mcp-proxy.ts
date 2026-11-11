@@ -139,7 +139,13 @@ export function readProxyConfig(
   env: NodeJS.ProcessEnv = process.env,
   cwd: string = process.cwd(),
 ): McpProxyConfig {
-  const cfg = resolveConfig({}, env, cwd);
+  const cfg = resolveConfig(
+    env.OPENVIKING_TIMEOUT_MS === undefined
+      ? {}
+      : { requestTimeoutMs: Number(env.OPENVIKING_TIMEOUT_MS) },
+    env,
+    cwd,
+  );
   const creds = resolveOpenVikingCredentials(env);
   return buildMcpProxyConfig({
     baseUrl: cfg.endpoint,

@@ -105,7 +105,7 @@
       "kind": "plugin",
       "install": "dsh plugin --profile <profile> add @yadsh/dsh-answer-review-gate",
       "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-answer-review-gate#readme",
-      "client": false
+      "client": true
     },
     {
       "name": "dsh-cas-results",

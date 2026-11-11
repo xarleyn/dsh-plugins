@@ -331,17 +331,12 @@ page, opened from its own row in the DSH web UI. It edits the plugin's
   `autoInject` toggle rather than from a header badge. Runtime diagnostics live in
   the plugin log under `<$DSH_HOME>/logs/dsh-openviking-memory/`; the card shows
   the configuration and nothing else, because it has no Remote face.
-- **The card edits the Host's document from loopback.** The settings document a
-  card writes is the profile the Host serves, and a page that reaches the
-  deployment over the network is served it in `memory` mode — process-local, and
-  never writable, in the Host contract's own words — which this card reports as one
-  sentence naming the state, not as a disabled form and not as an empty section.
-  So the operator sets these switches on
-  the machine that serves the installation, including a stand through its loopback
-  port; the surface a network browser is meant to use is the read-only account page
-  described in §Per-account memory. The split is deliberate: the switches below
-  change one shared deployment (endpoint, credentials, which memory is injected),
-  so they belong to the operator, not to whoever opens a chat.
+- **The Host decides writability.** The card follows the configuration form's
+  reported state and writable flag. An operator with a writable managed profile
+  can save changes; a read-only or unavailable provider reports its state and
+  does not admit writes. The network hostname alone does not determine that
+  permission. These controls change the shared deployment; the per-account
+  memory page described above is a separate surface.
 
 ### Injection
 
@@ -411,6 +406,12 @@ page, opened from its own row in the DSH web UI. It edits the plugin's
 | --- | --- | --- | --- |
 | `requestTimeoutMs` | integer 1000–120000 | `10000` | Timeout for one OpenViking request |
 | `mcpToolCallTimeoutMs` | integer 1000–600000 | `60000` | Timeout for one bridged MCP tool call |
+
+The proxy's HTTP deadline is `requestTimeoutMs`, forwarded to its subprocess as
+`OPENVIKING_TIMEOUT_MS`. The outer MCP bridge uses `mcpToolCallTimeoutMs`; raising
+only that outer deadline cannot extend the inner HTTP request. Keep it longer
+than the HTTP deadline. Changes to the bridged transport take effect after the
+plugin reloads; ordinary runtime HTTP operations adopt settings changes live.
 
 Out-of-range or unknown enum values are rejected by DSH with a validation error
 rather than silently coerced. Values supplied through `OPENVIKING_*` environment

@@ -40,7 +40,10 @@ export function buildMcpConfig(config: ResolvedConfig): mcpClient.Config {
   // In DSH Desktop, process.execPath is Electron's executable rather than a
   // standalone Node binary. This tells Electron to run the proxy script as
   // Node instead of attempting to launch a second Desktop instance.
-  const env: Record<string, string> = { ELECTRON_RUN_AS_NODE: "1" };
+  const env: Record<string, string> = {
+    ELECTRON_RUN_AS_NODE: "1",
+    OPENVIKING_TIMEOUT_MS: String(config.requestTimeoutMs),
+  };
   if (config.endpoint) env.OPENVIKING_URL = config.endpoint;
   if (config.apiKey) env.OPENVIKING_API_KEY = config.apiKey;
   if (config.account) env.OPENVIKING_ACCOUNT = config.account;

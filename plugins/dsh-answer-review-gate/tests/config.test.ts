@@ -2,10 +2,40 @@ import { describe, expect, it } from "vitest";
 
 import {
   ANSWER_REVIEW_GATE_DEFAULTS,
+  AnswerReviewGateConfigSchema,
   resolveAnswerReviewGateConfig,
+  snapshotAnswerReviewGateConfig,
+  type LiveAnswerReviewGateConfig,
 } from "../src/config.js";
 
 describe("resolveAnswerReviewGateConfig", () => {
+  it("exposes budgets to settings and reads subsequent edits without recreating the gate", () => {
+    const configured = AnswerReviewGateConfigSchema({
+      maxToolCallsPerRound: 120,
+      reviewTimeoutMs: 300_000,
+    });
+    expect(configured.maxToolCallsPerRound).toHaveProperty(
+      "get",
+      expect.any(Function),
+    );
+    expect(configured.reviewer).toHaveProperty("get", expect.any(Function));
+    let calls = 120;
+    let timeout = 300_000;
+    const live = {
+      maxToolCallsPerRound: { get: () => calls },
+      reviewTimeoutMs: { get: () => timeout },
+      reviewer: { get: () => ({ roundTimeoutMs: 600_000 }) },
+    } as unknown as LiveAnswerReviewGateConfig;
+    expect(
+      resolveAnswerReviewGateConfig(snapshotAnswerReviewGateConfig(live)),
+    ).toMatchObject({ maxToolCallsPerRound: 120, reviewTimeoutMs: 300_000 });
+    calls = 180;
+    timeout = 420_000;
+    expect(
+      resolveAnswerReviewGateConfig(snapshotAnswerReviewGateConfig(live)),
+    ).toMatchObject({ maxToolCallsPerRound: 180, reviewTimeoutMs: 420_000 });
+  });
+
   it("returns the documented defaults for an empty config", () => {
     expect(resolveAnswerReviewGateConfig(undefined)).toEqual(
       ANSWER_REVIEW_GATE_DEFAULTS,

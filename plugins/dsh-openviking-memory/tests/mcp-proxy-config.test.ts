@@ -5,6 +5,8 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { resolveConfig } from "../src/config.js";
+import { buildMcpConfig } from "../src/mcp.js";
 import { createLogger } from "../src/openviking/debug-log.js";
 import {
   buildMcpProxyConfig,
@@ -195,6 +197,18 @@ describe("readProxyConfig", () => {
     OPENVIKING_CLI_CONFIG_FILE: join(tmpdir(), "ov-absent-ovcli.conf"),
     OPENVIKING_CONFIG_FILE: join(tmpdir(), "ov-absent-ov.conf"),
   };
+
+  it("uses the configured HTTP timeout carried by the bridge, independently of its outer tool deadline", () => {
+    const resolved = resolveConfig(
+      { requestTimeoutMs: 45_000, mcpToolCallTimeoutMs: 90_000 },
+      env,
+    );
+    const bridge = buildMcpConfig(resolved);
+    if (bridge.transport !== "stdio") throw new Error("Expected stdio bridge");
+    const child = readProxyConfig(bridge.env, "/workspace");
+    expect(child.timeoutMs).toBe(45_000);
+    expect(bridge.toolCallTimeoutMs).toBe(90_000);
+  });
 
   it("resolves the child env into the proxy's credentials", () => {
     const config = readProxyConfig(env, "/workspace");

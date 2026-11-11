@@ -9,14 +9,22 @@
  */
 import assert from "node:assert/strict";
 import { runVerifyPackage } from "@yadsh/dsh-plugin-scripts/run-verify-package";
+import { verifyPluginCardContract } from "@yadsh/dsh-plugin-scripts/verify-plugin-card-contract";
 
 await runVerifyPackage({
   packageRoot: new URL("../", import.meta.url),
   packageName: "@yadsh/dsh-answer-review-gate",
   license: "MIT",
   enginesNodeMatchesCompatibility: true,
-  exports: [".", "./package.json"],
-  client: "none",
+  exports: [".", "./client", "./package.json"],
+  client: {
+    platform: "web",
+    injectEquals: [
+      "@deepseek-ai/dsh-client-ui-plugin-manager",
+      "@deepseek-ai/dsh-client-ui-settings",
+    ],
+    externalEquals: ["@deepseek-ai/dsh-client-ui-slots"],
+  },
   files: [
     "lib",
     "cordis.patch.yml",
@@ -24,7 +32,14 @@ await runVerifyPackage({
     "README.md",
     "LICENSE",
   ],
-  requiredFiles: ["lib/index.js", "lib/index.d.ts", "README.md", "LICENSE"],
+  requiredFiles: [
+    "lib/index.js",
+    "lib/index.d.ts",
+    "lib/client.js",
+    "lib/client/index.d.ts",
+    "README.md",
+    "LICENSE",
+  ],
   patch: { headerComment: true, id: "dsh-answer-review-gate" },
   compatibility: {
     range: true,
@@ -37,6 +52,11 @@ await runVerifyPackage({
     ],
   },
   extra: async ({ readFile }) => {
+    const client = await readFile("lib/client.js");
+    verifyPluginCardContract(client);
+    assert.ok(
+      client.includes("@yadsh/dsh-answer-review-gate#dsh-answer-review-gate"),
+    );
     const readme = await readFile("README.md");
     // Failure policy is the user-facing safety contract: every mode is
     // documented, and the text states that reviewer failure is never a PASS.

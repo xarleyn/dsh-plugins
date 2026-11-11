@@ -10,9 +10,9 @@
  * are never reviewed: the decision is pure runtime state, never text
  * heuristics.
  *
- * The plugin owns no tools or client bundle. Its one user-facing surface is
- * the explicit `/no-review <request>` host command; the gate never guesses a
- * waiver from prose.
+ * The plugin owns no tools. Its operator card configures review budgets on
+ * the Plugins panel; the explicit `/no-review <request>` host command grants
+ * a waiver, which the gate never guesses from prose.
  */
 
 import { createUserMessage } from "@deepseek-ai/dsh-llm";
@@ -22,7 +22,9 @@ import { ReviewAudit } from "./audit.js";
 import {
   AnswerReviewGateConfigSchema,
   resolveAnswerReviewGateConfig,
+  snapshotAnswerReviewGateConfig,
   type AnswerReviewGateConfig,
+  type LiveAnswerReviewGateConfig,
   type ResolvedAnswerReviewGateConfig,
 } from "./config.js";
 import { AnswerReviewGate, type GateAgent, type GateLogSink } from "./gate.js";
@@ -38,9 +40,11 @@ export {
   AnswerReviewGateConfigSchema,
   resolveAnswerReviewGateConfig,
   ANSWER_REVIEW_GATE_DEFAULTS,
+  snapshotAnswerReviewGateConfig,
 } from "./config.js";
 export type {
   AnswerReviewGateConfig,
+  LiveAnswerReviewGateConfig,
   ResolvedAnswerReviewGateConfig,
 } from "./config.js";
 export {
@@ -125,10 +129,10 @@ export interface GateHostContext {
  */
 export function apply(
   ctx: GateHostContext,
-  rawConfig?: AnswerReviewGateConfig,
+  rawConfig?: AnswerReviewGateConfig | LiveAnswerReviewGateConfig,
 ): () => Promise<void> {
   const configSource = (): ResolvedAnswerReviewGateConfig =>
-    resolveAnswerReviewGateConfig(rawConfig);
+    resolveAnswerReviewGateConfig(snapshotAnswerReviewGateConfig(rawConfig));
   const logger = getPluginLogger({ pluginId: name });
   const dispose = async (): Promise<void> => {
     await logger.close();

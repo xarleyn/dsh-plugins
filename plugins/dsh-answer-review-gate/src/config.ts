@@ -9,6 +9,7 @@
  * "Proposed configuration").
  */
 
+import type { Volatile } from "@deepseek-ai/cordis";
 import z from "@deepseek-ai/schemastery";
 
 import {
@@ -111,6 +112,30 @@ export interface AnswerReviewGateConfig {
     /** Ring capacity (clamped 10-10_000). */
     readonly maxEntries?: number;
   };
+}
+
+/** Settings-backed fields arrive as live references; plain callers remain supported. */
+export type LiveAnswerReviewGateConfig = {
+  readonly [K in keyof AnswerReviewGateConfig]:
+    AnswerReviewGateConfig[K] | Volatile<AnswerReviewGateConfig[K]>;
+};
+
+/** Read one operation's settings without retaining a stale numeric budget. */
+export function snapshotAnswerReviewGateConfig(
+  config: AnswerReviewGateConfig | LiveAnswerReviewGateConfig | undefined,
+): AnswerReviewGateConfig {
+  const snapshot: Record<string, unknown> = {};
+  for (const [key, member] of Object.entries(config ?? {})) {
+    const value =
+      typeof member === "object" &&
+      member !== null &&
+      "get" in member &&
+      typeof member.get === "function"
+        ? member.get()
+        : member;
+    if (value !== undefined) snapshot[key] = value;
+  }
+  return snapshot as AnswerReviewGateConfig;
 }
 
 /** Fully defaulted, clamped configuration used by the gate. */
@@ -312,7 +337,10 @@ export function resolveAnswerReviewGateConfig(
   };
 }
 
-export const AnswerReviewGateConfigSchema: z<AnswerReviewGateConfig> = z
+export const AnswerReviewGateConfigSchema: z<
+  AnswerReviewGateConfig,
+  LiveAnswerReviewGateConfig
+> = z
   .object({
     enabled: z
       .boolean()
@@ -384,35 +412,41 @@ export const AnswerReviewGateConfigSchema: z<AnswerReviewGateConfig> = z
         agentPreset: "",
         allowedTools: [...REVIEWER_READ_ONLY_TOOLS],
         roundTimeoutMs: 600_000,
-      }),
+      })
+      .volatile(),
     maxReviewRounds: z
       .number()
       .default(3)
       .description(
         "Review/revision rounds per user turn before the failure policy applies (1-10).",
-      ),
+      )
+      .volatile(),
     failMode: z
       .union([z.const("open"), z.const("warn"), z.const("closed")])
       .default("warn")
-      .description("Behavior when the review could not complete."),
+      .description("Behavior when the review could not complete.")
+      .volatile(),
     maxToolCallsPerRound: z
       .number()
       .default(0)
       .description(
         "Domain-expert review: completed tool calls per round before cancelling its activation (0 disables, max 10000). Requires bounded-review support in domain-experts.",
-      ),
+      )
+      .volatile(),
     maxConsecutiveRefusalsPerRound: z
       .number()
       .default(0)
       .description(
         "Domain-expert review: consecutive tool errors before cancelling its activation (0 disables, max 100). A successful call resets the streak.",
-      ),
+      )
+      .volatile(),
     reviewTimeoutMs: z
       .number()
       .default(0)
       .description(
         "Domain-expert review: wall-clock budget per round in milliseconds, including result capture recovery (0 disables, max 3600000). Budget exhaustion is a review failure, never PASS.",
-      ),
+      )
+      .volatile(),
     trackBackgroundDelegations: z
       .boolean()
       .default(true)

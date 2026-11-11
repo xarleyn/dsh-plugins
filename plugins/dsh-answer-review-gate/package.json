@@ -16,6 +16,10 @@
   "main": "./lib/index.js",
   "types": "./lib/index.d.ts",
   "exports": {
+    "./client": {
+      "types": "./lib/client/index.d.ts",
+      "default": "./lib/client.js"
+    },
     ".": {
       "types": "./lib/index.d.ts",
       "default": "./lib/index.js"
@@ -32,20 +36,46 @@
     "LICENSE"
   ],
   "dsh": {
+    "client": {
+      "external": [
+        "@deepseek-ai/dsh-client-ui-slots"
+      ],
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-plugin-manager",
+        "@deepseek-ai/dsh-client-ui-settings"
+      ],
+      "platform": "web"
+    },
     "bundle": {
       "patch": "./cordis.patch.yml"
     }
   },
   "dependencies": {
+    "@yadsh/dsh-plugin-kit": "workspace:^",
     "@yadsh/dsh-plugin-log": "workspace:^"
   },
   "peerDependencies": {
+    "@deepseek-ai/dsh-client-ui-plugin-manager": "catalog:dsh",
+    "@deepseek-ai/dsh-client-ui-renderer": "catalog:dsh",
+    "@deepseek-ai/dsh-client-ui-settings": "catalog:dsh",
+    "@deepseek-ai/dsh-client-ui-slots": "catalog:dsh",
     "@deepseek-ai/cordis": "catalog:dsh",
     "@deepseek-ai/dsh-llm": "catalog:dsh",
     "@deepseek-ai/schemastery": "catalog:dsh",
     "@deepseek-ai/dsh-scope": "catalog:dsh"
   },
   "devDependencies": {
+    "@deepseek-ai/dsh-client-ui-plugin-manager": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-client-ui-renderer": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-client-ui-settings": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-client-ui-slots": "catalog:dsh-dev",
+    "@testing-library/react": "^16.3.0",
+    "@types/react": "catalog:frontend-dev",
+    "@types/react-dom": "catalog:frontend-dev",
+    "react": "catalog:frontend-dev",
+    "react-dom": "catalog:frontend-dev",
+    "jsdom": "catalog:tooling",
+    "tsdown": "catalog:tooling",
     "@deepseek-ai/cordis": "catalog:dsh-dev",
     "@deepseek-ai/dsh-llm": "catalog:dsh-dev",
     "@deepseek-ai/dsh-session": "catalog:dsh-dev",
@@ -81,8 +111,8 @@
   ],
   "scripts": {
     "clean": "node -e \"require('node:fs').rmSync('lib', { recursive: true, force: true })\"",
-    "build": "pnpm run clean && tsc -p tsconfig.build.json",
-    "lint": "eslint src tests scripts",
+    "build": "pnpm run clean && tsc -p tsconfig.build.json && tsdown",
+    "lint": "eslint src tests scripts tsdown.config.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",

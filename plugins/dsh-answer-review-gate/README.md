@@ -194,6 +194,19 @@ audit:
   maxEntries: 500
 ```
 
+### Operator controls
+
+Open **Plugins → Answer Review Gate → its configuration row** in the Host interface.
+The card edits the profile through the Host settings service. It exposes the tool
+budget, review timeout, consecutive-error limit, revision rounds, outer deadline
+and failure policy. Deadlines are displayed in seconds and stored in milliseconds.
+Committed values apply to subsequent review operations; a running round retains
+the budget with which it started. Read-only or unavailable profiles cannot save changes.
+
+The review timeout includes delegated experts. The outer deadline bounds the whole
+backend call, so whichever deadline expires first ends that round. Zero disables
+an individual deadline or tool limit; a failed review is never converted into a PASS.
+
 | Field | Meaning |
 | --- | --- |
 | `enabled` | Master switch; `false` registers no listeners at all. |
