@@ -220,6 +220,10 @@ function spawnNx(cwd, args) {
       ...process.env,
       CI: "true",
       NX_DAEMON: "false",
+      // These disposable fixtures test cache hits even when the surrounding
+      // worktree gate deliberately disables its own shared task cache.
+      NX_SKIP_NX_CACHE: "false",
+      NX_DISABLE_NX_CACHE: "false",
       // The fixture workspaces need one inferred plugin, the package-json
       // project graph. Loaded in a worker it has to be spawned, connected and
       // told to load within ten seconds, which a machine running the rest of the
