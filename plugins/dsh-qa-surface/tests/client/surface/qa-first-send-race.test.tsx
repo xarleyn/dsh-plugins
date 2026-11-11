@@ -216,13 +216,13 @@ describe("first send from a new QA chat", () => {
       },
     }));
     const { newChat } = await mountSurface(world, access);
-    const model = await screen.findByRole("combobox", { name: "Модель чата" });
+    const model = await screen.findByTestId("qa-composer-settings-trigger");
     expect(model.closest(".dsh-qa-composer__toolbar")).toBeTruthy();
     for (let count = 0; count < 3; count++) {
       fireEvent.click(newChat);
       await waitFor(() =>
         expect(
-          screen.getAllByRole("combobox", { name: "Модель чата" }),
+          screen.getAllByTestId("qa-composer-settings-trigger"),
         ).toHaveLength(1),
       );
       expect(screen.getAllByTestId("qa-composer-input")).toHaveLength(1);

@@ -111,7 +111,7 @@ export function useChatCodeSource(options: ChatCodeSourceOptions) {
   ]);
 
   const select = useCallback(async (source: string | null) => {
-    if (saving.current) return;
+    if (saving.current) return false;
     const request = current.current;
     const operation = ++sequence.current;
     if (request.sessionId === null) {
@@ -121,9 +121,9 @@ export function useChatCodeSource(options: ChatCodeSourceOptions) {
         pending: false,
         error: null,
       });
-      return;
+      return true;
     }
-    if (request.api === undefined) return;
+    if (request.api === undefined) return false;
     saving.current = true;
     setState((prior) => ({ ...prior, pending: true, error: null }));
     try {
@@ -132,10 +132,11 @@ export function useChatCodeSource(options: ChatCodeSourceOptions) {
         request.sessionId,
         source,
       );
-      if (operation !== sequence.current) return;
+      if (operation !== sequence.current) return false;
       if (!result.ok) throw new Error("save failed");
       selection.current = result.value.selectedSource;
       setState({ value: result.value, pending: false, error: null });
+      return true;
     } catch {
       if (operation === sequence.current)
         setState((prior) => ({
@@ -144,6 +145,7 @@ export function useChatCodeSource(options: ChatCodeSourceOptions) {
           error:
             "Не удалось сохранить версию. Выбор не изменён; дождитесь завершения ответа и повторите.",
         }));
+      return false;
     } finally {
       if (operation === sequence.current) saving.current = false;
     }

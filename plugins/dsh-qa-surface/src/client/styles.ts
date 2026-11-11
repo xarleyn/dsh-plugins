@@ -6,6 +6,7 @@ import { sourceFiltersStyles } from "./source-filters-styles.js";
 import { requestWaitStyles } from "./request-wait-styles.js";
 import { historyOrganizationStyles } from "./history-organization-styles.js";
 import { codeSourceStyles } from "./code-source-styles.js";
+import { composerSettingsStyles } from "./composer-settings-styles.js";
 
 /**
  * Company interaction palette ("Цвета взаимодействия" guideline) — the single
@@ -1102,6 +1103,7 @@ ${sourceFiltersStyles}
 ${requestWaitStyles}
 ${historyOrganizationStyles}
 ${codeSourceStyles}
+${composerSettingsStyles}
 ${KATEX_CSS}
 ${AUDIT_UI_STYLES}`;
 

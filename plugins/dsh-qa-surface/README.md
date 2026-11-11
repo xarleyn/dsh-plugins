@@ -54,9 +54,15 @@ Corporate sign-in through Keycloak or another OpenID Connect provider is opt-in.
 The source tree includes `plugins/dsh-qa-surface/docs/oidc.md` with client settings,
 account linking, role admission, session limits and deployment acceptance.
 
-When a role or account has multiple permitted models, a **Model** selector
-appears inside the composer toolbar beside the attachment button, replacing
-keyboard instructions with the selected model's name. Choosing a model applies to the current chat and
+The composer has one compact **Chat settings** menu beside the attachment
+button. Its summary shows the current model and code version. The **Model**
+and **Code version** entries open nested choice lists with a checkmark for the
+current value; Back, Escape and arrow keys navigate the levels. The menu closes
+after a successful choice and stays open with an error if saving fails. Model
+choices appear when the role or account permits alternatives; code choices
+appear when a code-source catalog is configured.
+
+Choosing a model applies to the current chat and
 survives reopening it; new chats keep the configured default. Switching waits
 until the chat has finished its response and has no queued request. Readers,
 participants and delegated-agent views cannot change the owner's model.
@@ -538,7 +544,7 @@ or `path` without `source` retains its override behaviour. An explicit
 unless a different source is explicitly named. Release and development sources
 may share a documentation edition.
 
-The **Версия кода** selector beside the composer saves an explicit source for
+The **Версия кода** entry in the composer's shared settings menu saves an explicit source for
 the chat on the server. Reopening the chat or using another browser restores
 that choice. **По умолчанию** clears the override and follows the deployment
 default. Draft selection creates no session: it is saved before the first

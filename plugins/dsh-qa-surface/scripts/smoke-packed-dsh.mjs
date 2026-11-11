@@ -40,6 +40,7 @@ const presetScopedTool = process.platform === "win32" ? "pwsh" : "bash";
 const keepFailedSmoke = process.env.DSH_QA_KEEP_SMOKE === "1";
 const temporaryRoot = await mkdtemp(join(tmpdir(), "dsh-qa-packed-smoke-"));
 const packageDirectory = join(temporaryRoot, "package");
+const supportDirectory = join(temporaryRoot, "support-packages");
 const toolDirectory = join(temporaryRoot, "tool");
 const dshHome = join(temporaryRoot, "home");
 const workspacePath = join(temporaryRoot, "workspace");
@@ -955,6 +956,7 @@ let host;
 try {
   await Promise.all([
     mkdir(packageDirectory, { recursive: true }),
+    mkdir(supportDirectory, { recursive: true }),
     mkdir(toolDirectory, { recursive: true }),
     mkdir(dshHome, { recursive: true }),
     mkdir(workspacePath, { recursive: true }),
@@ -972,6 +974,14 @@ try {
   );
   if (tarballs.length !== 1)
     throw new Error("pack did not produce exactly one tarball");
+  await run("pnpm", ["pack", "--pack-destination", supportDirectory], {
+    cwd: join(repo, "..", "..", "packages", "plugin-kit"),
+  });
+  const supportTarballs = (await readdir(supportDirectory)).filter((name) =>
+    name.endsWith(".tgz"),
+  );
+  if (supportTarballs.length !== 1)
+    throw new Error("support pack did not produce exactly one tarball");
   await run(
     "pnpm",
     ["add", "--ignore-scripts", `@deepseek-ai/dsh@${dshVersion}`],
@@ -1023,6 +1033,40 @@ try {
     profileManifestPath,
     `${JSON.stringify(profileManifest, null, 2)}\n`,
   );
+  // The source catalog ships with this wave; the current registry kit predates
+  // it. Use the packed local dependency, including under pnpm 11, which ignores
+  // the package.json pnpm.overrides field.
+  const profileWorkspacePath = join(
+    dshHome,
+    "profiles",
+    "web",
+    "pnpm-workspace.yaml",
+  );
+  const profileWorkspace = await readFile(profileWorkspacePath, "utf8");
+  const supportSpec = `file:${join(supportDirectory, supportTarballs[0]).replaceAll("\\", "/")}`;
+  await writeFile(
+    profileWorkspacePath,
+    `${profileWorkspace}\noverrides:\n  "@yadsh/dsh-plugin-kit": ${JSON.stringify(supportSpec)}\n`,
+  );
+  await run("pnpm", ["install", "--ignore-scripts"], {
+    cwd: join(dshHome, "profiles", "web"),
+  });
+  const installedKit = JSON.parse(
+    await readFile(
+      join(
+        dshHome,
+        "profiles",
+        "web",
+        "node_modules",
+        "@yadsh",
+        "dsh-plugin-kit",
+        "package.json",
+      ),
+      "utf8",
+    ),
+  );
+  if (!installedKit.exports?.["./code-sources"])
+    throw new Error("packed profile did not install the local code-source kit");
   await writeFile(
     join(dshHome, "profiles", "web", "cordis.patch.yml"),
     `- id: permission

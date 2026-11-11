@@ -1,51 +1,21 @@
-import { useEffect, useRef, useState } from "react";
-import type { QaModelOptions, QaModelPair } from "../../types.js";
-import type { QaAccessApi } from "../types.js";
-
-const keyOf = (pair: QaModelPair): string =>
-  JSON.stringify([pair.provider, pair.model]);
+import {
+  useQaModelSelection,
+  qaModelKey as keyOf,
+  type QaModelSelectionProps,
+} from "../use-model-selection.js";
 
 /** The server filters choices and persists selection on the native session. */
-export function QaModelSelector(props: {
-  readonly api: NonNullable<QaAccessApi["userModels"]>;
-  readonly token: string;
-  readonly sessionId: string | null;
-  readonly subroleId: string | null;
-  readonly preview: boolean;
-  readonly disabled: boolean;
-  readonly onSelect: (pair: QaModelPair) => Promise<string>;
-}) {
-  const [options, setOptions] = useState<QaModelOptions>();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string>();
-  const [retry, setRetry] = useState(0);
-  const generation = useRef(0);
-  useEffect(() => {
-    const revision = ++generation.current;
-    setOptions(undefined);
-    setError(undefined);
-    void props
-      .api(props.token, props.sessionId, props.subroleId, props.preview)
-      .then((result) => {
-        if (generation.current !== revision) return;
-        if (result.ok) setOptions(result.value);
-        else setError("Не удалось загрузить доступные модели.");
-      })
-      .catch(() => {
-        if (generation.current === revision)
-          setError("Не удалось загрузить доступные модели.");
-      });
-    return () => {
-      generation.current++;
-    };
-  }, [
-    props.api,
-    props.token,
-    props.sessionId,
-    props.subroleId,
-    props.preview,
-    retry,
-  ]);
+export function QaModelSelector(props: QaModelSelectionProps) {
+  const {
+    options,
+    busy,
+    error,
+    selectedKey,
+    selected: selectedEntry,
+    disabled,
+    select: change,
+    reload,
+  } = useQaModelSelection(props);
 
   // No picker for a fixed single model; failures remain visible and retryable.
   if (
@@ -54,39 +24,6 @@ export function QaModelSelector(props: {
     error === undefined
   )
     return null;
-  const selectedKey =
-    options?.selected === undefined ? "" : keyOf(options.selected);
-  const selectedEntry = options?.models.find(
-    (entry) => keyOf(entry) === selectedKey,
-  );
-  const disabled = props.disabled || busy || options === undefined;
-  const change = async (key: string) => {
-    const pair = options?.choices.find((entry) => keyOf(entry) === key);
-    if (pair === undefined || key === selectedKey) return;
-    setBusy(true);
-    setError(undefined);
-    try {
-      const id = await props.onSelect(pair);
-      const revision = ++generation.current;
-      const result = await props.api(
-        props.token,
-        id,
-        props.subroleId,
-        props.preview,
-      );
-      if (revision !== generation.current) return;
-      if (!result.ok) throw new Error("Не удалось обновить выбранную модель.");
-      setOptions(result.value);
-    } catch (failure) {
-      setError(
-        failure instanceof Error
-          ? failure.message
-          : "Не удалось сменить модель.",
-      );
-    } finally {
-      setBusy(false);
-    }
-  };
   return (
     <div
       className="dsh-qa-model-selector"
@@ -153,7 +90,7 @@ export function QaModelSelector(props: {
             type="button"
             data-testid="qa-model-selector-retry"
             disabled={busy || props.disabled}
-            onClick={() => setRetry((value) => value + 1)}
+            onClick={reload}
           >
             Обновить модели
           </button>
