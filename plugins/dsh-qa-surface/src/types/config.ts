@@ -298,6 +298,11 @@ export interface QaSurfaceConfig {
       readonly enabled?: boolean;
       /** Directory below the personal root; relative, never escaping it. */
       readonly relativeRoot?: string;
+      /** Copy only these deployment skills into shared storage once. */
+      readonly sharedSeed?: {
+        readonly root: string;
+        readonly names: readonly string[];
+      } | null;
       /** Follow manual file edits and refresh the DSH catalog. */
       readonly watch?: boolean;
       readonly maxSkillBytes?: number;
@@ -508,6 +513,10 @@ export interface ResolvedQaSurfaceConfig {
     skills: {
       readonly enabled: boolean;
       readonly relativeRoot: string;
+      readonly sharedSeed: {
+        readonly root: string;
+        readonly names: readonly string[];
+      } | null;
       readonly watch: boolean;
       readonly maxSkillBytes: number;
       readonly allowResourceEditing: boolean;

@@ -41,7 +41,13 @@ export interface Rig {
 }
 
 export async function rig(
-  options: { readonly watch?: boolean } = {},
+  options: {
+    readonly watch?: boolean;
+    readonly sharedSeed?: {
+      readonly root: string;
+      readonly names: readonly string[];
+    };
+  } = {},
 ): Promise<Rig> {
   const workspace = mkdtempSync(path.join(tmpdir(), "qa-skills-provider-"));
   const config = resolveConfig({
@@ -49,7 +55,7 @@ export async function rig(
     accounts: {
       enabled: true,
       perUserWorkspace: true,
-      skills: { watch: options.watch ?? false },
+      skills: { watch: options.watch ?? false, sharedSeed: options.sharedSeed },
     },
     lockdown: {
       sandboxMode: "workspace-write",

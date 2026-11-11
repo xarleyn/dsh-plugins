@@ -8,6 +8,38 @@ import {
 import { schemaParse } from "./config.helpers.js";
 
 describe("qa surface config", () => {
+  it("accepts an explicit shared seed allowlist and rejects paths and invalid directory names", () => {
+    expect(
+      resolveConfig({
+        accounts: {
+          skills: {
+            sharedSeed: {
+              root: "/deployment/skills",
+              names: ["proposal", "proposal"],
+            },
+          },
+        },
+      }).accounts.skills.sharedSeed,
+    ).toEqual({ root: "/deployment/skills", names: ["proposal"] });
+    for (const sharedSeed of [
+      { root: "relative/skills", names: ["proposal"] },
+      { root: "/deployment/skills", names: ["../escape"] },
+      { root: "/deployment/skills", names: ["invalid_name"] },
+    ]) {
+      expect(() =>
+        resolveConfig({ accounts: { skills: { sharedSeed } } }),
+      ).toThrow(/sharedSeed/u);
+    }
+    expect(
+      schemaParse({
+        accounts: {
+          skills: {
+            sharedSeed: { root: "/deployment/skills", names: ["proposal"] },
+          },
+        },
+      }).accounts?.skills?.sharedSeed,
+    ).toEqual({ root: "/deployment/skills", names: ["proposal"] });
+  });
   it("keeps accounts off and registration open by default", () => {
     expect(resolveConfig().accounts).toEqual({
       localLogin: true,
@@ -38,6 +70,7 @@ describe("qa surface config", () => {
       skills: {
         enabled: false,
         relativeRoot: ".dsh/skills",
+        sharedSeed: null,
         watch: true,
         maxSkillBytes: 262_144,
         allowResourceEditing: false,
@@ -172,6 +205,7 @@ describe("qa surface config", () => {
         skills: {
           enabled: false,
           relativeRoot: ".dsh/skills",
+          sharedSeed: null,
           watch: true,
           maxSkillBytes: 262_144,
           allowResourceEditing: false,

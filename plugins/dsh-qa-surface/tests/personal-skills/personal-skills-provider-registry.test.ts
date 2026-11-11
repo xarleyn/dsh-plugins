@@ -1,4 +1,5 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -6,8 +7,114 @@ import {
   QA_USER_SKILLS_PROVIDER,
 } from "../../src/personal-skills/index.js";
 import { rig, writeSkill } from "./personal-skills-provider.helpers.js";
+import { parseQaSkillMetadata } from "../../src/access/skill-metadata.js";
+import { prepareQaUserWorkspace } from "../../src/user-workspace.js";
+import { USER_A, USER_B } from "./personal-skills-provider.helpers.js";
 
 describe("qa-user-skills provider against the DSH registry", () => {
+  it("seeds a cold session catalog before the editor has ever opened it", async () => {
+    const source = mkdtempSync(path.join(tmpdir(), "qa-cold-seed-"));
+    mkdirSync(path.join(source, "proposal"));
+    writeFileSync(
+      path.join(source, "proposal", "SKILL.md"),
+      "---\nname: proposal\ndescription: First session.\n---\n\nSeeded before editor.\n",
+    );
+    const rigged = await rig({
+      sharedSeed: { root: source, names: ["proposal"] },
+    });
+    prepareQaUserWorkspace(rigged.workspace, USER_A);
+    const snapshot = await rigged.ctx.skills.snapshot({ cwd: rigged.rootA });
+    expect(snapshot.skills.map(({ name }) => name)).toEqual(["proposal"]);
+    expect(
+      (await rigged.ctx.skills.get("proposal", { cwd: rigged.rootA }))?.content,
+    ).toBe("Seeded before editor.");
+  });
+  it("loads shared edits over a deployment candidate and preserves audience, tool metadata and resource paths", async () => {
+    const rigged = await rig();
+    prepareQaUserWorkspace(rigged.workspace, USER_A);
+    prepareQaUserWorkspace(rigged.workspace, USER_B);
+    const shared = path.join(rigged.workspace, ".dsh", "skills", "proposal");
+    mkdirSync(path.join(shared, "references"), { recursive: true });
+    writeFileSync(path.join(shared, "references", "guide.md"), "Resource.");
+    writeFileSync(
+      path.join(shared, "SKILL.md"),
+      [
+        "---",
+        "name: proposal",
+        "description: Editable instructions.",
+        "metadata:",
+        "  qa-surface:",
+        "    version: 1",
+        "    audience:",
+        "      type: common",
+        "    tools:",
+        "      requires: [read]",
+        "---",
+        "",
+        "Editable body.",
+      ].join("\n"),
+    );
+    const baseline = {
+      name: "proposal",
+      description: "Deployment instructions.",
+      provider: "deployment-fixture",
+      source: "custom",
+      rank: 200,
+      locator: {},
+      invocation: { modelInvocable: true, userInvocable: true },
+    };
+    rigged.ctx.skills.registerProvider(() => ({
+      name: "deployment-fixture",
+      list: async () => [baseline],
+      get: async (candidate) => ({
+        ...candidate,
+        content: "Read-only baseline.",
+      }),
+    }));
+    const load = () => rigged.ctx.skills.get("proposal", { cwd: rigged.rootA });
+    const definition = await load();
+    expect(definition?.content).toBe("Editable body.");
+    expect(definition?.source).toBe("qa-shared");
+    expect(definition?.resourceBase).toEqual({
+      kind: "directory",
+      path: shared,
+    });
+    expect(
+      parseQaSkillMetadata("proposal", definition?.metadata, new Set()),
+    ).toMatchObject({
+      declared: true,
+      audience: { type: "common" },
+      requiredTools: ["read"],
+      warnings: [],
+    });
+    const document = rigged.service.get({ shared: true }, "proposal");
+    rigged.service.update({ shared: true }, "proposal", {
+      ...document,
+      body: "Saved body.",
+      expectedRevision: document.revision,
+    });
+    expect((await load())?.content).toBe("Saved body.");
+    writeSkill(
+      rigged,
+      "proposal",
+      ["name: proposal", "description: Personal instructions."],
+      "Personal body.",
+    );
+    rigged.refresh();
+    expect((await load())?.content).toBe("Personal body.");
+    expect(
+      (await rigged.ctx.skills.get("proposal", { cwd: rigged.rootB }))?.content,
+    ).toBe("Saved body.");
+    const sharedDocument = rigged.service.get({ shared: true }, "proposal");
+    rigged.service.remove(
+      { shared: true },
+      "proposal",
+      sharedDocument.revision,
+    );
+    expect(
+      (await rigged.ctx.skills.get("proposal", { cwd: rigged.rootB }))?.content,
+    ).toBe("Read-only baseline.");
+  });
   it("publishes one account's skills and nobody else's", async () => {
     const rigged = await rig();
     writeSkill(

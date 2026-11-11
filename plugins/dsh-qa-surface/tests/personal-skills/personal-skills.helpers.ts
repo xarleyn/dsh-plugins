@@ -29,6 +29,10 @@ export function serviceFor(options: {
   readonly userId?: string;
   readonly maxSkillBytes?: number;
   readonly relativeRoot?: string;
+  readonly sharedSeed?: {
+    readonly root: string;
+    readonly names: readonly string[];
+  };
 }): {
   readonly service: QaPersonalSkills;
   readonly invalidations: () => number;
@@ -41,6 +45,7 @@ export function serviceFor(options: {
       enabled: true,
       perUserWorkspace: true,
       skills: {
+        sharedSeed: options.sharedSeed,
         ...(options.relativeRoot === undefined
           ? {}
           : { relativeRoot: options.relativeRoot }),

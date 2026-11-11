@@ -33,6 +33,7 @@ import type {
   ResolvedQaSurfaceConfig,
 } from "../types.js";
 import { QaPersonalSkillError } from "./errors.js";
+import { seedSharedSkills } from "./shared-seed.js";
 import {
   directoryExists,
   ensureSkillRoots,
@@ -211,6 +212,15 @@ export class QaPersonalSkills {
       "the deployment workspace's",
     );
     ensureSkillRoots(roots);
+    if (
+      seedSharedSkills(
+        roots,
+        config.accounts.skills.sharedSeed,
+        this.options.logger,
+      )
+    ) {
+      this.options.invalidate?.();
+    }
     return { ...roots, shared: true };
   }
 

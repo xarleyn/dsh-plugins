@@ -148,6 +148,7 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
         // `resolveAccounts` turns the intent back on wherever one exists.
         enabled: false,
         relativeRoot: QA_SKILL_DEFAULT_RELATIVE_ROOT,
+        sharedSeed: null,
         watch: true,
         maxSkillBytes: QA_SKILL_FILE_MAX_BYTES,
         allowResourceEditing: false,

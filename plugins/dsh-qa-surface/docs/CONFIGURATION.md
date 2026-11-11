@@ -927,6 +927,10 @@ accounts:
   skills:
     enabled: true # on by default wherever it can work
     relativeRoot: .dsh/skills # below the personal root; relative only
+    # Optional: promote only these deployment skills to editable shared storage.
+    sharedSeed: # null by default; seed all resources, edit SKILL.md in the UI
+      root: /deployment/skills
+      names: [proposal, spreadsheet, release-notes]
     watch: true # follow hand edits and refresh the catalog
     maxSkillBytes: 262144
     allowResourceEditing: false # reserved; v1 edits SKILL.md only
@@ -943,6 +947,20 @@ accounts:
   A hand-made skill directory therefore lands in a root that already exists,
   and the watcher below never meets a missing directory to report. The
   `skills-trash` directory still appears only on the first deletion.
+- `sharedSeed` promotes only the listed skill directories from its absolute
+  source root into `<registered workspace>/<relativeRoot>`. The first shared
+  editor read or QA-session discovery copies the complete directory, including
+  `references/`, `assets/` and `scripts/`; the UI still edits `SKILL.md` only.
+  Existing shared files win and are never overwritten by seeding. A hidden
+  `.seeded-<name>` receipt prevents reseeding after a rename or deletion, even
+  after a restart or an updated source catalog. Missing seeds are logged and
+  retried without hiding the other skills; linked resources are refused.
+  Keep this shared directory on a persistent writable volume. The source
+  catalog can remain read-only. A shared candidate outranks its same-named
+  filesystem candidate, while a personal candidate still wins for its owner.
+  Deleting the shared copy exposes the source candidate again if that provider
+  still offers it. Seeded audience and tool metadata remain effective, and
+  editor writes keep the normal revision checks, resource files and admin audit.
 - Two deployment facts decide whether the model ever sees a personal skill.
   The preset must mount the skill tool package (`dsh-tool-skill`), and
   `lockdown.toolPolicy.allow` must list `skill`: the harness publishes the

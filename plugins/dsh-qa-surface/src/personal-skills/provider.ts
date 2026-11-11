@@ -72,6 +72,7 @@ function lookupCwd(options: SkillLookupOptions): string | undefined {
 function candidateOf(stored: QaStoredSkill): SkillCandidate | undefined {
   const contents = stored.contents;
   if (contents === undefined) return undefined;
+  const metadata = contents.extraFrontmatter.metadata;
   return {
     name: contents.name,
     description: contents.description,
@@ -89,7 +90,14 @@ function candidateOf(stored: QaStoredSkill): SkillCandidate | undefined {
     // The registry drops metadata from its summaries, so `allowed-tools` is
     // readable here and by anyone who inspects a candidate — nothing in the
     // harness enforces it, and nothing here claims otherwise.
-    metadata: { allowedTools: [...contents.allowedTools] },
+    metadata: {
+      ...(metadata !== null &&
+      typeof metadata === "object" &&
+      !Array.isArray(metadata)
+        ? metadata
+        : {}),
+      allowedTools: [...contents.allowedTools],
+    },
   };
 }
 

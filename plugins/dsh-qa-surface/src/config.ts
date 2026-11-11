@@ -443,6 +443,15 @@ const configSchema = z.object({
         .object({
           enabled: z.boolean().default(QA_SKILL_ENABLED_BY_DEFAULT),
           relativeRoot: z.string().default(D.accounts.skills.relativeRoot),
+          sharedSeed: z
+            .union([
+              z.object({
+                root: z.string(),
+                names: z.array(z.string()).max(100),
+              }),
+              z.const(null),
+            ])
+            .default(null),
           watch: z.boolean().default(D.accounts.skills.watch),
           maxSkillBytes: z
             .number()
@@ -456,6 +465,7 @@ const configSchema = z.object({
         })
         .default({
           ...D.accounts.skills,
+          sharedSeed: null,
           enabled: QA_SKILL_ENABLED_BY_DEFAULT,
         }),
     })
@@ -467,7 +477,11 @@ const configSchema = z.object({
         identities: [...D.accounts.profile.identities],
       },
       starters: { ...D.accounts.starters },
-      skills: { ...D.accounts.skills, enabled: QA_SKILL_ENABLED_BY_DEFAULT },
+      skills: {
+        ...D.accounts.skills,
+        sharedSeed: null,
+        enabled: QA_SKILL_ENABLED_BY_DEFAULT,
+      },
     })
     .volatile(),
   entry: z

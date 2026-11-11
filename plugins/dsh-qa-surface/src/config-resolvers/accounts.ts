@@ -8,6 +8,7 @@ import {
   QA_SKILL_MAX_BYTES_MAX,
   QA_SKILL_MAX_BYTES_MIN,
   skillRelativeRootProblem,
+  skillNameProblem,
 } from "../personal-skills/skill-format.js";
 import type { QaSurfaceConfig, ResolvedQaSurfaceConfig } from "../types.js";
 import { DEFAULT_QA_SURFACE_CONFIG } from "./defaults.js";
@@ -107,6 +108,33 @@ export function resolveAccounts(
   const maxSkillBytes =
     input.accounts?.skills?.maxSkillBytes ??
     DEFAULT_QA_SURFACE_CONFIG.accounts.skills.maxSkillBytes;
+  const sharedSeedInput = input.accounts?.skills?.sharedSeed;
+  const sharedSeed =
+    sharedSeedInput == null
+      ? null
+      : {
+          root: sharedSeedInput.root.trim(),
+          names: [...new Set(sharedSeedInput.names)],
+        };
+  if (sharedSeed !== null) {
+    const absolute =
+      sharedSeed.root.startsWith("/") ||
+      sharedSeed.root.startsWith("\\\\") ||
+      /^[A-Za-z]:[/\\]/u.test(sharedSeed.root);
+    if (!absolute || sharedSeed.root.includes("\0")) {
+      throw new TypeError(
+        "dsh-qa-surface: accounts.skills.sharedSeed.root must be an absolute directory",
+      );
+    }
+    if (
+      sharedSeed.names.length > 100 ||
+      sharedSeed.names.some((name) => skillNameProblem(name) !== null)
+    ) {
+      throw new TypeError(
+        "dsh-qa-surface: accounts.skills.sharedSeed.names must contain at most 100 skill directory names",
+      );
+    }
+  }
   assertIntInRange(
     "accounts.skills.maxSkillBytes",
     maxSkillBytes,
@@ -178,6 +206,13 @@ export function resolveAccounts(
     skills: Object.freeze({
       enabled: skillsEnabled,
       relativeRoot: relativeRoot.trim(),
+      sharedSeed:
+        sharedSeed === null
+          ? null
+          : Object.freeze({
+              root: sharedSeed.root,
+              names: Object.freeze(sharedSeed.names),
+            }),
       watch:
         input.accounts?.skills?.watch ??
         DEFAULT_QA_SURFACE_CONFIG.accounts.skills.watch,
