@@ -16,6 +16,7 @@ import { QaSlashPalette } from "../slash/SlashPalette.js";
 import { useSlashNavigation } from "../slash/useSlashNavigation.js";
 import { QaFileAttachment } from "./QaFileAttachment.js";
 import { isQaModalOpen } from "./QaModal.js";
+import { useQaFileDrop } from "../use-qa-file-drop.js";
 
 export interface QaComposerProps {
   readonly modelSelector?: ReactNode;
@@ -188,6 +189,14 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
     setAttachmentError(error);
   };
 
+  useQaFileDrop({
+    element: focusOwner,
+    fallback: true,
+    canDrop: () => props.canSend && !submitting && !isQaModalOpen(),
+    onFiles: (files) => void addFiles(files),
+    onActive: setDragOver,
+  });
+
   useEffect(() => {
     if (!props.running) focusComposer(textarea.current, focusOwner.current);
   }, [props.running]);
@@ -215,16 +224,6 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
           : "dsh-qa-composer-wrap"
       }
       data-testid="qa-composer-drop-zone"
-      onDragOver={(event) => {
-        event.preventDefault();
-        setDragOver(true);
-      }}
-      onDragLeave={() => setDragOver(false)}
-      onDrop={(event) => {
-        event.preventDefault();
-        setDragOver(false);
-        void addFiles([...event.dataTransfer.files]);
-      }}
     >
       {(props.quickQuestions?.length ?? 0) > 0 ? (
         <div

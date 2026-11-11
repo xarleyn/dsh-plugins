@@ -14,6 +14,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runHistoryBrowserPass } from "./smoke-history-browser.mjs";
 import { runIntegrationFolderBrowserPass } from "./smoke-integration-folder-browser.mjs";
+import { runFileDropBrowserPass } from "./smoke-file-drop-browser.mjs";
 import {
   freePort,
   requestWithAuthority,
@@ -696,6 +697,7 @@ async function runBrowserPass({
       await prompt.click({ trial: true, timeout: 15_000 });
     }
     await deferModelSetup();
+    await runFileDropBrowserPass(page);
     await page.getByRole("button", { name: "Убрать spec.md" }).click();
     await waitFor(
       async () => (await fileNames.count()) === 1,

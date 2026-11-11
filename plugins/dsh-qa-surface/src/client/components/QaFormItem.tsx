@@ -1,3 +1,5 @@
+import { useRef } from "react";
+import { useQaFileDrop } from "../use-qa-file-drop.js";
 import type {
   QaFormAnswer,
   QaFormItem as Item,
@@ -22,6 +24,14 @@ interface Props {
 }
 /** Input requirements are separate from file requirements, including in the labels. */
 export function QaFormItem(props: Props) {
+  const fileZone = useRef<HTMLDivElement>(null);
+  useQaFileDrop({
+    element: fileZone,
+    canDrop: () => !props.disabled,
+    onFiles: (files) => {
+      for (const file of files) props.onUpload(file);
+    },
+  });
   const { item, answer, disabled } = props,
     a = item.answer;
   const required = a?.required || item.files.requirement === "required";
@@ -130,16 +140,7 @@ export function QaFormItem(props: Props) {
         </div>
       )}
       {item.files.requirement !== "none" && (
-        <div
-          className="dsh-qa-form__files"
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={(e) => {
-            e.preventDefault();
-            if (!disabled)
-              for (const f of Array.from(e.dataTransfer.files))
-                props.onUpload(f);
-          }}
-        >
+        <div ref={fileZone} className="dsh-qa-form__files">
           <p>
             {item.files.requirement === "required"
               ? `Приложите ${item.files.min_count}–${item.files.max_count} файлов.`
