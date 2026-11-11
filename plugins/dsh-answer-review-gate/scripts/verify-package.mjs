@@ -17,6 +17,7 @@ await runVerifyPackage({
   license: "MIT",
   enginesNodeMatchesCompatibility: true,
   exports: [".", "./client", "./package.json"],
+  clientBundle: { moduleLoaderId: true },
   client: {
     platform: "web",
     injectEquals: [
