@@ -146,10 +146,11 @@ ${
     let page = await context.newPage();
     await context.addInitScript(
       ({ token, noticeVersion, formSession }) => {
-        globalThis.localStorage.setItem(
-          "dsh-qa-surface.session:v1:/qa:session",
-          formSession,
-        );
+        // Seed the form only on first entry. Later reloads must reopen the
+        // chat the UI persisted, including one created by model selection.
+        const sessionKey = "dsh-qa-surface.session:v1:/qa:session";
+        if (globalThis.localStorage.getItem(sessionKey) === null)
+          globalThis.localStorage.setItem(sessionKey, formSession);
         globalThis.localStorage.setItem(
           "dsh-qa-surface.session:v1:/qa:account-token",
           token,
