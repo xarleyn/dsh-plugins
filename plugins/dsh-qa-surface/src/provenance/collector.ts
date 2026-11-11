@@ -36,6 +36,7 @@ export class QaSourceCollector {
       [
         "read",
         "docs_read",
+        "code_read",
         "document_to_markdown",
         "document_inspect",
         "spreadsheet_inspect",

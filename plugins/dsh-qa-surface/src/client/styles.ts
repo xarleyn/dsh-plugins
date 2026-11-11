@@ -5,6 +5,7 @@ import { KATEX_CSS } from "./markdown/katex-css.js";
 import { sourceFiltersStyles } from "./source-filters-styles.js";
 import { requestWaitStyles } from "./request-wait-styles.js";
 import { historyOrganizationStyles } from "./history-organization-styles.js";
+import { codeSourceStyles } from "./code-source-styles.js";
 
 /**
  * Company interaction palette ("Цвета взаимодействия" guideline) — the single
@@ -1100,6 +1101,7 @@ export const QA_ROOT_STYLES = `${QA_SURFACE_STYLES}
 ${sourceFiltersStyles}
 ${requestWaitStyles}
 ${historyOrganizationStyles}
+${codeSourceStyles}
 ${KATEX_CSS}
 ${AUDIT_UI_STYLES}`;
 

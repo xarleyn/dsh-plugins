@@ -122,6 +122,8 @@ export interface QaAccountsFacade {
 }
 
 export interface QaSessionControllerOptions {
+  /** Persist a draft's source choice before it can submit its first prompt. */
+  readonly prepareSession?: (sessionId: string) => Promise<void>;
   readonly sharingApi?: QaSharingApi;
   readonly sessions: QaSessions;
   readonly api: QaSessionsApi;
@@ -282,6 +284,7 @@ export class QaSessionController {
   private readonly sessions: QaSessions;
   private readonly modelApi: QaSessionsApi;
   private readonly createSessionRemote: QaCreateSession;
+  private readonly prepareSession?: (sessionId: string) => Promise<void>;
   private readonly forkSessionRemote?: QaForkSession;
   private forking = false;
   private inheritedThroughSeq: number | undefined;
@@ -415,6 +418,7 @@ export class QaSessionController {
     this.sessions = options.sessions;
     this.modelApi = options.api;
     this.createSessionRemote = options.createSession;
+    this.prepareSession = options.prepareSession;
     this.forkSessionRemote = options.forkSession;
     this.conversation = options.conversation;
     this.connection = options.connection;
@@ -1311,6 +1315,8 @@ export class QaSessionController {
           }));
         if (this.disposed || operation !== this.generation) return false;
         this.draftSessionId = id;
+        await this.prepareSession?.(id);
+        if (this.disposed || operation !== this.generation) return false;
         this.sessions.rememberAdmitted?.(id);
         // A step back is not a materialized draft: this adoption never ended up
         // holding a session, so the draft has to stay a draft. Calling it done

@@ -15,7 +15,14 @@ import {
   parseFormatRecord,
 } from "../git/format.js";
 import type { GitRunner } from "../git/repo.js";
-import { resolveToolRepository, type ToolExec } from "../git/repo.js";
+import { type ToolExec } from "../git/repo.js";
+import {
+  CODE_SOURCE_PARAMETER,
+  GIT_SOURCE_PROPERTIES,
+  resolveGitSource,
+  sourceHeading,
+  type GitSourceIdentity,
+} from "./source-selection.js";
 import {
   validateRepoRelativePath,
   validateSearchLiteral,
@@ -36,7 +43,7 @@ export interface GitHistoryCommit {
   readonly refs: string[];
 }
 
-export interface GitHistoryResult {
+export interface GitHistoryResult extends GitSourceIdentity {
   readonly commits: GitHistoryCommit[];
   readonly count: number;
   readonly truncated: boolean;
@@ -83,6 +90,7 @@ export function createGitHistoryTool(deps: GitToolDeps) {
       `Nothing is written and no network command is run. ${UNTRUSTED_NOTE}`,
     ].join(" "),
     parameters: {
+      source: CODE_SOURCE_PARAMETER,
       repository: repositoryParameter(deps.config),
       path: {
         type: "string",
@@ -123,6 +131,7 @@ export function createGitHistoryTool(deps: GitToolDeps) {
         type: "object",
         additionalProperties: false,
         properties: {
+          ...GIT_SOURCE_PROPERTIES,
           commits: {
             type: "array",
             required: true,
@@ -151,6 +160,7 @@ export function createGitHistoryTool(deps: GitToolDeps) {
         {
           type: "text",
           text: [
+            sourceHeading(value),
             `${value.count} commit(s)${value.truncated ? " (truncated — narrow the filters)" : ""}`,
             ...value.commits.map(
               (commit) =>
@@ -166,15 +176,8 @@ export function createGitHistoryTool(deps: GitToolDeps) {
       const started = Date.now();
       const config = deps.config;
       const timeoutMs = config.timeoutMs;
-      const repoRoot = await resolveToolRepository(
-        run,
-        exec,
-        args["repository"],
-        {
-          timeoutMs,
-          repositoryRoots: config.repositoryRoots,
-        },
-      );
+      const identity = await resolveGitSource(run, exec, args, deps);
+      const repoRoot = identity.root;
 
       const limit = clampLimit(args["limit"], config);
       const offset = clampOffset(args["offset"]);
@@ -265,6 +268,7 @@ export function createGitHistoryTool(deps: GitToolDeps) {
         truncated: result.truncated,
       });
       const page: GitHistoryResult = {
+        ...identity,
         commits,
         count: commits.length,
         truncated:

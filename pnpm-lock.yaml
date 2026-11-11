@@ -1017,6 +1017,9 @@ importers:
 
   plugins/dsh-git-readonly:
     dependencies:
+      '@yadsh/dsh-plugin-kit':
+        specifier: workspace:^
+        version: link:../../packages/plugin-kit
       '@yadsh/dsh-plugin-log':
         specifier: workspace:^
         version: link:../../packages/plugin-log

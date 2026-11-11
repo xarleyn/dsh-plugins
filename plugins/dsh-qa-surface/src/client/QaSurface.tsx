@@ -1,4 +1,5 @@
 import type { QaSpreadsheetPreviewSelection } from "../types.js";
+import { EMPTY_CODE_SOURCES } from "@yadsh/dsh-plugin-kit/code-sources";
 import {
   useCallback,
   useEffect,
@@ -67,6 +68,9 @@ import type { QaFormApi } from "./forms.js";
 import { QaRequestQueue } from "./components/QaRequestQueue.js";
 import { QaComposer } from "./components/QaComposer.js";
 import { QaModelSelector } from "./components/QaModelSelector.js";
+import { QaCodeSourcePicker } from "./components/QaCodeSourcePicker.js";
+import { useChatCodeSource } from "./use-chat-code-source.js";
+import type { QaChatCodeSourceApi } from "./types.js";
 import { QaQueueDock } from "./components/QaQueueDock.js";
 import { QaRequestWait } from "./components/QaRequestWait.js";
 import { QaHeader, QaSubagentBanner } from "./components/QaHeader.js";
@@ -180,6 +184,7 @@ export interface QaSurfaceFace {
    */
   readonly adminApi?: QaAdminApi;
   readonly sourceApi: QaSourceApi;
+  readonly codeSourceApi?: QaChatCodeSourceApi;
   /**
    * Personal-skill half of the plugin's namespace. Absent on a page whose Host
    * build does not answer it; the settings dialog then has no skills section.
@@ -310,6 +315,9 @@ export function QaSurface(props: QaSurfaceProps) {
   /** Whether the chat on screen was itself created as an administrator preview. */
   const [sessionPreview, setSessionPreview] = useState(false);
   const [controller, setController] = useState<QaSessionController>();
+  const prepareCodeSource = useRef<(id: string) => Promise<void>>(
+    async () => undefined,
+  );
   const [formTakeover, setFormTakeover] = useState(false);
   const transcript = useRef<HTMLDivElement>(null);
   const chat = useRef<HTMLDivElement>(null);
@@ -544,6 +552,7 @@ export function QaSurface(props: QaSurfaceProps) {
           }
         : undefined;
     const next = new QaSessionController({
+      prepareSession: (id) => prepareCodeSource.current(id),
       sessions: runtime === undefined ? props.sessions : runtime.sessions,
       api: props.api,
       conversation:
@@ -827,6 +836,14 @@ export function QaSurface(props: QaSurfaceProps) {
   // comparison, so a fresh limits object would re-render it every frame.
   const limits = useMemo(() => attachmentLimits(config), [config]);
   const [fastMode, setFastMode] = useState(false);
+  const codeSource = useChatCodeSource({
+    api: props.codeSourceApi,
+    token: accounts?.token() ?? "",
+    sessionId: state.sessionId,
+    chatKey: state.chatKey,
+    catalog: config?.codeSources ?? EMPTY_CODE_SOURCES,
+  });
+  prepareCodeSource.current = codeSource.prepareSession;
   useEffect(() => {
     setFastMode(false);
   }, [state.chatKey]);
@@ -2183,6 +2200,27 @@ export function QaSurface(props: QaSurfaceProps) {
                     <QaRequestWait status={state.requestQueue} />
                     {/* Keyed by chat: draft input and the model control share the
                     conversation's lifetime, including draft materialization. */}
+                    {props.codeSourceApi === undefined ? null : (
+                      <QaCodeSourcePicker
+                        value={codeSource.value}
+                        pending={codeSource.pending}
+                        error={codeSource.error}
+                        disabled={
+                          state.canStop ||
+                          state.queue.length > 0 ||
+                          state.viewingSubagent !== null ||
+                          state.compatibilityReadOnly === true
+                        }
+                        onSelect={codeSource.select}
+                      />
+                    )}
+                    {/* Keyed by chat: the composer's draft text is chat-local, so a
+                    switch remounts it empty instead of carrying text across. The
+                    identity is never reused — a controller rebuilt for another chat
+                    hands out a new one — and a draft keeps its own identity while it
+                    creates its session on the first prompt: that is the same chat, and
+                    remounting here would drop the question the Host has not admitted
+                    yet. */}
                     <QaComposer
                       key={state.chatKey}
                       modelSelector={
@@ -2218,7 +2256,7 @@ export function QaSurface(props: QaSurfaceProps) {
                       onFastModeChange={setFastMode}
                       placeholder={config.branding.placeholder}
                       quickQuestions={empty ? quickQuestions : NO_QUESTIONS}
-                      canSend={state.canSend}
+                      canSend={state.canSend && !codeSource.blocked}
                       canStop={state.canStop}
                       running={state.phase === "running"}
                       showStop={config.ui.showStop}

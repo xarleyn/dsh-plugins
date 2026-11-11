@@ -1,6 +1,10 @@
 import type { QaAccountIdentityField } from "./accounts.js";
 import type { QaModelReplacement } from "./capability.js";
 import type {
+  CodeSourcesConfig,
+  CodeSourcesCatalog,
+} from "@yadsh/dsh-plugin-kit/code-sources";
+import type {
   QaApprovalInteraction,
   QaApprovalPolicy,
   QaQuestionInteraction,
@@ -110,6 +114,8 @@ export interface QaNotesConfig {
 }
 
 export interface QaSurfaceConfig {
+  /** Named code trees shared with Git; access is granted separately. */
+  readonly codeSources?: CodeSourcesConfig;
   readonly forms?: Partial<import("../forms/types.js").QaFormPolicy>;
   readonly enabled?: boolean;
   readonly route?: {
@@ -398,6 +404,7 @@ export interface QaAttachmentsConfig {
 }
 
 export interface ResolvedQaSurfaceConfig {
+  readonly codeSources: CodeSourcesCatalog;
   readonly forms: Readonly<import("../forms/types.js").QaFormPolicy>;
   readonly enabled: boolean;
   readonly route: {

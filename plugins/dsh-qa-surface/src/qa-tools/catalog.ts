@@ -1,4 +1,10 @@
 import { defineTool } from "@deepseek-ai/dsh-tools";
+import {
+  createCodeSourcesTool,
+  createCodeReadTool,
+  createCodeSearchTool,
+} from "./code-tools.js";
+import type { CodeFilesOptions } from "./code-files.js";
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import { createFileDeleteTool } from "./file-delete.js";
 import { createDocsReadTool, createDocsSearchTool } from "./docs-tools.js";
@@ -14,10 +20,10 @@ import type { QaFormGate } from "../forms/gate.js";
  *
  * Bump it whenever the catalog's tool set or their schemas change.
  */
-export const QA_TOOL_CATALOG_VERSION = "4";
+export const QA_TOOL_CATALOG_VERSION = "5";
 
 /** What the catalog's definitions read, beyond the execution record. */
-export interface QaToolsSelfcheckDeps {
+export interface QaToolsSelfcheckDeps extends CodeFilesOptions {
   readonly forms?: QaFormGate;
   readonly formProjection?: (
     submission: import("../forms/types.js").QaFormSubmission,
@@ -121,6 +127,7 @@ export function createQaToolCatalog(
   deps: QaToolsSelfcheckDeps,
 ): readonly QaToolDescriptor[] {
   const docsOptions = {
+    codeSources: deps.codeSources,
     get root(): string {
       return current(deps.docsRoot);
     },
@@ -148,6 +155,21 @@ export function createQaToolCatalog(
       definition: createFileDeleteTool(),
       group: "workspace",
       tags: ["files", "destructive"],
+    },
+    {
+      definition: createCodeSourcesTool(deps),
+      group: "code",
+      tags: ["sources", "discovery"],
+    },
+    {
+      definition: createCodeReadTool(deps),
+      group: "code",
+      tags: ["sources", "read"],
+    },
+    {
+      definition: createCodeSearchTool(deps),
+      group: "code",
+      tags: ["sources", "search"],
     },
     ...(deps.forms === undefined
       ? []

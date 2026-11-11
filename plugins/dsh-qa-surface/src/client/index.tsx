@@ -57,6 +57,7 @@ import type {
   QaSkillApi,
   QaSlashApi,
   QaSourceApi,
+  QaChatCodeSourceApi,
 } from "./types.js";
 import { QA_OVERLAY_STYLES, QA_ROOT_STYLES } from "./styles.js";
 import { QA_FORM_STYLES } from "./forms-styles.js";
@@ -302,6 +303,8 @@ interface QaAdminRemote {
 
 interface QaPolicyRemote extends QaAccountsApi, QaAdminRemote {
   accessUserModels: NonNullable<QaAccessApi["userModels"]>;
+  chatCodeSources: QaChatCodeSourceApi["read"];
+  chatSelectCodeSource: QaChatCodeSourceApi["select"];
   listForms: QaFormApi["list"];
   getForm: QaFormApi["get"];
   mutateForm: QaFormApi["mutate"];
@@ -688,6 +691,11 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
       // validates during build.
       const policyRemote =
         injectedRemote.qaSurface as unknown as QaPolicyRemote;
+      const codeSourceApi: QaChatCodeSourceApi = {
+        read: (token, id) => policyRemote.chatCodeSources(token, id),
+        select: (token, id, source) =>
+          policyRemote.chatSelectCodeSource(token, id, source),
+      };
       const secureSession: QaSecureSession = (token, sessionId) =>
         policyRemote.secureSession(
           token,
@@ -1224,6 +1232,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
             accessApi,
             adminApi,
             sourceApi,
+            codeSourceApi,
             skillApi,
             approvalApi,
             questionApi,

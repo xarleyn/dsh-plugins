@@ -1,5 +1,8 @@
 import { readSourceImage as readSourceImagePreview } from "./provenance/source-image.js";
 import path from "node:path";
+import { QaCodeSourceSelection } from "./code-source-selection.js";
+import { qaDelegatedHeader } from "./shared/session-lineage.js";
+import type { QaChatCodeSources } from "./types/code-sources.js";
 import { defaultAccountsFilePath } from "./accounts/store.js";
 import { QaChatSharingStore } from "./chat-sharing/store.js";
 import { QaChatTransport } from "./chat-sharing/transport.js";
@@ -291,6 +294,25 @@ function releaseScopeLease(lease: unknown): Promise<void> {
 
 /** Host companion: validates config, owns the admission boundary and the route. */
 export class QaSurface extends TypertRemoteService {
+  private sourceSelections?: QaCodeSourceSelection;
+
+  private codeSourceStore(): QaCodeSourceSelection {
+    return (this.sourceSelections ??= new QaCodeSourceSelection(
+      path.join(path.dirname(defaultAccountsFilePath()), "qa-code-sources.db"),
+      () => this.getConfig().codeSources,
+      (id) => this.ctx.sessions.get(SessionId(id)),
+      (id) => {
+        const agent = this.ctx.agents.get(SessionId(id));
+        return (
+          agent !== undefined &&
+          (agent.status === "running" ||
+            agent.inbox.nextStep.length > 0 ||
+            qaRequestFamilyBusy(this.ctx, agent) ||
+            this.requestScheduler.status(id).waiting === true)
+        );
+      },
+    ));
+  }
   static inject = inject;
   static Config = ConfigSchema;
 
@@ -389,6 +411,32 @@ export class QaSurface extends TypertRemoteService {
     // the one live source: each read folds its current snapshots, and a settings
     // write is visible on the next read without reloading the plugin.
     this.source = () => readConfigRefs(entry);
+    ctx.effect(
+      () =>
+        ctx.on(
+          "agent/created",
+          ({ agent }) => {
+            const { parentSession } = agent.session.header;
+            if (
+              parentSession !== undefined &&
+              (qaDelegatedHeader(agent.session.header) ||
+                agent.session.header.isSeeded === true)
+            ) {
+              this.codeSourceStore().inherit(
+                String(agent.session.id),
+                String(parentSession),
+                this.admission.knowsSession(String(parentSession)),
+              );
+            }
+          },
+          { global: true },
+        ),
+      "dsh-qa-surface.code-source-inheritance",
+    );
+    ctx.effect(
+      () => () => this.sourceSelections?.close(),
+      "dsh-qa-surface.code-source-store",
+    );
     this.requestScheduler = new QaRequestScheduler(
       () => this.getConfig().session.maxActiveRequests,
       () => qaRequestRoots(ctx, this.getConfig().session.maxActiveRequests > 0),
@@ -695,6 +743,7 @@ export class QaSurface extends TypertRemoteService {
     // complete persona closes the system prompt to plugins, the conversation
     // stays open.
     this.notes = new QaPromptNotes(ctx, {
+      codeSources: (sessionId) => this.getCodeSources(sessionId),
       config: () => this.getConfig(),
       accounts: () => this.accountRemotes.resolve(this.getConfig()),
       isQaSession: (sessionId) => this.admission.knowsSession(sessionId),
@@ -752,6 +801,13 @@ export class QaSurface extends TypertRemoteService {
     // The QA tool catalog is attached per agent, never at boot: nothing here
     // reaches the model until a managed agent loads the activation skill.
     this.tools = new QaTools(ctx, {
+      codeSources: (exec) =>
+        this.getCodeSources(
+          exec?.agent?.session?.id === undefined
+            ? undefined
+            : String(exec.agent.session.id),
+        ),
+      codeReadRoots: () => this.getConfig().lockdown.sharedReadOnlyRoots,
       forms: this.formGate,
       formsEnabled: () => this.getConfig().forms.enabled,
       formProjection: (submission, sessionId) =>
@@ -949,6 +1005,45 @@ export class QaSurface extends TypertRemoteService {
    */
   modelPolicyForSession(sessionId: string): QaModelPair | undefined {
     return this.access.modelPolicyFor(sessionId).pair;
+  }
+
+  /** Shared source catalogue consumed by preset-mounted Git tools at call time. */
+  getCodeSources(sessionId?: string): ResolvedQaSurfaceConfig["codeSources"] {
+    return sessionId === undefined
+      ? this.getConfig().codeSources
+      : this.codeSourceStore().catalog(sessionId);
+  }
+
+  getSelectedCodeSource(sessionId: string): string | null {
+    return this.codeSourceStore().selected(sessionId);
+  }
+
+  @Remote("chatCodeSources")
+  async chatCodeSources(
+    token: string,
+    sessionId: string,
+  ): Promise<QaChatCodeSources> {
+    const finish = await this.admitChatRead(token, sessionId);
+    let owner = true;
+    try {
+      this.requireChatOwner(token, sessionId);
+    } catch {
+      owner = false;
+    }
+    finish();
+    return this.codeSourceStore().view(sessionId, owner);
+  }
+
+  @Remote("chatSelectCodeSource")
+  async chatSelectCodeSource(
+    token: string,
+    sessionId: string,
+    source: string | null,
+  ): Promise<QaChatCodeSources> {
+    const finish = await this.admitChatRead(token, sessionId);
+    this.requireChatOwner(token, sessionId);
+    finish();
+    return this.codeSourceStore().select(sessionId, source);
   }
 
   getConfig(): ResolvedQaSurfaceConfig {

@@ -1,5 +1,18 @@
 # @yadsh/dsh-plugin-kit
 
+## Named code sources
+
+`@yadsh/dsh-plugin-kit/code-sources` exports the `CodeSource`,
+`CodeSourcesConfig` and `CodeSourcesCatalog` contracts, `resolveCodeSources`,
+`selectCodeSource`, `EMPTY_CODE_SOURCES` and `CODE_SOURCE_PARAMETER`.
+The module is dependency-free and safe to inline into browser configuration
+resolvers. A source has an opaque `id`, a display `label`, an absolute `path`
+and an optional `docsVersion`. The catalogue defines `defaultSource` and
+`entries`. Duplicate ids, relative paths, control characters, and a default
+that names no entry are refused. Several entries without a default require an
+explicit id; a single entry is selected automatically. A source is configuration,
+not a permission grant: each consumer must enforce its own canonical path fence.
+
 Shared runtime helpers for DeepSeek Harness plugins.
 
 The kit is published to npm so that a plugin's host code can import it at

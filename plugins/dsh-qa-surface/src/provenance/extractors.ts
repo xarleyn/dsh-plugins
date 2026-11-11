@@ -182,7 +182,10 @@ export const readFileExtractor: SourceExtractor = {
       {
         id: `file:${path}`,
         kind: fileKind(path),
-        title: basename(path),
+        title:
+          typeof meta?.codeSource === "string"
+            ? `[${meta.codeSource}] ${basename(path)}`
+            : basename(path),
         path,
         ...(sourceSnippet === undefined ? {} : { snippet: sourceSnippet }),
         locations: [
@@ -196,6 +199,9 @@ export const readFileExtractor: SourceExtractor = {
         origins: [context.origin],
         score: 100,
         metadata: {
+          ...(typeof meta?.codeSource === "string"
+            ? { codeSource: meta.codeSource }
+            : {}),
           absolutePath: /^(?:\/|[a-zA-Z]:[\\/])/u.test(docsPath)
             ? canonicalizeWorkspacePath(docsPath)
             : context.workspaceRoot === undefined

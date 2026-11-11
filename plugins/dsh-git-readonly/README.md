@@ -84,6 +84,55 @@ names to the `toolFilter.allow` list of the subagent tools.
 
 ## Configuration
 
+### Named source trees
+
+Every provenance tool accepts `source`, an opaque configured id. Use
+`dsh_git_sources {}` to discover ids and `dsh_git_context {"source":"stable"}`
+to verify the actual branch and HEAD. Every provenance result includes the
+resolved repository root and, when selected by id, its source id and label.
+`source` and `repository` are mutually exclusive. Explicit `repository` paths
+retain the existing behaviour, including when a named default is configured.
+
+On a QA deployment, configure `codeSources` once on `@yadsh/dsh-qa-surface`.
+The Git plugin reads that host catalogue at execution time, including from
+an instance mounted in an agent preset. A non-empty local Git
+`codeSources.entries` overrides it for a standalone or separate Git mount:
+
+```yaml
+- id: dsh-git-readonly
+  name: '@yadsh/dsh-git-readonly'
+  config:
+    repositoryRoots:
+      - /srv/code
+    codeSources:
+      defaultSource: stable
+      entries:
+        - id: stable
+          label: "Stable release"
+          path: /srv/code/release-a
+        - id: preview
+          label: "Development"
+          path: /srv/code/work-in-progress
+```
+
+Directory names have no special grammar and are never parsed as branch or
+version identifiers. Each source path must be the root of a Git work tree;
+clones and linked worktrees use the existing Git resolver. The parent
+`/srv/code` may contain several repositories without being one itself.
+A missing source fails with no substitution. Several entries without
+`defaultSource` require an explicit id; one entry is selected automatically.
+
+The catalogue never grants access: the selected tree must still be inside
+the session directory or this Git mount's `repositoryRoots`. Keep those
+roots on the preset row that actually mounts the tools. Add `dsh_git_sources`
+to locked-down Git tool allow-lists. Without a catalogue, the existing
+session/repositoryRoots selection works unchanged. On QA deployments an omitted
+`source` uses the chat's server-persisted selection, including the snapshot
+inherited by delegated children. This preference also applies when a Git mount
+defines its own catalogue: a selected id absent from that catalogue is refused.
+Explicit `source` and legacy `repository` parameters still support comparisons
+without changing the saved chat preference.
+
 Configure the plugin under the `git-readonly` key in the DSH profile.
 
 | Option | Type | Default | Description |

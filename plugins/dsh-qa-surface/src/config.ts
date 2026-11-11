@@ -67,6 +67,25 @@ function readManifestVersion(): string | undefined {
 const nullableString = z.union([z.string(), z.const(null)]);
 
 const configSchema = z.object({
+  codeSources: z
+    .object({
+      defaultSource: z.string().default(""),
+      entries: z
+        .array(
+          z.object({
+            id: z.string().required(),
+            label: z.string().required(),
+            path: z.string().required(),
+            docsVersion: z.string(),
+          }),
+        )
+        .default([]),
+    })
+    .default({ defaultSource: "", entries: [] })
+    .description(
+      "Named code trees shared with Git. Access still requires sharedReadOnlyRoots and repositoryRoots.",
+    )
+    .volatile(),
   forms: z
     .object({
       enabled: z.boolean().default(D.forms.enabled),

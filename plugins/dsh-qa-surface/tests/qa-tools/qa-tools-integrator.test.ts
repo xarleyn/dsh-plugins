@@ -103,6 +103,9 @@ describe("QaTools integrator", () => {
       "docs_search",
       "docs_read",
       "file_delete",
+      "code_sources",
+      "code_read",
+      "code_search",
     ]);
   });
 
@@ -132,6 +135,9 @@ describe("QaTools integrator", () => {
       "docs_search",
       "docs_read",
       "file_delete",
+      "code_sources",
+      "code_read",
+      "code_search",
     ]);
   });
 
@@ -152,6 +158,9 @@ describe("QaTools integrator", () => {
       "docs_search",
       "docs_read",
       "file_delete",
+      "code_sources",
+      "code_read",
+      "code_search",
     ]);
     tools.dispose();
     // The plugin listener is gone; a later skill load no longer activates.

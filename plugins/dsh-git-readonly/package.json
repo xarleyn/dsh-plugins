@@ -37,6 +37,7 @@
     }
   },
   "dependencies": {
+    "@yadsh/dsh-plugin-kit": "workspace:^",
     "@yadsh/dsh-plugin-log": "workspace:^"
   },
   "peerDependencies": {

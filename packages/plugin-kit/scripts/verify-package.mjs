@@ -18,8 +18,16 @@ await runVerifyPackage({
   license: "MIT",
   bundlePatch: false,
   client: "none",
-  exports: [".", "./client", "./sqlite", "./http", "./post-execute"],
+  exports: [
+    ".",
+    "./client",
+    "./sqlite",
+    "./http",
+    "./post-execute",
+    "./code-sources",
+  ],
   exportDefaults: {
+    "./code-sources": "./lib/code-sources.js",
     ".": "./lib/index.js",
     "./client": "./lib/client/index.js",
     "./sqlite": "./lib/sqlite.js",
@@ -32,6 +40,13 @@ await runVerifyPackage({
   files: ["lib", "README.md", "LICENSE"],
   requiredFiles: ["README.md", "LICENSE"],
   extra: async ({ readFile }) => {
+    const sources = await import("../lib/code-sources.js");
+    const catalog = sources.resolveCodeSources({
+      entries: [
+        { id: "sample", label: "Sample source", path: "/srv/code/sample" },
+      ],
+    });
+    assert.equal(sources.selectCodeSource(catalog)?.id, "sample");
     // The three modules that make one card: the sheet, the chevron and the
     // shell that renders them. Checked together because the contract reads a
     // stylesheet and a render for what a single file cannot carry.
