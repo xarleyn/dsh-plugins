@@ -9,6 +9,7 @@
  */
 
 import path from "node:path";
+import { preserveReferenceFonts } from "./reference-fonts.js";
 
 import { sha256OfFile } from "../artifacts/store.js";
 import { DocumentError } from "../errors.js";
@@ -136,6 +137,8 @@ export class PandocDocxRenderer implements DocxRenderer {
       context: "rendering DOCX",
       fallbackCode: "RENDER_FAILED",
     });
+    if (input.referenceDocPath !== undefined)
+      await preserveReferenceFonts(input.referenceDocPath, input.outputPath);
     const verified = await verifyOutput(
       input.outputPath,
       this.name,
