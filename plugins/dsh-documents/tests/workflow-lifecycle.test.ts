@@ -24,6 +24,8 @@ describe("managed document lifecycle", () => {
     const human = `${"Confirmed decision\n".repeat(1000)}FINAL HUMAN MARKER`;
     fixture.review.mockImplementationOnce(async (task) => {
       expect(task.length).toBeLessThan(12_000);
+      expect(task).toContain("calling structured_output exactly once");
+      expect(task).not.toContain("domain-expert-result fence");
       const relative = task.match(/review-packet: ([^\n]+)/u)?.[1];
       expect(relative).toBeDefined();
       const packet = await readFile(
@@ -101,6 +103,9 @@ describe("managed document lifecycle", () => {
         "Human asked for monitoring and excluded events",
       );
       expect(reviewed.status).toBe("reviewed");
+      expect(fixture.review.mock.calls[0]?.[0]).toContain(
+        "calling structured_output exactly once",
+      );
       expect(fixture.review.mock.calls[0]?.[0]).toContain(
         CONTENT.replace(/\n/gu, "\\n"),
       );
