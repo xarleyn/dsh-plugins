@@ -280,6 +280,10 @@ describe("qa surface config", () => {
 
   it("resolves the QA tool delivery defaults and rejects an impossible policy", () => {
     expect(resolveConfig().tools).toEqual({
+      fileWritePolicy: {
+        blockedExtensions: [".py", ".pyw"],
+        message: expect.any(String),
+      },
       dynamicActivation: true,
       activationSkill: "qa-surface",
       activationMode: "all",
@@ -302,6 +306,10 @@ describe("qa surface config", () => {
       ).tools,
     ).toEqual({
       dynamicActivation: false,
+      fileWritePolicy: {
+        blockedExtensions: [".py", ".pyw"],
+        message: expect.any(String),
+      },
       activationSkill: "qa-research",
       activationMode: "all",
       activationPresets: ["qa-research"],
@@ -326,6 +334,10 @@ describe("qa surface config", () => {
       docsRoot: "",
       docsDefaultVersion: "3.8",
       docsDefaultVersionEnabled: true,
+      fileWritePolicy: {
+        blockedExtensions: [".py", ".pyw"],
+        message: expect.any(String),
+      },
     });
     // A default the corpus can never match would answer every search with "no
     // documentation matches", which reads as a missing document rather than a

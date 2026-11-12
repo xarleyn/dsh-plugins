@@ -391,6 +391,11 @@ config:
     # Presets whose sessions may unlock the catalog. Empty leaves the gate open:
     # only do that when this Host serves one agent composition.
     activationPresets: []
+    # Native file writes and edits in QA chats, delegated calls included.
+    # Exact case-insensitive suffixes; [] disables this additional restriction.
+    fileWritePolicy:
+      blockedExtensions: [.py, .pyw]
+      message: "Do not create or execute scripts. Use the available document and spreadsheet tools. If an operation is unavailable, report the limitation."
     # Where the documentation readers look. Empty reads `docs/` inside each
     # chat's own workspace; name the corpus when it is published once, outside
     # every per-user workspace (see "Dynamic QA tools" below).
@@ -401,6 +406,35 @@ config:
 uses the Host's normal default working directory. Put the system prompt, tools,
 skills, knowledge connections and permission policy in `agentPreset`, not in
 this UI plugin.
+
+### File write policy
+
+The operator's QA settings card includes **Запись файлов**: a list of blocked
+extensions and the refusal message returned to the agent. The default list is
+`.py`, `.pyw`. Changes apply to the next tool call, including existing chats
+and their delegated agents; restarting the Host is unnecessary after changing
+the settings on a build that includes this feature.
+
+The native `write`, `edit` and mutating `str_replace_editor` commands are denied
+before dispatch. Reads and the editor's `view` command remain subject to their
+existing access rules. Matching ignores case, accepts extensions with or without
+a leading dot, and supports compound suffixes such as `.tar.gz`. The policy
+checks both the requested filename and its canonical target, so an allowed
+symlink name cannot overwrite a blocked file. `[]` disables only this policy;
+it does not grant sandbox or tool access. The message must contain 1–4000
+characters. Paths and wildcards are refused in the extension list.
+
+This is a native file-tool policy, not a content classifier or a general process
+sandbox: it does not inspect scripts disguised with an allowed extension or
+outputs produced by other tools. Existing QA restrictions on shell execution
+and `apply_patch` remain in force independently.
+
+Run `pnpm --filter @yadsh/dsh-qa-surface smoke:packed --file-write-settings`
+to check the settings in Chromium against a disposable packed Host. Set
+`DSH_QA_FILE_WRITE_EVIDENCE` to a local directory to retain screenshots and
+geometry measurements. The round covers save/reload, empty-list handling,
+invalid-message refusal, reset, and light/dark layouts at 390 and 1440 pixels;
+it also runs as part of the full `e2e:browser` pass.
 
 ### Dynamic QA tools
 

@@ -15,6 +15,7 @@ import { fileURLToPath } from "node:url";
 import { runHistoryBrowserPass } from "./smoke-history-browser.mjs";
 import { runIntegrationFolderBrowserPass } from "./smoke-integration-folder-browser.mjs";
 import { runFileDropBrowserPass } from "./smoke-file-drop-browser.mjs";
+import { runFileWriteSettingsBrowserPass } from "./smoke-file-writes-browser.mjs";
 import {
   freePort,
   requestWithAuthority,
@@ -34,6 +35,7 @@ const dshVersion =
   process.env.DSH_QA_SMOKE_VERSION ??
   compatibility.deepseekHarness.testedReleases.at(-1);
 const withBrowser = process.argv.includes("--browser");
+const fileWriteSettingsOnly = process.argv.includes("--file-write-settings");
 const modelSelectionOnly = process.argv.includes("--model-selection");
 if (modelSelectionOnly && !withBrowser)
   throw new Error("--model-selection requires --browser");
@@ -1243,6 +1245,15 @@ try {
   }
 
   if (!modelSelectionOnly) await runLanPass({ dshBin, dshEnv, repo, hostLog });
+  if (fileWriteSettingsOnly || (withBrowser && !modelSelectionOnly))
+    await runFileWriteSettingsBrowserPass({
+      origin,
+      authenticatedUrl: `${origin}/?token=${encodeURIComponent(token)}`,
+      cookie,
+      evidenceDirectory:
+        process.env.DSH_QA_FILE_WRITE_EVIDENCE ??
+        join(temporaryRoot, "file-write-evidence"),
+    });
   if (withBrowser) {
     if (!modelSelectionOnly)
       await runBrowserPass({
@@ -1268,7 +1279,7 @@ try {
   }
   completed = true;
   console.log(
-    `packed DSH ${dshVersion} QA smoke passed${withBrowser ? " with browser E2E" : ""}`,
+    `packed DSH ${dshVersion} QA smoke passed${withBrowser || fileWriteSettingsOnly ? " with browser E2E" : ""}`,
   );
 } finally {
   await stopProcess(host);

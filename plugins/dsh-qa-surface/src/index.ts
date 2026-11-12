@@ -78,6 +78,7 @@ import type { QaPersonalSkillRemotes } from "./personal-skills/index.js";
 import { QaApprovalGate } from "./approvals.js";
 import { QaAttestationError } from "./attestation.js";
 import { QaFileDeleteGate } from "./qa-tools/file-delete-gate.js";
+import { installQaFileWriteGate } from "./qa-tools/file-write-gate.js";
 import { QaQuestionGate } from "./questions.js";
 import { QaFormStore } from "./forms/store.js";
 import { QaFormService } from "./forms/service.js";
@@ -729,6 +730,12 @@ export class QaSurface extends TypertRemoteService {
     this.approvals.install();
     this.userQuestions.install();
     this.fileDeleteGate.install();
+    const disposeFileWriteGate = installQaFileWriteGate(
+      ctx,
+      ownership,
+      () => this.getConfig().tools.fileWritePolicy,
+    );
+    ctx.effect(() => disposeFileWriteGate, "dsh-qa-surface.file-write-gate");
     // A turn the Host ended with a provider failure is written to the plugin's
     // log with its code and the provider the request was routed to. The chat row
     // names the code only, and the durable journal that holds the rest is a zstd

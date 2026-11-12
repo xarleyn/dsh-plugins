@@ -26,6 +26,7 @@ import {
   QA_SLASH_MAX_VISIBLE_MIN,
 } from "./config-resolvers/slash-commands.js";
 import type { QaSurfaceConfig } from "./types.js";
+import { QA_FILE_WRITE_EXTENSION_PATTERN } from "./shared/file-write-policy.js";
 
 // Every schema default derives from the canonical resolved defaults: the Host
 // feeds the schema-parsed config into resolveConfig, so a default that exists
@@ -500,6 +501,23 @@ const configSchema = z.object({
     .volatile(),
   tools: z
     .object({
+      fileWritePolicy: z
+        .object({
+          blockedExtensions: z
+            .array(z.string().max(64).pattern(QA_FILE_WRITE_EXTENSION_PATTERN))
+            .max(100)
+            .default([...D.tools.fileWritePolicy.blockedExtensions]),
+          message: z
+            .string()
+            .min(1)
+            .max(4000)
+            .pattern(/\S/u)
+            .default(D.tools.fileWritePolicy.message),
+        })
+        .default({
+          ...D.tools.fileWritePolicy,
+          blockedExtensions: [...D.tools.fileWritePolicy.blockedExtensions],
+        }),
       dynamicActivation: z.boolean().default(D.tools.dynamicActivation),
       activationSkill: z.string().default(D.tools.activationSkill),
       activationMode: z.union(["all"] as const).default(D.tools.activationMode),
@@ -528,7 +546,14 @@ const configSchema = z.object({
         .boolean()
         .default(D.tools.docsDefaultVersionEnabled),
     })
-    .default({ ...D.tools, activationPresets: [...D.tools.activationPresets] })
+    .default({
+      ...D.tools,
+      activationPresets: [...D.tools.activationPresets],
+      fileWritePolicy: {
+        ...D.tools.fileWritePolicy,
+        blockedExtensions: [...D.tools.fileWritePolicy.blockedExtensions],
+      },
+    })
     .volatile(),
   sources: z
     .object({

@@ -8,6 +8,7 @@ import {
   QA_SKILL_FILE_MAX_BYTES,
 } from "../personal-skills/skill-format.js";
 import { DEFAULT_THINKING_PHRASES } from "../thinking-phrases.js";
+import { DEFAULT_QA_FILE_WRITE_POLICY } from "../shared/file-write-policy.js";
 import type { ResolvedQaSurfaceConfig } from "../types.js";
 
 /** The canonical resolved config; every domain resolver defaults from it. */
@@ -165,6 +166,7 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
       allowOs: true,
     }),
     tools: Object.freeze({
+      fileWritePolicy: DEFAULT_QA_FILE_WRITE_POLICY,
       dynamicActivation: true,
       activationSkill: "qa-surface",
       activationMode: "all" as const,

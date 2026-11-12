@@ -185,6 +185,10 @@ export interface QaSurfaceConfig {
    * model request until the activation skill has actually been loaded.
    */
   readonly tools?: {
+    /** Deny native file writes by suffix; an empty list disables this policy. */
+    readonly fileWritePolicy?: Partial<
+      import("../shared/file-write-policy.js").QaFileWritePolicy
+    >;
     /**
      * `true` attaches the QA tools only after the activation skill loads;
      * `false` attaches them to every managed agent at creation.
@@ -532,6 +536,7 @@ export interface ResolvedQaSurfaceConfig {
     readonly allowOs: boolean;
   };
   readonly tools: {
+    readonly fileWritePolicy: import("../shared/file-write-policy.js").QaFileWritePolicy;
     readonly dynamicActivation: boolean;
     readonly activationSkill: string;
     readonly activationMode: QaToolActivationMode;
