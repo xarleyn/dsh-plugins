@@ -19,11 +19,19 @@ import type {
   SpreadsheetInspectInput,
 } from "../spreadsheets/types.js";
 import { SPREADSHEET_FORMATS } from "../spreadsheets/formats.js";
+import { createSpreadsheetEditTool } from "./spreadsheet-edit.js";
+import {
+  createSpreadsheetFindTool,
+  createSpreadsheetDiffTool,
+} from "./spreadsheet-query.js";
 
 export const SPREADSHEET_TOOL_NAMES = [
   "spreadsheet_inspect",
   "spreadsheet_read",
   "spreadsheet_create",
+  "spreadsheet_edit",
+  "spreadsheet_find",
+  "spreadsheet_diff",
 ] as const;
 
 const scalarSchema = {
@@ -34,7 +42,7 @@ const scalarSchema = {
     { type: "null" },
   ],
 } satisfies ValueSchemaSpec;
-const cellInputSchema = {
+export const cellInputSchema = {
   oneOf: [
     scalarSchema,
     {
@@ -390,5 +398,8 @@ export function createSpreadsheetTools(options: DocumentToolOptions) {
         };
       },
     }),
+    createSpreadsheetEditTool(options, cellInputSchema),
+    createSpreadsheetFindTool(options),
+    createSpreadsheetDiffTool(options),
   ];
 }

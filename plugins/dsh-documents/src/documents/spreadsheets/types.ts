@@ -1,4 +1,5 @@
 /** Spreadsheet contracts. Formula results are cached values, never evaluated here. */
+export type * from "./query-types.js";
 export type SpreadsheetFormat = "xlsx" | "csv" | "tsv" | "ods" | "fods";
 export type SpreadsheetEncoding =
   "utf-8" | "utf-16le" | "utf-16be" | "windows-1251";
@@ -45,6 +46,23 @@ export interface SpreadsheetReadInput extends SpreadsheetInspectInput {
   readonly rowCount?: number;
   readonly startColumn?: number;
   readonly columnCount?: number;
+}
+
+/** A bounded, transactional edit that always produces a new artifact. */
+export interface SpreadsheetEditInput extends SpreadsheetInspectInput {
+  readonly expectedSha256: string;
+  readonly filename?: string;
+  readonly edits: readonly {
+    readonly sheet: string;
+    readonly startCell: string;
+    readonly rows: readonly (readonly SpreadsheetCellInput[])[];
+    readonly onlyIfBlank?: boolean;
+  }[];
+}
+
+export interface SpreadsheetEditResult extends SpreadsheetCreateResult {
+  readonly source: { readonly filename: string; readonly sha256: string };
+  readonly changedCells: number;
 }
 
 export interface SpreadsheetSheetInfo {

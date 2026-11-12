@@ -39,7 +39,7 @@ import type {
   SpreadsheetSheetInfo,
 } from "./types.js";
 
-function sheetInfo(sheet: ExcelJS.Worksheet): SpreadsheetSheetInfo {
+export function sheetInfo(sheet: ExcelJS.Worksheet): SpreadsheetSheetInfo {
   return {
     name: sheet.name,
     state: sheet.state,
@@ -50,7 +50,7 @@ function sheetInfo(sheet: ExcelJS.Worksheet): SpreadsheetSheetInfo {
   };
 }
 
-async function loadWorkbook(
+export async function loadWorkbook(
   deps: DocumentRuntimeDeps,
   input: SpreadsheetInspectInput,
   scope: DocumentScope,
@@ -94,6 +94,7 @@ async function loadWorkbook(
     filename: path.basename(inputPath),
     size: bytes.length,
     sha256: sha256Hex(bytes),
+    bytes,
   };
 }
 
@@ -129,7 +130,7 @@ function scalar(value: unknown): SpreadsheetScalar {
   return null;
 }
 
-function cellInfo(cell: ExcelJS.Cell): SpreadsheetCell {
+export function cellInfo(cell: ExcelJS.Cell): SpreadsheetCell {
   const value = cell.value;
   const extra = cell.numFmt === undefined ? {} : { numberFormat: cell.numFmt };
   if (value === null)
@@ -305,7 +306,7 @@ function validateText(text: unknown, label: string): string {
   return text;
 }
 
-function createCell(value: SpreadsheetCellInput): ExcelJS.CellValue {
+export function createCell(value: SpreadsheetCellInput): ExcelJS.CellValue {
   if (value === null || typeof value === "boolean") return value;
   if (typeof value === "string") return validateText(value, "Cell text");
   if (typeof value === "number") {

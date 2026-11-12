@@ -23,6 +23,9 @@ export const DOCUMENT_TOOL_NAMES: readonly string[] = [
   "spreadsheet_inspect",
   "spreadsheet_read",
   "spreadsheet_create",
+  "spreadsheet_edit",
+  "spreadsheet_find",
+  "spreadsheet_diff",
 ];
 
 /**

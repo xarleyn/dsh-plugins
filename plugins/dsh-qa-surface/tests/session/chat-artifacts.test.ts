@@ -13,6 +13,21 @@ const CREATED = [
 ].join("\n");
 
 describe("artifactsOfToolResult", () => {
+  it.each(["xlsx", "csv", "tsv"])("cards an edited %s attachment", (format) => {
+    expect(
+      artifactsOfToolResult(
+        "spreadsheet_edit",
+        `${format}: .qa/artifacts/documents/doc_demo/edited.${format} (1 KiB, sha256 abc…)`,
+      ),
+    ).toEqual([
+      {
+        path: `.qa/artifacts/documents/doc_demo/edited.${format}`,
+        name: `edited.${format}`,
+        format,
+        bytes: 1024,
+      },
+    ]);
+  });
   it.each(["csv", "tsv", "ods", "fods"])(
     "cards a created %s attachment",
     (format) => {

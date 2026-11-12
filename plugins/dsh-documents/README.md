@@ -92,6 +92,9 @@ half-up rounding per line to two decimals. No price or tax treatment is inferred
 | `spreadsheet_inspect`  | Sheets and dimensions of XLSX/ODS/FODS or a CSV/TSV table, with delimiter/encoding discovery    |
 | `spreadsheet_read`     | Bounded pages of one sheet, typed values, cell addresses, formulas and cached results           |
 | `spreadsheet_create`   | A new XLSX/ODS/FODS workbook or single-table CSV/TSV attachment                                 |
+| `spreadsheet_edit`     | Bounded XLSX/CSV/TSV cell edits into a new artifact, guarded by the source SHA-256 |
+| `spreadsheet_find` | Literal search in values/formulas across sheets with bounded previews and stable pagination |
+| `spreadsheet_diff` | Cell/sheet comparison with optional formatting, formula-cache and XLSX package-part checks |
 
 Each producing tool reports its files by their path **inside the session
 workspace** — `.qa/artifacts/documents/<id>/report.docx` — which is also the
@@ -124,12 +127,42 @@ installed and enabled wherever the allow-list mentions it.
 
 ## Excel workbooks
 
+`spreadsheet_edit` reads an admitted chat attachment directly and always writes
+a new artifact. Pass the inspected `expectedSha256` and up to 2000 cells in
+`edits: [{ sheet, startCell, rows, onlyIfBlank? }]`. A stale hash, overlapping
+patches or an occupied target with `onlyIfBlank` refuses the entire request.
+The output includes the original hash, a written-cell count and an edit manifest.
+Read back the returned file before delivering it.
+
+XLSX editing changes only targeted cell XML and calculation housekeeping; date
+cells append number-format styles without rewriting existing styles. Other
+package parts, including charts and images, remain intact. Protected sheets,
+signed workbooks and shared/array formula regions are refused. No formulas are
+calculated; Excel is asked to recalculate on open. CSV/TSV preserve text values
+and detected encoding/delimiter, with normalized serialization and formula-safe
+new strings. ODS/FODS editing is intentionally refused to avoid loss of styling.
+
 Excel tools run in-process through ExcelJS and do not require Pandoc, Docling or
 LibreOffice. The bundled `spreadsheets` skill teaches the agent to inspect every
 sheet, select sheets by exact name and read them in bounded rectangular pages.
-Allow-list `spreadsheet_inspect`, `spreadsheet_read` and `spreadsheet_create` in
+Allow-list `spreadsheet_inspect`, `spreadsheet_read`, `spreadsheet_create`,
+`spreadsheet_edit`, `spreadsheet_find` and `spreadsheet_diff` in
 deployments that expose Excel to a chat. They follow `documents.enabled` and the
 same per-session attachment grants as the document tools.
+
+`spreadsheet_find` accepts a literal `query`, optional exact `sheets`, an A1
+`range`, `match: exact|contains`, `caseSensitive` and `searchIn: value|formula|either`.
+`spreadsheet_diff` accepts `before` and `after` paths with optional per-file
+format/text options. It compares full values and formula expressions by address;
+`compareCachedResults` also compares saved formula results, `compareFormatting`
+adds cell styles/rich text, and `comparePackageParts` compares all uncompressed
+XLSX part hashes, including images/charts. It is not a visual comparison.
+
+Both tools default to 50 records per page (maximum 200) and return full-result
+counts plus `nextCursor`. Follow cursors to null with the same input options;
+source or query changes invalidate continuation. Previews shorten long text and
+declare `truncatedFields`: read full cells before reusing those values. Cell
+ranges do not restrict whole-sheet metadata or optional package-part checks.
 
 Reading defaults to 100 rows and 20 columns. At most 2000 cells fit in one call;
 long text can shorten the page further under `extraction.maxInlineChars`.

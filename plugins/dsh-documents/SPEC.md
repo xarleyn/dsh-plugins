@@ -59,6 +59,9 @@ remain authoritative for everything below the plugin surface.
 | `spreadsheet_inspect` | XLSX workbook → inventory of every sheet, dimensions, visibility and merged ranges |
 | `spreadsheet_read` | one XLSX sheet → a bounded rectangular page with typed cells, addresses and formula caches |
 | `spreadsheet_create` | named sheets and typed rows → a new XLSX artifact, JSON source and manifest |
+| `spreadsheet_edit` | existing XLSX/CSV/TSV + source SHA-256 + bounded cell patches → a separate edited artifact and manifest |
+| `spreadsheet_find` | literal value/formula search across selected sheets/ranges → paginated typed cell previews |
+| `spreadsheet_diff` | two spreadsheets → paginated cell/sheet changes with optional cached-result, formatting and XLSX part hashes |
 
 Registration is conditional on `enabled`, and the comparison pair on
 `comparison.enabled` as well; visibility is the deployment's allow-list. An

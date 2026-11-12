@@ -8,6 +8,13 @@
  */
 
 import { ArtifactStore } from "./artifacts/store.js";
+import { editSpreadsheet } from "./spreadsheets/edit.js";
+import { findSpreadsheet } from "./spreadsheets/find.js";
+import { diffSpreadsheets } from "./spreadsheets/diff.js";
+import type {
+  SpreadsheetFindInput,
+  SpreadsheetDiffInput,
+} from "./spreadsheets/query-types.js";
 import {
   createSpreadsheet,
   inspectSpreadsheet,
@@ -15,6 +22,7 @@ import {
 } from "./spreadsheets/workbook.js";
 import type {
   SpreadsheetCreateInput,
+  SpreadsheetEditInput,
   SpreadsheetReadInput,
   SpreadsheetInspectInput,
 } from "./spreadsheets/types.js";
@@ -110,6 +118,18 @@ export class DocumentRuntime {
 
   async createSpreadsheet(input: SpreadsheetCreateInput, scope: DocumentScope) {
     return createSpreadsheet(this.deps, input, scope);
+  }
+
+  async editSpreadsheet(input: SpreadsheetEditInput, scope: DocumentScope) {
+    return editSpreadsheet(this.deps, input, scope);
+  }
+
+  async findSpreadsheet(input: SpreadsheetFindInput, scope: DocumentScope) {
+    return findSpreadsheet(this.deps, input, scope);
+  }
+
+  async diffSpreadsheets(input: SpreadsheetDiffInput, scope: DocumentScope) {
+    return diffSpreadsheets(this.deps, input, scope);
   }
 
   constructor(options: DocumentRuntimeOptions) {

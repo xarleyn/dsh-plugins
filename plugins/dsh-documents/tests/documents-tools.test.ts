@@ -102,6 +102,9 @@ describe("document tool definitions", () => {
       "spreadsheet_inspect",
       "spreadsheet_read",
       "spreadsheet_create",
+      "spreadsheet_edit",
+      "spreadsheet_find",
+      "spreadsheet_diff",
     ]);
     expect(tools().map((definition) => definition.name)).toEqual([
       ...DOCUMENT_TOOL_NAMES,

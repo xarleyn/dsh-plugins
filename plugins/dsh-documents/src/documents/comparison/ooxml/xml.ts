@@ -49,6 +49,13 @@ export interface XmlElement {
   /** Attributes keyed by their name as written. */
   readonly attributes: ReadonlyMap<string, string>;
   readonly children: readonly XmlNode[];
+  /** Opt-in source offsets for lossless edits; absent for ordinary readers. */
+  readonly sourceRange?: {
+    readonly start: number;
+    readonly startTagEnd: number;
+    readonly endTagStart: number;
+    readonly end: number;
+  };
 }
 
 const MAX_DEPTH = 512;
@@ -73,10 +80,13 @@ interface OpenElement {
   readonly attributes: Map<string, string>;
   readonly children: (OpenElement | XmlTextNode)[];
   readonly start: number;
+  startTagEnd?: number;
+  endTagStart?: number;
+  end?: number;
 }
 
 /** Parse a whole part into a tree rooted at a synthetic document element. */
-export function parseXml(source: string): XmlElement {
+export function parseXml(source: string, locations = false): XmlElement {
   const stack: OpenElement[] = [];
   const root: OpenElement = {
     open: true,
@@ -141,6 +151,8 @@ export function parseXml(source: string): XmlElement {
           cursor,
         );
       }
+      open.endTagStart = cursor;
+      open.end = end + 1;
       cursor = end + 1;
       continue;
     }
@@ -156,6 +168,10 @@ export function parseXml(source: string): XmlElement {
       attributes: parsed.attributes,
       children: [],
       start: cursor,
+      startTagEnd: parsed.end,
+      ...(parsed.selfClosing
+        ? { endTagStart: parsed.end, end: parsed.end }
+        : {}),
     };
     (stack[stack.length - 1] as OpenElement).children.push(element);
     cursor = parsed.end;
@@ -170,7 +186,10 @@ export function parseXml(source: string): XmlElement {
     const open = stack[stack.length - 1] as OpenElement;
     throw new XmlParseError(`unclosed element <${open.qname}>`, open.start);
   }
-  return toElement(root);
+  root.startTagEnd = 0;
+  root.endTagStart = source.length;
+  root.end = source.length;
+  return toElement(root, locations);
 }
 
 interface ParsedStartTag {
@@ -265,19 +284,29 @@ function pushText(
   });
 }
 
-function toElement(open: OpenElement): XmlElement {
+function toElement(open: OpenElement, locations: boolean): XmlElement {
   return {
     kind: "element",
     name: open.name,
     qname: open.qname,
     attributes: open.attributes,
-    children: open.children.map(toNode),
+    children: open.children.map((child) => toNode(child, locations)),
+    ...(locations
+      ? {
+          sourceRange: {
+            start: open.start,
+            startTagEnd: open.startTagEnd!,
+            endTagStart: open.endTagStart!,
+            end: open.end!,
+          },
+        }
+      : {}),
   };
 }
 
 /** An element under construction is materialized; text is already final. */
-function toNode(child: OpenElement | XmlTextNode): XmlNode {
-  return "open" in child ? toElement(child) : child;
+function toNode(child: OpenElement | XmlTextNode, locations: boolean): XmlNode {
+  return "open" in child ? toElement(child, locations) : child;
 }
 
 function localName(qname: string): string {

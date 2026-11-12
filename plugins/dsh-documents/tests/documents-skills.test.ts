@@ -92,7 +92,7 @@ describe("the skill provider", () => {
       "utf8",
     );
     expect(frontMatter(skill)).toMatch(
-      /^allowed-tools: spreadsheet_inspect spreadsheet_read spreadsheet_create$/mu,
+      /^allowed-tools: spreadsheet_inspect spreadsheet_read spreadsheet_create spreadsheet_edit spreadsheet_find spreadsheet_diff$/mu,
     );
     expect(skill).toContain("all sheets");
     expect(skill).toContain("nextColumn");

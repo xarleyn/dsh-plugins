@@ -134,6 +134,9 @@ await runVerifyPackage({
       "spreadsheet_inspect",
       "spreadsheet_read",
       "spreadsheet_create",
+      "spreadsheet_edit",
+      "spreadsheet_find",
+      "spreadsheet_diff",
     ]) {
       assert(
         spreadsheets.includes(tool),
@@ -144,7 +147,7 @@ await runVerifyPackage({
     assert.match(spreadsheetSkill, /^name: spreadsheets$/mu);
     assert.match(
       spreadsheetSkill,
-      /^allowed-tools: spreadsheet_inspect spreadsheet_read spreadsheet_create$/mu,
+      /^allowed-tools: spreadsheet_inspect spreadsheet_read spreadsheet_create spreadsheet_edit spreadsheet_find spreadsheet_diff$/mu,
     );
 
     const skill = await readFromRoot("skills/contract-review/SKILL.md");
