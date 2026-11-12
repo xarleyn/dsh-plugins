@@ -1,5 +1,6 @@
 import { memo, useEffect, useRef, useState } from "react";
 import type { QaWorkItem } from "../../types.js";
+import { isDelegationTool } from "../tool-presentation.js";
 import { formatWorkDuration } from "./format.js";
 import { Markdown } from "./Markdown.js";
 import { thinkingPhrase } from "./thinking-phrases.js";
@@ -61,10 +62,6 @@ function RobotIcon() {
       <path d="M8 2.5V5m0-.25a.9.9 0 1 0-.01-1.8.9.9 0 0 0 .01 1.8ZM5.4 8.4h1.7M8.9 8.4h1.7M6 10.4h4" />
     </svg>
   );
-}
-
-function isDelegationTool(name: string): boolean {
-  return name === "subagent" || name === "subagent_fork";
 }
 
 /**

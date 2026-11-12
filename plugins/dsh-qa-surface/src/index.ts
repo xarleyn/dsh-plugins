@@ -812,6 +812,18 @@ export class QaSurface extends TypertRemoteService {
     // The QA tool catalog is attached per agent, never at boot: nothing here
     // reaches the model until a managed agent loads the activation skill.
     this.tools = new QaTools(ctx, {
+      subagents: {
+        ctx,
+        runtime: () =>
+          ctx.get("subagents") as
+            import("./qa-tools/subagent-tools.js").QaSubagentsFace | undefined,
+        policy: (agent) => {
+          const root = ownership.rootOf(String(agent.session.id));
+          if (root === undefined)
+            throw new Error("An attested QA conversation is required.");
+          return this.access.modelPolicyFor(root);
+        },
+      },
       codeSources: (exec) =>
         this.getCodeSources(
           exec?.agent?.session?.id === undefined

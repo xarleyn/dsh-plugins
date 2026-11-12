@@ -5,8 +5,29 @@ import { describe, expect, it } from "vitest";
 import { formatWorkDuration } from "../../../src/client/components/format.js";
 import { QaWorkGroup } from "../../../src/client/components/QaWorkGroup.js";
 import { DEFAULT_THINKING_PHRASES } from "../../../src/client/components/thinking-phrases.js";
+import { workTool } from "../../../src/client/tool-presentation.js";
 
 describe("QA work group", () => {
+  it("renders model-selectable QA launches as delegated work", () => {
+    const item = workTool(
+      "qa-child",
+      "qa_subagent",
+      '{"description":"Demo review"}',
+      "ok",
+      undefined,
+      undefined,
+      '{"kind":"activation","subagentId":"child-demo"}',
+    );
+    const view = render(
+      <QaWorkGroup status="running" renderMarkdown={false} items={[item]} />,
+    );
+    expect(
+      view.container.querySelector('[data-tool="subagent"]'),
+    ).not.toBeNull();
+    expect(screen.getByText("Demo review")).toBeDefined();
+    expect(view.container.textContent).toContain("child-de");
+  });
+
   it("starts collapsed for completed work and exposes all details together", () => {
     render(
       <QaWorkGroup

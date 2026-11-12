@@ -9,6 +9,7 @@ import { QaToolActivationLifecycle } from "./lifecycle.js";
 import type { QaToolActivation } from "./types.js";
 
 export interface QaToolsOptions {
+  readonly subagents?: import("./subagent-tools.js").QaSubagentToolsOptions;
   readonly codeSources?: import("./code-files.js").CodeFilesOptions["codeSources"];
   readonly codeReadRoots?: () => readonly string[];
   readonly forms?: import("../forms/gate.js").QaFormGate;
@@ -54,6 +55,9 @@ export class QaTools implements QaToolActivation {
     // catalog is built before any agent exists and resolves `exec.agent` at
     // execution time.
     const catalog = createQaToolCatalog({
+      ...(options.subagents === undefined
+        ? {}
+        : { subagents: options.subagents }),
       ...(options.forms === undefined || options.formsEnabled?.() === false
         ? {}
         : { forms: options.forms }),
@@ -113,6 +117,9 @@ export class QaTools implements QaToolActivation {
   refreshForms(): void {
     const options = this.options;
     const catalog = createQaToolCatalog({
+      ...(options.subagents === undefined
+        ? {}
+        : { subagents: options.subagents }),
       ...(options.forms === undefined || options.formsEnabled?.() === false
         ? {}
         : { forms: options.forms }),

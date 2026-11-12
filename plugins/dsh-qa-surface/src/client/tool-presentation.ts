@@ -74,6 +74,8 @@ const TOOL_LABELS: Readonly<Record<string, string>> = Object.freeze({
   run_code: "Код",
   subagent: "Субагент",
   subagent_fork: "Субагент (форк)",
+  qa_subagent: "Субагент",
+  qa_list_subagent_models: "Модели субагентов",
   send_message: "Сообщение агенту",
   list_agents: "Список агентов",
   interrupt_agent: "Остановка агента",
@@ -81,6 +83,36 @@ const TOOL_LABELS: Readonly<Record<string, string>> = Object.freeze({
 
 /** The durable id a continuable launch reports back ("started subagent <id>"). */
 const SUBAGENT_STARTED = /started subagent ([0-9a-f][0-9a-f-]*)/iu;
+
+export function isDelegationTool(name: string): boolean {
+  return (
+    name === "subagent" || name === "subagent_fork" || name === "qa_subagent"
+  );
+}
+
+function launchedSubagentId(
+  output: string | null,
+  argsRaw: string,
+): string | undefined {
+  try {
+    const value = JSON.parse(output ?? "") as {
+      kind?: unknown;
+      subagentId?: unknown;
+    } | null;
+    if (
+      (value?.kind === "activation" || value?.kind === "continuable") &&
+      typeof value.subagentId === "string" &&
+      value.subagentId !== ""
+    )
+      return value.subagentId;
+  } catch {
+    // Older Host versions rendered the launch as text instead of JSON.
+  }
+  return (
+    SUBAGENT_STARTED.exec(output ?? "")?.[1] ??
+    SUBAGENT_STARTED.exec(argsRaw)?.[1]
+  );
+}
 
 function toolLabel(name: string): string {
   return (TOOL_LABELS[name] ?? name.replaceAll("_", " ")) || "Инструмент";
@@ -101,9 +133,8 @@ export function workTool(
   output: string | null,
 ): QaWorkItem {
   const launched =
-    name === "subagent" || name === "subagent_fork"
-      ? (SUBAGENT_STARTED.exec(output ?? "")?.[1] ??
-        SUBAGENT_STARTED.exec(argsRaw)?.[1])
+    isDelegationTool(name) && status === "ok"
+      ? launchedSubagentId(output, argsRaw)
       : undefined;
   return {
     id: `tool:${callId}`,

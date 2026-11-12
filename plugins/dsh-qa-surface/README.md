@@ -1216,6 +1216,26 @@ export function apply(ctx: Context) {
 }
 ```
 
+Model-selectable QA delegation uses `qa_list_subagent_models` and `qa_subagent`.
+Grant both tools in the role's base tools or through an activated skill. They
+follow normal QA tool activation. Discovery returns only the chat owner's
+default and explicitly granted alternatives present in the live Host catalog,
+with the reasoning efforts that policy permits. Account overrides, role grants
+and model replacements use the same policy as the chat's model selector.
+`qa_subagent` accepts `description`, a self-contained `prompt`, the exact
+`provider`/`model` pair and optional `reasoning_effort`. It starts a fresh native
+`spawn` child, inherits the parent's preset and workspace, and respects Host
+depth limits, cancellation and parent result delivery. Model and effort grants
+are checked again after route resolution, before a child is created. The parent
+chat's model is unchanged. A missing spawn backend refuses the call; a Host
+without subagents can still load the QA surface.
+
+Run the packed integration check with
+`DSH_QA_SMOKE_VERSION=0.2.1-rc.3 pnpm --filter @yadsh/dsh-qa-surface run smoke:packed --subagent-models`.
+It uses a disposable Host and a scripted local LLM endpoint to verify model
+discovery for an ordinary account, denial of an unassigned model, a native child
+request on the selected route and preservation of the parent's model.
+
 Subagents: the deployment may opt the delegation family (`subagent`,
 `subagent_fork`, `send_message`, `list_agents`, `interrupt_agent`) into the
 lockdown allow-list; the preset must mount them. Launches then render as

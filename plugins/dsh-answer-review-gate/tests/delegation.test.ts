@@ -11,6 +11,31 @@ function backgroundResult(jobId: string) {
 }
 
 describe("DelegationTracker", () => {
+  it.each(["qa_subagent", "subagent"])(
+    "tracks native activations started by %s until settlement",
+    (name) => {
+      const tracker = new DelegationTracker();
+      tracker.observeToolResult(
+        { name, agent: { id: "parent" } },
+        {
+          isError: false,
+          value: {
+            kind: "activation",
+            subagentId: "child-model",
+            provider: "local",
+            model: "small",
+          },
+        },
+        2,
+      );
+      expect(tracker.pendingCount("parent")).toBe(1);
+      tracker.observeInboxInsert("parent", {
+        source: { kind: "subagent-settled", senderSessionId: "child-model" },
+      });
+      expect(tracker.pendingCount("parent")).toBe(0);
+    },
+  );
+
   it("tracks continuable and background children per parent session", () => {
     const tracker = new DelegationTracker();
     tracker.observeToolResult(

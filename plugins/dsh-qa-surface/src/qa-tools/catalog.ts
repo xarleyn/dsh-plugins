@@ -11,6 +11,11 @@ import { createDocsReadTool, createDocsSearchTool } from "./docs-tools.js";
 import type { QaToolDescriptor } from "./types.js";
 import { createRequestUserFormTool } from "./request-user-form.js";
 import type { QaFormGate } from "../forms/gate.js";
+import {
+  createQaListSubagentModelsTool,
+  createQaSubagentTool,
+  type QaSubagentToolsOptions,
+} from "./subagent-tools.js";
 
 /**
  * Deterministic catalog identity. The durable activation marker is derived from
@@ -20,10 +25,11 @@ import type { QaFormGate } from "../forms/gate.js";
  *
  * Bump it whenever the catalog's tool set or their schemas change.
  */
-export const QA_TOOL_CATALOG_VERSION = "5";
+export const QA_TOOL_CATALOG_VERSION = "6";
 
 /** What the catalog's definitions read, beyond the execution record. */
 export interface QaToolsSelfcheckDeps extends CodeFilesOptions {
+  readonly subagents?: QaSubagentToolsOptions;
   readonly forms?: QaFormGate;
   readonly formProjection?: (
     submission: import("../forms/types.js").QaFormSubmission,
@@ -171,6 +177,20 @@ export function createQaToolCatalog(
       group: "code",
       tags: ["sources", "search"],
     },
+    ...(deps.subagents === undefined
+      ? []
+      : [
+          {
+            definition: createQaListSubagentModelsTool(deps.subagents),
+            group: "delegation",
+            tags: ["models", "discovery"],
+          },
+          {
+            definition: createQaSubagentTool(deps.subagents),
+            group: "delegation",
+            tags: ["models", "subagents"],
+          },
+        ]),
     ...(deps.forms === undefined
       ? []
       : [

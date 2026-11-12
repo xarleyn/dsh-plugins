@@ -16,7 +16,7 @@ export const DELEGATION_TOOL_NAME = "subagent";
 
 /** Structured result of the delegation tool (`tool-subagent` output schema). */
 export interface DelegationToolValue {
-  readonly kind: "background" | "continuable" | "foreground";
+  readonly kind: "background" | "continuable" | "foreground" | "activation";
   readonly jobId?: string;
   readonly subagentId?: string;
 }
@@ -45,7 +45,11 @@ export class DelegationTracker {
     result: { readonly isError: boolean; readonly value?: unknown },
     turn: number,
   ): void {
-    if (exec.name !== DELEGATION_TOOL_NAME || result.isError) return;
+    if (
+      (exec.name !== DELEGATION_TOOL_NAME && exec.name !== "qa_subagent") ||
+      result.isError
+    )
+      return;
     const sessionId =
       exec.agent === undefined ? undefined : String(exec.agent.id);
     if (sessionId === undefined) return;
@@ -53,7 +57,10 @@ export class DelegationTracker {
     if (typeof value !== "object" || value === null) return;
     let kind: PendingDelegationKind;
     let childId: string | undefined;
-    if (value.kind === "continuable" && typeof value.subagentId === "string") {
+    if (
+      (value.kind === "continuable" || value.kind === "activation") &&
+      typeof value.subagentId === "string"
+    ) {
       kind = "continuable-subagent";
       childId = value.subagentId;
     } else if (value.kind === "background" && typeof value.jobId === "string") {

@@ -16,6 +16,7 @@ import { runHistoryBrowserPass } from "./smoke-history-browser.mjs";
 import { runIntegrationFolderBrowserPass } from "./smoke-integration-folder-browser.mjs";
 import { runFileDropBrowserPass } from "./smoke-file-drop-browser.mjs";
 import { runFileWriteSettingsBrowserPass } from "./smoke-file-writes-browser.mjs";
+import { runSubagentModelsPass } from "./smoke-subagent-models.mjs";
 import {
   freePort,
   requestWithAuthority,
@@ -37,6 +38,7 @@ const dshVersion =
 const withBrowser = process.argv.includes("--browser");
 const fileWriteSettingsOnly = process.argv.includes("--file-write-settings");
 const modelSelectionOnly = process.argv.includes("--model-selection");
+const subagentModelsOnly = process.argv.includes("--subagent-models");
 if (modelSelectionOnly && !withBrowser)
   throw new Error("--model-selection requires --browser");
 const presetScopedTool = process.platform === "win32" ? "pwsh" : "bash";
@@ -1029,7 +1031,9 @@ try {
   const dshEnv = {
     ...Object.fromEntries(
       Object.entries(process.env).filter(
-        ([name]) => !modelSelectionOnly || !/_API_KEY$/u.test(name),
+        ([name]) =>
+          !(modelSelectionOnly || subagentModelsOnly) ||
+          !/_API_KEY$/u.test(name),
       ),
     ),
     DSH_HOME: dshHome,
@@ -1244,7 +1248,8 @@ try {
     );
   }
 
-  if (!modelSelectionOnly) await runLanPass({ dshBin, dshEnv, repo, hostLog });
+  if (!modelSelectionOnly && !subagentModelsOnly)
+    await runLanPass({ dshBin, dshEnv, repo, hostLog });
   if (fileWriteSettingsOnly || (withBrowser && !modelSelectionOnly))
     await runFileWriteSettingsBrowserPass({
       origin,
@@ -1268,6 +1273,19 @@ try {
     host = undefined;
     await runIntegrationFolderBrowserPass({
       modelSelection: modelSelectionOnly,
+      dshBin,
+      dshEnv,
+      root: temporaryRoot,
+      workspacePath,
+      launchToken,
+      authenticateBrowser,
+      hostLog,
+    });
+  }
+  if (subagentModelsOnly) {
+    await stopProcess(host);
+    host = undefined;
+    await runSubagentModelsPass({
       dshBin,
       dshEnv,
       root: temporaryRoot,
