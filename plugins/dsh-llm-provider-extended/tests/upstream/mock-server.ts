@@ -33,7 +33,7 @@ export const textEvents = [
 export async function mockServer(
   script: {
     status?: number;
-    events?: string[];
+    events?: string[] | ((request: unknown) => string[]);
     body?: string;
     delayMs?: number;
     headers?: Record<string, string>;
@@ -56,7 +56,9 @@ export async function mockServer(
       });
       request.on("end", () => {
         paths.push(request.url ?? "");
-        requests.push(body.length === 0 ? undefined : JSON.parse(body));
+        const payload: unknown =
+          body.length === 0 ? undefined : JSON.parse(body);
+        requests.push(payload);
         headers.push(request.headers);
         const behavior = script.shift() ?? {
           status: 500,
@@ -79,9 +81,13 @@ export async function mockServer(
           return;
         }
         response.writeHead(200, { "content-type": "text/event-stream" });
+        const events =
+          typeof behavior.events === "function"
+            ? behavior.events(payload)
+            : behavior.events;
         let index = 0;
         const writeNext = (): void => {
-          const event = behavior.events?.[index++];
+          const event = events?.[index++];
           if (event === undefined) {
             response.end();
             return;

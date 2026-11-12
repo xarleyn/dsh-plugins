@@ -246,6 +246,7 @@ export function apply(ctx: Context, config: Config): void {
   const adapter = new ExtendedAdapter({
     profiles,
     resolveApiKey,
+    readPrivacyDictionary: (ref) => launchEnvironmentOf(ctx).get(ref)?.value,
     resolveUserId: (options) => {
       const identity = ctx.get("qaLlmIdentity") as
         { forSession(sessionId: string): string | undefined } | undefined;

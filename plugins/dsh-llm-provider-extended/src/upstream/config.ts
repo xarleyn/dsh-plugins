@@ -21,6 +21,8 @@ import {
 } from "../generation.js";
 import { resolveSystemProfile } from "../systemone.js";
 import { validateUserIdentityProtocol } from "../user-identity.js";
+import { compilePrivacyRules, type PrivacySettings } from "../privacy-rules.js";
+import { validatePrivacyProtocol } from "../privacy.js";
 
 import type {
   CacheRetention,
@@ -108,6 +110,7 @@ export type {
 
 /** Configuration for one pi-ai provider route; the `providers` dict key IS the route. */
 export interface PiAiProviderProfile {
+  privacy?: PrivacySettings;
   /** Require the QA chat owner's pseudonym in DeepSeek-compatible requests. */
   userIdentity?: "qa-account";
   /** Optional provider sampling defaults, overridden by model and explicit call values. */
@@ -352,7 +355,18 @@ const modelProfile: z<PiAiModelProfile> = z.object({
 /** A {@link modelProfile} whose id lives in the `modelOverrides` dict key. */
 const modelOverride: z<PiAiModelOverride> = z.object(modelFields);
 
+const privacySchema = z.union([
+  z.object({
+    enabled: z.boolean(),
+    dictionary: z.string(),
+    dictionaryEnv: z.string(),
+    masks: z.string(),
+  }),
+  z.const(null),
+]);
+
 const profile = z.object({
+  privacy: privacySchema,
   userIdentity: z.union(["qa-account"]),
   generation: GenerationSchema,
   apiKeyEnv: z.string().role("credential-ref"),
@@ -401,6 +415,7 @@ const profile = z.object({
 
 /** Runtime schema for {@link Config}. */
 const systemProfile = z.object({
+  privacy: privacySchema,
   // Keep this known field visible to validation instead of silently dropping it.
   userIdentity: z.union(["qa-account"]),
   api: z.const("systemone").required(),
@@ -507,6 +522,10 @@ export function resolveProfiles(
   const entries = Object.entries(providers ?? {});
   const resolved = new Map<string, ResolvedPiAiProviderProfile>();
   for (const [provider, source] of entries) {
+    if (source.privacy?.enabled) {
+      compilePrivacyRules(source.privacy);
+      if (source.api !== undefined) validatePrivacyProtocol(source.api);
+    }
     if (source.api !== undefined)
       validateUserIdentityProtocol(source.userIdentity, source.api);
     if (source.api === "systemone") {
@@ -620,10 +639,13 @@ export function resolveProfiles(
       displayName: _displayName,
       ...rest
     } = source;
-    for (const model of catalog?.models ?? [])
+    for (const model of catalog?.models ?? []) {
       validateUserIdentityProtocol(source.userIdentity, model.api);
+      if (source.privacy?.enabled) validatePrivacyProtocol(model.api);
+    }
     resolved.set(provider, {
       ...rest,
+      ...(source.privacy ? { privacy: { ...source.privacy } } : {}),
       provider,
       displayName,
       ...(apiKeyEnv === undefined

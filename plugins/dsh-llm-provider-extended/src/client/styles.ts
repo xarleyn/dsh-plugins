@@ -10,6 +10,7 @@ export const styles =
 .provider-extended input[type=checkbox]{width:auto;align-self:start}
 .provider-extended label:has(input[type=checkbox]){flex-direction:row;align-items:center}
 .provider-extended textarea{width:100%;resize:vertical}
+.provider-extended output{display:block;white-space:pre-wrap;overflow-wrap:anywhere}
 .provider-extended button[aria-pressed=true]{border-color:var(--dsw-alias-label-primary)}
 .provider-extended button:disabled,.provider-extended fieldset:disabled{opacity:.6;cursor:default}
 .provider-extended :is(input,select,textarea,button,summary):focus-visible{outline:var(--dsw-focus-ring-width,2px) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:2px}

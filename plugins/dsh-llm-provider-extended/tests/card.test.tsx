@@ -90,6 +90,44 @@ it("keeps read-only settings visible and disables edits", () => {
       .disabled,
   ).toBe(true);
 });
+it("previews masking locally and only saves a valid policy through the normal revision fence", async () => {
+  const f = fixture();
+  render(<ProviderCard settingsForm={f.form} />);
+  fireEvent.click(screen.getByRole("button", { name: /Demo gateway/ }));
+  fireEvent.click(screen.getByLabelText("Mask sensitive data before sending"));
+  const change = (label: RegExp, value: string) =>
+    fireEvent.change(screen.getByLabelText(label), { target: { value } });
+  change(/Additional names/, "Демо-продукт");
+  change(/Private dictionary environment/, "DSH_PII_CLIENTS");
+  change(/Custom masks/, "invalid");
+  fireEvent.click(screen.getByRole("button", { name: "Save provider" }));
+  expect(f.mutate).not.toHaveBeenCalled();
+  change(/Custom masks/, "INV-####");
+  change(/Try the rules/, "Доход Демо-продукт 400 ₽, INV-1234");
+  expect(screen.getByLabelText("Masked preview").textContent).toBe(
+    "Доход [CLIENT_1_preview] [AMOUNT_1_preview], [CUSTOM_1_preview]",
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Save provider" }));
+  await waitFor(() => expect(f.mutate).toHaveBeenCalledOnce());
+  expect(f.mutate.mock.calls[0]).toEqual([
+    [
+      {
+        op: "set",
+        path: ["providers", "demo"],
+        value: {
+          ...profile,
+          privacy: {
+            enabled: true,
+            dictionary: "Демо-продукт",
+            dictionaryEnv: "DSH_PII_CLIENTS",
+            masks: "INV-####",
+          },
+        },
+      },
+    ],
+    7,
+  ]);
+});
 it("offers System One with explicit capability limits and accepts the whole advanced profile as a draft", async () => {
   const f = fixture();
   render(<ProviderCard settingsForm={f.form} />);

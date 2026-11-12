@@ -57,7 +57,14 @@ export function resolveSystemProfile(
     "models",
     "timeoutMs",
     "retryPolicy",
+    // An inactive chat policy may be retained while changing protocols.
+    "privacy",
   ]);
+  if (source.privacy?.enabled)
+    throw new LlmError(
+      "System One does not support request masking",
+      "UNSUPPORTED_OPTION",
+    );
   if (
     Object.keys(source).some(
       (key) =>

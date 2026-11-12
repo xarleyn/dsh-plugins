@@ -4,6 +4,8 @@ import type {
   PiAiModelProfile,
 } from "../upstream/config.js";
 import type { GenerationDefaults } from "../generation.js";
+import { PrivacyFields } from "./privacy-fields.js";
+import { compilePrivacyRules } from "../privacy-rules.js";
 
 const protocols = [
   ["", "Provider catalog default"],
@@ -177,6 +179,15 @@ export function ProviderEditor({
             </select>
           </label>
         </div>
+        {(!native || draft.privacy?.enabled) && (
+          <PrivacyFields
+            value={draft.privacy}
+            change={(privacy) => {
+              setError("");
+              set("privacy", privacy);
+            }}
+          />
+        )}
         {native ? (
           <p>
             System One takes a JSON state/questions request and returns choice,
@@ -384,6 +395,20 @@ export function ProviderEditor({
             type="button"
             onClick={() => {
               setError("");
+              if (draft.privacy?.enabled) {
+                if (native) {
+                  setError(
+                    "Disable request masking before saving a System One route",
+                  );
+                  return;
+                }
+                try {
+                  compilePrivacyRules(draft.privacy);
+                } catch {
+                  // PrivacyFields displays the field diagnostic next to the draft.
+                  return;
+                }
+              }
               void save(draft);
             }}
           >

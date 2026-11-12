@@ -1,5 +1,7 @@
 # Extended provider product contract
 
+Per-route request masking is opt-in. On the three supported chat protocols, filter the final SDK body locally with built-in rules, literal dictionaries and fixed-width masks. Use request-local aliases across history and tool data. A protected call must refuse uninspectable images, unavailable required dictionaries and matches in protocol identifiers before inference HTTP. The browser preview uses synthetic input or operator-entered sample text and never reads the server dictionary. Restore request-local aliases in visible assistant text, buffering incomplete token prefixes independently per streamed block. Persist the same readable text in the completed block and re-mask its restored spans on subsequent protected requests. Preserve reasoning and tool payloads.
+
 Provide @yadsh/dsh-llm-provider-extended as a replacement for the stock pi-ai adapter instance, preserving its provider configuration, catalog, discovery, credentials/native login, model metadata, reasoning, attachments, replay, attribution, retry and cancellation behavior. The official DeepSeek adapter can coexist on different routes. Route collisions are errors; never remove another adapter automatically.
 
 Port the MIT-licensed llm-pi-ai implementation from deepseek-ai/deepseek-harness revision 477b4f420553e8a52c2fbccc464d7561b239c443, paired with DSH 0.1.7-rc.2 and pi-ai 0.85.1. Record provenance and upstream notices. Preserve upstream configuration fields and runtime behavior.

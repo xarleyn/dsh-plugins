@@ -89,6 +89,32 @@ Copy the existing stock instance's entire `config.providers` map to this row; ex
 
 User overrides stored under the previous settings namespace must be copied explicitly to the new namespace. The plugin does not move credential files, rewrite other adapter configurations, or restart a live Host automatically. The official DeepSeek adapter is a separate adapter and can remain installed when its provider routes/directory entries do not collide. Existing `dsh-llm-gateway-compat` behavior was not used as the implementation source; parity is with the pinned stock pi-ai adapter.
 
+## Mask sensitive data before sending
+
+In **Plugins → Extended LLM providers**, open the route that serves your model, enable **Mask sensitive data before sending**, try a sample, then save. This is an opt-in setting on each provider route owned by this adapter, including its DeepSeek catalog route. It covers Chat Completions, Responses and Anthropic Messages. The filter runs in the Harness process.
+
+For example, a request containing `Демо-продукт согласовал 12 500 ₽` with the first word in the dictionary reaches the model as `[CLIENT_1_a1b2c3d4e5f6] согласовал [AMOUNT_1_a1b2c3d4e5f6]`. Repeated values share a placeholder within the request. Each call has its own identifiers. Harness restores exact placeholders from this request in the visible assistant reply, including tokens split across streaming events. The chat history keeps the readable text. On the next protected turn, the adapter uses saved text offsets to mask those values again, including a price displayed without a currency. When one client alias covers several spellings differing only by case, it uses the spelling first matched. Only values present in the conversation text or a tool result are eligible for display. Tags found exclusively in system instructions, tool definitions or reasoning stay masked. Unknown or incomplete tokens are displayed literally. Tool arguments and reasoning keep their wire values. The model sees placeholders throughout generation and cannot calculate with a masked price.
+
+The built-in rules recognize email addresses, Russian phone numbers beginning with +7 or 8, amounts marked by a currency or a financial label such as `бюджет` or `зарплата`, labelled client names, and common Russian surname or patronymic patterns. Whole JSON objects and arrays in tool results or messages are also inspected, including numeric `amount`, `price`, `cost`, `salary`, `balance` and their supported Russian equivalents. Names recognized in one part of a request are masked elsewhere in the same request. For unlabelled names, nicknames, inflected forms or internal terms, add each spelling to the dictionary. Detection is rule-based. Bare numbers in prose, unfamiliar name formats and encoded text can pass through.
+
+Configuration under a provider profile:
+
+```yaml
+privacy:
+  enabled: true
+  dictionary: |
+    Демо-продукт
+  masks: |
+    INV-####
+  dictionaryEnv: DSH_PII_CLIENTS
+```
+
+Each dictionary line is a literal, case-insensitive substring. In a mask, `#` matches one ASCII digit, `@` matches one Unicode letter and a backslash quotes the next character. Mask punctuation is literal. Overlapping matches are covered in full. Each list accepts 256 distinct entries of up to 128 characters each.
+
+The inline list is readable wherever the Host exposes that profile. For a confidential list, set a multiline `DSH_PII_*` variable in the Harness launch environment and put only its name in `dictionaryEnv`. Omit that field to use only inline and built-in rules. A configured private dictionary must be available and nonempty. The browser preview runs locally and can exercise only the built-in and inline rules. Preview text is never saved in the profile.
+
+The filter inspects the final SDK body, including system instructions, conversation history, tool descriptions, calls and results. Protected calls omit native replay signatures and the SDK session affinity identifier. Model and tool identifiers, JSON keys and typed protocol fields that match a sensitive rule cause a local refusal. Images and over-limit requests are also refused before inference HTTP. Provider configuration such as the endpoint, authentication and deployment headers is operator-controlled. This option covers calls through the configured route; other adapters and tools with independent network clients have their own transport.
+
 ## QA account identity with one shared key
 
 Enable **Require QA account identity (DeepSeek)** in the provider card, or add `userIdentity: qa-account` to that provider profile. Keep the same provider route, model and `apiKeyEnv` for every account. QA Surface supplies a stable opaque identifier for the active owner of an attested chat; its verified delegated calls inherit the same owner. Model inputs and browser-supplied tags cannot select that identity. The identifier contains no email, name or raw account UUID.

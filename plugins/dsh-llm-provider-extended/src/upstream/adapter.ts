@@ -61,6 +61,14 @@ import type {
 } from "@deepseek-ai/dsh-attachment";
 import { generationPayload, validateGeneration } from "../generation.js";
 import {
+  privacyHistory,
+  requestFilter,
+  validatePrivacyProtocol,
+} from "../privacy.js";
+import { maskPayload } from "../privacy-payload.js";
+import { PrivacyReply } from "../privacy-reply.js";
+import { PrivacyError } from "../privacy-rules.js";
+import {
   resolveUserIdentity,
   userIdentityPayload,
   type QaUserIdResolver,
@@ -97,6 +105,7 @@ export interface PiAiAdapterOptions {
   ) => Promise<string | undefined>;
   /** Trusted runtime identity, independent of the shared credential. */
   resolveUserId?: QaUserIdResolver;
+  readPrivacyDictionary?: (reference: string) => string | undefined;
   /**
    * How every collection this adapter builds resolves auth the request-level
    * `apiKey` override does not cover. Required rather than optional: a
@@ -445,6 +454,14 @@ export class PiAiAdapter extends LlmAdapter {
       options,
       this.config.resolveUserId,
     );
+    const filter = profile.privacy?.enabled
+      ? requestFilter(profile.privacy, this.config.readPrivacyDictionary)
+      : undefined;
+    if (filter) {
+      validatePrivacyProtocol(model.api);
+      options = privacyHistory(options, filter);
+    }
+    const reply = filter && new PrivacyReply(filter);
     const apiKey = await this.config.resolveApiKey(options.provider, profile);
 
     const consumer = new AbortController();
@@ -502,21 +519,37 @@ export class PiAiAdapter extends LlmAdapter {
               },
               onReplayDegrade,
             );
+      let maskingFailure: LlmError | undefined;
       const events = snapshot.models.streamSimple(model, context, {
         ...profileOptions(profile, reasoning, apiKey),
         ...(generation.temperature === undefined
           ? {}
           : { temperature: generation.temperature }),
-        onPayload: (payload) =>
-          userIdentityPayload(
-            generationPayload(payload, generation, model.api),
-            userId,
-            model.api,
-          ),
+        onPayload: (payload) => {
+          const generated = generationPayload(payload, generation, model.api);
+          let body = generated;
+          if (filter) {
+            try {
+              body = maskPayload(generated, filter);
+              reply?.acceptPayload(body);
+            } catch (error) {
+              // The SDK turns callback errors into finish events. Preserve the local
+              // non-retryable refusal for the Harness, without embedding the payload.
+              maskingFailure = new LlmError(
+                error instanceof PrivacyError
+                  ? error.message
+                  : "Request masking could not safely process this payload",
+                "UNSUPPORTED_CONTENT",
+              );
+              throw maskingFailure;
+            }
+          }
+          return userIdentityPayload(body, userId, model.api);
+        },
         ...(options.maxTokens === undefined
           ? {}
           : { maxTokens: options.maxTokens }),
-        ...(options.sessionId === undefined
+        ...(filter || options.sessionId === undefined
           ? {}
           : { sessionId: String(options.sessionId) }),
         signal: watchdog.signal,
@@ -534,13 +567,15 @@ export class PiAiAdapter extends LlmAdapter {
       try {
         while (true) {
           const result = await watchdog.next(iterator);
+          if (maskingFailure) throw maskingFailure;
           const timeout = timeoutOf(watchdog.signal, "LLM_STREAM_IDLE_TIMEOUT");
           if (timeout !== undefined) throw timeout;
           if (result.done) {
             exhausted = true;
             return;
           }
-          yield result.value;
+          if (reply) yield* reply.push(result.value);
+          else yield result.value;
         }
       } finally {
         if (!exhausted) {
@@ -553,6 +588,7 @@ export class PiAiAdapter extends LlmAdapter {
         }
       }
     } catch (error: unknown) {
+      if (reply) yield* reply.flush();
       if (timeoutOf(watchdog.signal, "LLM_STREAM_IDLE_TIMEOUT") !== undefined) {
         throw new LlmError(
           `pi-ai stream idle timeout after ${streamIdleTimeoutMs}ms`,
