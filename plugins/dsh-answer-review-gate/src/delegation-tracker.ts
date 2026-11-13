@@ -3,10 +3,8 @@
  *
  * The gate must not review an interim turn: while background work the parent
  * owns is still running, a turn-stopping boundary is an orchestration pause,
- * not a final answer. The tracker records background children from the
- * structured delegation tool results and clears them when the runtime's
- * settlement notice arrives in the parent's inbox. The decision is pure
- * runtime state — no text heuristics.
+ * not a final answer. Native runs are tracked by the Host's paired lifecycle
+ * events. Legacy jobs use structured tool results and settlement notices.
  */
 
 import type { PendingDelegation, PendingDelegationKind } from "./types.js";
@@ -34,6 +32,28 @@ export interface ObservedToolExecution {
  */
 export class DelegationTracker {
   private readonly pending = new Map<string, Map<string, PendingDelegation>>();
+  private readonly runs = new Map<string, Map<string, PendingDelegation>>();
+
+  observeRun(
+    parent: string,
+    info: { runId: string; id: string },
+    started: boolean,
+    turn: number,
+  ): void {
+    const owned = this.runs.get(parent);
+    if (!started) {
+      owned?.delete(info.runId);
+      if (owned?.size === 0) this.runs.delete(parent);
+      return;
+    }
+    const active = owned ?? new Map<string, PendingDelegation>();
+    active.set(info.runId, {
+      id: info.id,
+      kind: "continuable-subagent",
+      createdAtTurn: turn,
+    });
+    this.runs.set(parent, active);
+  }
 
   /**
    * Record background work from one structured tool result. Foreground runs
@@ -100,15 +120,22 @@ export class DelegationTracker {
   /** Forget a session's bookkeeping entirely (agent disposed). */
   forgetSession(sessionId: string): void {
     this.pending.delete(sessionId);
+    this.runs.delete(sessionId);
   }
 
   /** How much of the session's own background work is still outstanding. */
   pendingCount(sessionId: string): number {
-    return this.pending.get(sessionId)?.size ?? 0;
+    return (
+      (this.pending.get(sessionId)?.size ?? 0) +
+      (this.runs.get(sessionId)?.size ?? 0)
+    );
   }
 
   /** Pending entries of one session, oldest first (diagnostics/tests). */
   entries(sessionId: string): readonly PendingDelegation[] {
-    return [...(this.pending.get(sessionId)?.values() ?? [])];
+    return [
+      ...(this.pending.get(sessionId)?.values() ?? []),
+      ...(this.runs.get(sessionId)?.values() ?? []),
+    ];
   }
 }

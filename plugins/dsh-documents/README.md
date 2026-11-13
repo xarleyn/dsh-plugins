@@ -132,7 +132,13 @@ a new artifact. Pass the inspected `expectedSha256` and up to 2000 cells in
 `edits: [{ sheet, startCell, rows, onlyIfBlank? }]`. A stale hash, overlapping
 patches or an occupied target with `onlyIfBlank` refuses the entire request.
 The output includes the original hash, a written-cell count and an edit manifest.
-Read back the returned file before delivering it.
+Collect disjoint blocks before writing. In a running chat turn, repeating a batch
+from the same input version to the same output name is refused before creating
+another file. For a continuation, pass the previous output's exact path and full
+hash. An intentional separate variant needs a distinct filename. Reopen the
+delivered workbook and compare it to the original across the full edit plan.
+To save a byte-identical copy under a requested name, use the selected workbook
+as input with its hash, `filename` and `edits: []`.
 
 XLSX editing changes only targeted cell XML and calculation housekeeping; date
 cells append number-format styles without rewriting existing styles. Other

@@ -311,9 +311,11 @@ function collectTurnArtifacts(
   toolHeads: Map<string, ToolHead>,
 ): void {
   let nearestTurn: number | undefined;
+  const editGroups = new Map<string, number>();
+  const outputGroups = new Map<string, number>();
   for (const node of nodes) {
     if (node.kind === "assistant") nearestTurn = node.turn;
-    if (node.kind !== "tool-result") continue;
+    if (node.kind !== "tool-result" || node.isError) continue;
     const head = toolHeads.get(node.callId);
     const name = head?.name ?? node.call?.name;
     const turnNumber = head?.turn ?? nearestTurn;
@@ -323,6 +325,39 @@ function collectTurnArtifacts(
       name,
       flattenToolOutput(node),
     )) {
+      if (name === "spreadsheet_edit") {
+        // The input path stays inside the projection. A basename alone would
+        // collapse separate uploads or intentionally named alternative outputs.
+        const args = node.args;
+        const file = args.text("file");
+        if (file) {
+          const key = JSON.stringify([turnNumber, file, artifact.name]);
+          const chain = outputGroups.get(JSON.stringify([turnNumber, file]));
+          const index =
+            editGroups.get(key) ??
+            (chain !== undefined &&
+            (!args.text("filename") ||
+              buffer.artifacts[chain]?.name === artifact.name)
+              ? chain
+              : undefined);
+          const slot = index ?? buffer.artifacts.length;
+          const previous = buffer.artifacts[slot];
+          if (!previous) buffer.artifacts.push(artifact);
+          else if (previous.path !== artifact.path) {
+            const { earlierEdits = [], ...last } = previous;
+            buffer.artifacts[slot] = {
+              ...artifact,
+              earlierEdits: [
+                last,
+                ...earlierEdits.filter((item) => item.path !== artifact.path),
+              ],
+            };
+          }
+          editGroups.set(key, slot);
+          outputGroups.set(JSON.stringify([turnNumber, artifact.path]), slot);
+          continue;
+        }
+      }
       // One file reported twice in a turn — a conversion that rewrote its own
       // bundle — is one card, not two.
       const existing = buffer.artifacts.findIndex(

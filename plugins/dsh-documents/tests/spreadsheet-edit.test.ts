@@ -191,6 +191,75 @@ test.each([
     ),
   ).toEqual([]);
 });
+test("Save As requires a name and preserves every byte of the selected edit", async () => {
+  const first = await runtime.editSpreadsheet(
+    await input([{ sheet: "Data", startCell: "B2", rows: [[42]] }]),
+    scope(),
+  );
+  const edited = first.files[0]!;
+  const args = { file: edited.path, expectedSha256: edited.sha256, edits: [] };
+  await expect(runtime.editSpreadsheet(args, scope())).rejects.toThrow(
+    "filename",
+  );
+  await expect(
+    runtime.editSpreadsheet(
+      { ...args, filename: "Final", expectedSha256: "0".repeat(64) },
+      scope(),
+    ),
+  ).rejects.toThrow("Source changed");
+  const copy = await runtime.editSpreadsheet(
+    { ...args, filename: "Final.xlsx" },
+    scope(),
+  );
+  expect(copy.changedCells).toBe(0);
+  expect(path.basename(copy.files[0]!.path)).toBe("Final.xlsx");
+  expect(await readFile(copy.files[0]!.path)).toEqual(
+    await readFile(edited.path),
+  );
+  expect(copy.files[0]!.sha256).toBe(edited.sha256);
+});
+
+test("repeated batches cannot branch silently in a turn, but can continue, make named alternatives, or start a new turn", async () => {
+  let seq = 1;
+  const exec = {
+    agent: {
+      session: { header: { cwd: workspace, id: "demo" } },
+      ctx: {
+        sessionProjections: { stateOf: () => ({ openTurnStartSeq: seq }) },
+      },
+    },
+  } as unknown as ToolRunContext;
+  const tool = createDocumentTools({ runtime }).find(
+    (t) => t.name === "spreadsheet_edit",
+  )!;
+  const edit = async (args: SpreadsheetEditInput) =>
+    (await tool.execute(args as never, exec)) as SpreadsheetEditResult;
+  const args = await input([{ sheet: "Data", startCell: "B2", rows: [[42]] }]);
+  await expect(
+    edit({ ...args, edits: [...args.edits, ...args.edits] }),
+  ).rejects.toThrow("overlap");
+  const first = (await edit(args)).files[0]!;
+  await expect(edit(args)).rejects.toThrow(first.sha256);
+  expect(
+    await readdir(path.join(workspace, ".qa/artifacts/documents")),
+  ).toHaveLength(1);
+  const next = await edit({
+    ...args,
+    file: first.path,
+    expectedSha256: first.sha256,
+    edits: [{ sheet: "Data", startCell: "B4", rows: [[13]] }],
+  });
+  const book = new ExcelJS.Workbook();
+  await book.xlsx.readFile(path.resolve(workspace, next.files[0]!.path));
+  expect(book.getWorksheet("Data")!.getCell("B2").value).toBe(42);
+  expect(book.getWorksheet("Data")!.getCell("B4").value).toBe(13);
+  await expect(
+    edit({ ...args, filename: "Alternative.xlsx" }),
+  ).resolves.toMatchObject({ changedCells: 1 });
+  seq++;
+  await expect(edit(args)).resolves.toMatchObject({ changedCells: 1 });
+});
+
 test("refuses stale versions before creating output", async () => {
   const args = await input([{ sheet: "Data", startCell: "A1", rows: [[1]] }]);
   await mutate("xl/worksheets/sheet1.xml", (xml) =>

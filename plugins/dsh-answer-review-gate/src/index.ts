@@ -16,6 +16,7 @@
  */
 
 import { createUserMessage } from "@deepseek-ai/dsh-llm";
+import { carrierKeyOf } from "@deepseek-ai/dsh-scope";
 import { getPluginLogger } from "@yadsh/dsh-plugin-log";
 
 import { ReviewAudit } from "./audit.js";
@@ -28,7 +29,6 @@ import {
   type ResolvedAnswerReviewGateConfig,
 } from "./config.js";
 import { AnswerReviewGate, type GateAgent, type GateLogSink } from "./gate.js";
-import { DELEGATION_TOOL_NAME } from "./delegation-tracker.js";
 import type { DomainExpertsFace, SubagentsFace } from "./types.js";
 import { reviewStatusNotice } from "./receipt.js";
 import {
@@ -203,6 +203,26 @@ export function apply(
     { global: true },
   );
 
+  // Native activations (including named expert tools and continuations) all
+  // emit this pair on their parent's carrier, regardless of the tool's name.
+  for (const event of ["subagent/start", "subagent/end"] as const) {
+    ctx.on(
+      event,
+      function (this: unknown, info: { runId: string; id: string }) {
+        const parent = carrierKeyOf(this);
+        if (!parent || !("id" in parent) || typeof parent.id !== "string")
+          return;
+        gate.delegation.observeRun(
+          parent.id,
+          info,
+          event === "subagent/start",
+          gate.lastSeenTurnOf(parent.id),
+        );
+      },
+      { global: true },
+    );
+  }
+
   ctx.on(
     "tools/result",
     ((
@@ -212,14 +232,17 @@ export function apply(
       },
       result: unknown,
     ) => {
-      if (exec.name !== DELEGATION_TOOL_NAME || exec.agent === undefined)
-        return;
+      if (exec.agent === undefined) return;
+      // Current activations have a paired lifecycle. Re-registering a fast
+      // child from its later tool result could leave it pending forever.
+      const outcome = result as { isError: boolean; value?: { kind?: string } };
+      if (outcome.value?.kind === "activation") return;
       gate.delegation.observeToolResult(
         {
           name: exec.name,
           agent: { id: String(exec.agent.id) },
         },
-        result as { readonly isError: boolean; readonly value?: unknown },
+        outcome,
         gate.lastSeenTurnOf(String(exec.agent.id)),
       );
     }) as never,

@@ -235,7 +235,13 @@ ctx.on('agent/turn-stopping', async ({ agent, turn, signal }) => {
 })
 ```
 
-## `tools/result`
+## `subagent/start` and `subagent/end`
+
+Track native activations by parent carrier and run ID across these paired
+events. Tool names are configurable and continuing a child can start another
+run. A result arriving after the run ended must not make it pending again.
+
+## `tools/result` (legacy background jobs)
 
 Observe delegation tool results.
 

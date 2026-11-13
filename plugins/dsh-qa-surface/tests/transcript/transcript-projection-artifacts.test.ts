@@ -76,6 +76,60 @@ function answerOf(messages: readonly QaMessage[]) {
 }
 
 describe("transcript artifacts", () => {
+  it("keeps edit history reachable and never combines unrelated or explicitly named outputs", () => {
+    const nodes = [...created("Done", CREATED)];
+    const edits = [
+      ["input/a.xlsx", "ed1", "a-edited.xlsx"],
+      ["input/a.xlsx", "ed2", "a-edited.xlsx"],
+      ["ed2/a-edited.xlsx", "ed3", "a-edited.xlsx"],
+      ["else/a.xlsx", "other", "a-edited.xlsx"],
+      ["input/a.xlsx", "variant", "Alternative.xlsx"],
+    ];
+    const calls = edits.flatMap(([file, dir, filename], idx) => {
+      const callId = "edit-" + idx;
+      const argsRaw = JSON.stringify({
+        file,
+        ...(dir === "variant" ? { filename } : {}),
+      });
+      return [
+        {
+          ...nodes[1],
+          seq: 2 + idx * 2,
+          blocks: [
+            { kind: "tool-call", name: "spreadsheet_edit", callId, argsRaw },
+          ],
+        },
+        {
+          ...nodes[2],
+          seq: 3 + idx * 2,
+          name: "spreadsheet_edit",
+          callId,
+          args: PartialArguments.fromText(argsRaw),
+          content: [
+            {
+              type: "text",
+              text: `xlsx: ${dir}/${filename} (1 KiB, sha256 abc…)`,
+            },
+          ],
+        },
+      ] as ConversationNode[];
+    });
+    const messages = projectTranscript(
+      snapshot(
+        legacy({ nodes: [nodes[0]!, ...calls, { ...nodes[3]!, seq: 20 }] }),
+      ),
+    );
+    const files = answerOf(messages).artifacts!;
+    expect(files.map((f) => f.path)).toEqual([
+      "ed3/a-edited.xlsx",
+      "other/a-edited.xlsx",
+      "variant/Alternative.xlsx",
+    ]);
+    expect(files[0]!.earlierEdits?.map((f) => f.path)).toEqual([
+      "ed2/a-edited.xlsx",
+      "ed1/a-edited.xlsx",
+    ]);
+  });
   it("cards the document the turn produced under the answer", () => {
     const messages = projectTranscript(
       snapshot(

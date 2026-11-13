@@ -34,16 +34,13 @@ export async function editSpreadsheet(
       invalid(
         "expectedSha256 must be the SHA-256 from spreadsheet_inspect or spreadsheet_read",
       );
-    if (
-      !Array.isArray(input.edits) ||
-      input.edits.length === 0 ||
-      input.edits.length > limits.pageCells
-    )
-      invalid(
-        "edits must be a nonempty array within the 2000-cell edit budget",
-      );
+    if (!Array.isArray(input.edits) || input.edits.length > limits.pageCells)
+      invalid("edits must be an array within the 2000-cell edit budget");
     if (input.filename !== undefined && typeof input.filename !== "string")
       invalid("filename must be a string");
+    const saveAs = input.edits.length === 0;
+    if (saveAs && !input.filename?.trim())
+      invalid("Saving without cell edits requires an explicit output filename");
     if (
       Buffer.byteLength(JSON.stringify(input)) >
       deps.config.limits.maxInputBytes
@@ -107,7 +104,9 @@ export async function editSpreadsheet(
           const cell = sheet.getCell(number, column);
           const key = JSON.stringify([sheet.name, cell.address]);
           if (seen.has(key))
-            invalid("Edit blocks overlap; write each cell only once");
+            invalid(
+              `Edit blocks overlap at ${sheet.name}!${cell.address}; no file created. Deduplicate the plan and submit the non-overlapping blocks together.`,
+            );
           seen.add(key);
           if (block.onlyIfBlank && cell.value !== null && cell.value !== "")
             invalid(
@@ -138,8 +137,9 @@ export async function editSpreadsheet(
         }
       }
     }
-    const bytes =
-      loaded.format === "xlsx"
+    const bytes = saveAs
+      ? loaded.bytes
+      : loaded.format === "xlsx"
         ? await editXlsx(loaded.bytes, edits, scope.signal)
         : (
             await encodeWorkbook(
@@ -174,7 +174,7 @@ export async function editSpreadsheet(
     const { artifactId } = await resolved.store.create(deps.now().getTime());
     const filename = sanitizeFilename(
       input.filename,
-      `${path.parse(loaded.filename).name}-edited`,
+      `${path.parse(loaded.filename).name.replace(/-edited$/u, "")}-edited`,
       loaded.format,
     );
     const file = {
@@ -186,8 +186,12 @@ export async function editSpreadsheet(
     const source = { filename: loaded.filename, sha256: loaded.sha256 };
     const warnings = [
       "Original input is unchanged; this is a new edited artifact.",
-      "Formula and chart caches may be stale. No formulas were evaluated; XLSX requests full recalculation when opened.",
-      ...(loaded.format === "xlsx"
+      ...(saveAs
+        ? ["Named copy: contents are byte-for-byte identical to the source."]
+        : [
+            "Formula and chart caches may be stale. No formulas were evaluated; XLSX requests full recalculation when opened.",
+          ]),
+      ...(loaded.format === "xlsx" || saveAs
         ? []
         : [
             "CSV/TSV quoting and line endings are normalized; formula-trigger strings in edited cells are escaped.",

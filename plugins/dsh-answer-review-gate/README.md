@@ -242,9 +242,9 @@ The `--profile` flag is required.
 ## Compatibility
 
 - DeepSeek Harness >=0.1.7-rc.2 <0.2.0 (see `compatibility.json`).
-- Uses the `commands` host service plus the `agent/turn-stopping`,
-  `tools/result` and `agent/inbox/inserted` lifecycle seams — no DSH core
-  changes.
+- Uses the Host's paired `subagent/start` and `subagent/end` events to defer
+  review while the parent owns an active native run, including custom-named
+  expert tools. Legacy background jobs use tool results and inbox notices.
 
 ## Security model
 

@@ -11,6 +11,7 @@ import type {
 import { QaAnswerReviewStatus } from "./QaAnswerReviewStatus.js";
 import { sameWorkItems } from "./QaWorkGroup.js";
 import { QaFileAttachment } from "./QaFileAttachment.js";
+import { QaArtifactAttachment } from "./QaArtifactAttachment.js";
 import { QaZoomImage } from "./QaZoomImage.js";
 import {
   buildSourceRefs,
@@ -260,6 +261,7 @@ function sameArtifacts(
     (artifact, index) =>
       artifact.path === (b[index] as QaArtifactView).path &&
       artifact.name === (b[index] as QaArtifactView).name &&
+      sameArtifacts(artifact.earlierEdits, b[index]?.earlierEdits) &&
       artifact.format === (b[index] as QaArtifactView).format &&
       artifact.bytes === (b[index] as QaArtifactView).bytes &&
       artifact.workflow?.id === (b[index] as QaArtifactView).workflow?.id &&
@@ -673,27 +675,12 @@ export const QaMessage = memo(
               aria-label="Созданные файлы"
             >
               {message.artifacts.map((artifact) => (
-                <QaFileAttachment
+                <QaArtifactAttachment
                   key={artifact.path}
-                  name={artifact.name}
-                  bytes={artifact.bytes}
-                  tone="sent"
-                  onOpen={
-                    onArtifactOpen === undefined
-                      ? undefined
-                      : () => onArtifactOpen(artifact)
-                  }
-                  onDownload={
-                    onArtifactDownload === undefined
-                      ? undefined
-                      : () => onArtifactDownload(artifact)
-                  }
-                  onApprove={
-                    onArtifactApprove === undefined ||
-                    artifact.workflow?.status !== "reviewed"
-                      ? undefined
-                      : () => onArtifactApprove(artifact)
-                  }
+                  artifact={artifact}
+                  onOpen={onArtifactOpen}
+                  onDownload={onArtifactDownload}
+                  onApprove={onArtifactApprove}
                 />
               ))}
             </div>

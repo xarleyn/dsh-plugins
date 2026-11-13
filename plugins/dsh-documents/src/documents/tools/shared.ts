@@ -136,6 +136,7 @@ export async function toolFiles(
 export interface DocumentToolExec {
   readonly signal?: AbortSignal;
   readonly agent?: {
+    readonly ctx?: unknown;
     readonly session: {
       readonly header: {
         readonly cwd?: string;

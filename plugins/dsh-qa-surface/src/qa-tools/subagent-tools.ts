@@ -103,7 +103,7 @@ export function createQaSubagentTool(
   return defineTool({
     name: "qa_subagent",
     description:
-      "Delegate a self-contained task to a fresh subagent on a model available to the current user. First call qa_list_subagent_models and choose its exact provider/model pair and an allowed reasoning_effort when advertised. Include all necessary context in prompt. The child inherits this agent's preset, workspace and permission boundaries. Returns a child id; the Host delivers its result to this conversation. Use send_message, list_agents and interrupt_agent when those tools are available. Independent delegations may start together.",
+      "Delegate a self-contained task to a fresh subagent on an allowed model. Choose an exact provider/model pair and allowed reasoning_effort from qa_list_subagent_models. Include all necessary context. The child inherits this agent's preset, workspace and permission boundaries. Returns a child id; completion is delivered automatically. Do independent work or end this step without another tool call. Do not poll list_agents, send reminders, or interrupt a child to hurry it. Independent delegations may start together.",
     parameters: {
       description: {
         type: "string",

@@ -10,6 +10,40 @@ import {
 import { describe, expect, it, vi } from "vitest";
 import type { QaSource } from "../../../src/types.js";
 import { QaMessage } from "../../../src/client/components/QaMessage.js";
+import { QaArtifactAttachment } from "../../../src/client/components/QaArtifactAttachment.js";
+
+it("opens the latest edit and lets the reader download a previous variant by its own path", () => {
+  const previous = {
+    name: "work.xlsx",
+    path: "one/work.xlsx",
+    format: "xlsx",
+    bytes: 20,
+  };
+  const latest = {
+    ...previous,
+    path: "two/work.xlsx",
+    earlierEdits: [previous],
+  };
+  const open = vi.fn(),
+    download = vi.fn();
+  const { container } = render(
+    <QaArtifactAttachment
+      artifact={latest}
+      onOpen={open}
+      onDownload={download}
+    />,
+  );
+  const history = container.querySelector("details")!;
+  expect(history.open).toBe(false);
+  fireEvent.click(container.querySelector("div > .dsh-qa-file button")!);
+  expect(open).toHaveBeenCalledWith(latest);
+  fireEvent.click(within(history).getByText("Предыдущие варианты (1)"));
+  expect(history.open).toBe(true);
+  fireEvent.click(
+    within(history).getByRole("button", { name: "Скачать work.xlsx" }),
+  );
+  expect(download).toHaveBeenCalledWith(previous);
+});
 
 /**
  * Which copy paths the browser under test exposes. The plain-HTTP stand has no

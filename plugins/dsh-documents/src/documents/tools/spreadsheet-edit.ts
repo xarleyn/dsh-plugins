@@ -10,15 +10,17 @@ import {
   type DocumentToolOptions,
 } from "./shared.js";
 import type { SpreadsheetEditInput } from "../spreadsheets/types.js";
+import { SpreadsheetEditTurn } from "./spreadsheet-edit-turn.js";
 
 export function createSpreadsheetEditTool(
   options: DocumentToolOptions,
   cellSchema: typeof cellInputSchema,
 ) {
+  const turns = new SpreadsheetEditTurn();
   return defineTool({
     name: "spreadsheet_edit",
     description:
-      "Edit existing XLSX, CSV or TSV into a NEW file; the source is never overwritten. Uploaded chat files can be used directly when admitted to this session; no file copy or shell is needed. Inspect/read first and pass the source sha256 as expectedSha256. Submit bounded rectangular edits on exact sheet names (at most 2000 cells total), with null to clear. XLSX preserves other package parts, styles and objects; shared/array formula ranges, merged non-anchor cells, protected sheets and signed/macro books are refused. Formulas are NOT calculated; saved caches may be stale. ODS/FODS editing is unsupported to avoid losing styles. Re-inspect the returned artifact and verify changed cells before delivering it.",
+      "Edit XLSX/CSV/TSV into a new downloadable file. Inspect the admitted input; use its exact path and expectedSha256. Plan before writing: submit all non-overlapping blocks together (up to 2000 cells, null clears). Each success creates a separate workbook. For a larger plan continue from the previous files[0].path AND files[0].sha256, never restart a batch from the upload. For Save As only, pass the existing workbook, its hash, filename and edits: []; this copies its bytes unchanged. Verify the returned file. XLSX preserves other parts; unsafe edits to protected, signed or macro books, shared/array formulas or merged non-anchor cells are refused. Formulas are not calculated; ODS/FODS editing is unsupported.",
     parameters: {
       file: fileParameter(),
       expectedSha256: {
@@ -30,7 +32,7 @@ export function createSpreadsheetEditTool(
       filename: {
         type: "string",
         description:
-          "Optional output filename, default source-name-edited with original extension. Always saved in a new artifact.",
+          "Requested download name; required for a byte-identical Save As with edits: [].",
       },
       format: {
         type: "string",
@@ -167,29 +169,40 @@ export function createSpreadsheetEditTool(
     async execute(args: Record<string, unknown>, exec: DocumentToolExec) {
       const scope = requireDocumentScope(exec, options);
       await options.authorizeRender?.(scope);
-      const result = await options.runtime.editSpreadsheet(
-        args as unknown as SpreadsheetEditInput,
-        scope,
+      const input = args as unknown as SpreadsheetEditInput;
+      const batch = turns.reserve(
+        exec,
+        input.file,
+        input.expectedSha256,
+        input.filename,
       );
-      const fileName = async (target: string) => {
-        const name = await workspacePathName(scope.workspaceRoot, target);
-        return name.includes("/") ? name : `${result.artifactId}/${name}`;
-      };
-      return {
-        ...result,
-        sheets: result.sheets.map((sheet) => ({
-          ...sheet,
-          mergedRanges: [...sheet.mergedRanges],
-        })),
-        warnings: [...result.warnings],
-        files: await Promise.all(
-          result.files.map(async (file) => ({
-            ...file,
-            path: await fileName(file.path),
+      try {
+        const result = await options.runtime.editSpreadsheet(input, scope);
+        const fileName = async (target: string) => {
+          const name = await workspacePathName(scope.workspaceRoot, target);
+          return name.includes("/") ? name : `${result.artifactId}/${name}`;
+        };
+        const output = {
+          ...result,
+          sheets: result.sheets.map((sheet) => ({
+            ...sheet,
+            mergedRanges: [...sheet.mergedRanges],
           })),
-        ),
-        manifestPath: await fileName(result.manifestPath),
-      };
+          warnings: [...result.warnings],
+          files: await Promise.all(
+            result.files.map(async (file) => ({
+              ...file,
+              path: await fileName(file.path),
+            })),
+          ),
+          manifestPath: await fileName(result.manifestPath),
+        };
+        batch?.finish(output.files[0]!);
+        return output;
+      } catch (error) {
+        batch?.cancel();
+        throw error;
+      }
     },
   });
 }

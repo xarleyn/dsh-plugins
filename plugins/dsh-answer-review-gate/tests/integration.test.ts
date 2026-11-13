@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Session, SessionId } from "@deepseek-ai/dsh-session";
+import { scopeTarget } from "@deepseek-ai/dsh-scope";
 import {
   createAssistantMessage,
   createUserMessage,
@@ -268,6 +269,8 @@ describe("plugin wiring", () => {
       "agent/disposed",
       "agent/inbox/inserted",
       "agent/turn-stopping",
+      "subagent/end",
+      "subagent/start",
       "tools/result",
     ]);
     expect(commands).toMatchObject([
@@ -348,7 +351,7 @@ describe("plugin wiring", () => {
     expect(steers[0]!.text).toContain("did not complete");
   });
 
-  it("delegates ownership bookkeeping through the delegation tool results", async () => {
+  it("reviews after a named native expert settles, including a fast activation whose tool result arrives late", async () => {
     const calls: [string, string, string][] = [];
     const { host, events } = makeHost({
       domainExperts: {
@@ -367,14 +370,32 @@ describe("plugin wiring", () => {
       minCandidateChars: 10,
     });
 
-    dispatch(
+    const agent = agentWithCandidate(
+      "session-9",
+      "The runtime uses file locks around journal writes.",
+    );
+    const carrier = scopeTarget({}, agent);
+    const run = { id: "child-1", runId: "run-1" };
+    const lifecycle = (event: string) =>
+      events
+        .find((item) => item.event === event)!
+        .handler.call(carrier, run as never);
+    lifecycle("subagent/start");
+    await dispatch(events, "agent/turn-stopping", {
+      agent,
+      turn: 1,
+      signal: new AbortController().signal,
+    });
+    expect(calls).toHaveLength(0);
+    lifecycle("subagent/end");
+    await dispatch(
       events,
       "tools/result",
       {
-        name: "subagent",
+        name: "qa_subagent",
         agent: { id: "session-9" },
       },
-      { isError: false, value: { kind: "continuable", subagentId: "child-1" } },
+      { isError: false, value: { kind: "activation", subagentId: "child-1" } },
     );
     await dispatch(events, "agent/inbox/inserted", {
       agent: { id: "session-9" },
@@ -387,10 +408,6 @@ describe("plugin wiring", () => {
       },
     });
 
-    const agent = agentWithCandidate(
-      "session-9",
-      "The runtime uses file locks around journal writes.",
-    );
     await dispatch(events, "agent/turn-stopping", {
       agent,
       turn: 1,

@@ -4,6 +4,7 @@ import type { QaChatFileGroup } from "../chat-files.js";
 import type { QaBoundSourceApi } from "../types.js";
 import { formatDayTime } from "./format.js";
 import { QaFileAttachment } from "./QaFileAttachment.js";
+import { QaArtifactAttachment } from "./QaArtifactAttachment.js";
 import { QaWorkspaceBrowser } from "./QaWorkspaceBrowser.js";
 
 /** One attachment thumbnail, resolved through the controller's asset store. */
@@ -201,27 +202,12 @@ export function QaFilesPanel({
                 ),
               )}
               {(group.artifacts ?? []).map((artifact) => (
-                <QaFileAttachment
+                <QaArtifactAttachment
                   key={artifact.path}
-                  name={artifact.name}
-                  bytes={artifact.bytes}
-                  tone="sent"
-                  onOpen={
-                    onArtifactOpen === undefined
-                      ? undefined
-                      : () => onArtifactOpen(artifact)
-                  }
-                  onDownload={
-                    onArtifactDownload === undefined
-                      ? undefined
-                      : () => onArtifactDownload(artifact)
-                  }
-                  onApprove={
-                    onArtifactApprove === undefined ||
-                    artifact.workflow?.status !== "reviewed"
-                      ? undefined
-                      : () => onArtifactApprove(artifact)
-                  }
+                  artifact={artifact}
+                  onOpen={onArtifactOpen}
+                  onDownload={onArtifactDownload}
+                  onApprove={onArtifactApprove}
                 />
               ))}
             </div>

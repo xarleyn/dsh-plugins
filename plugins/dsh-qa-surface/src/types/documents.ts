@@ -8,6 +8,8 @@
  * this account's workspace in.
  */
 export interface QaArtifactView {
+  /** Other outputs of the same spreadsheet edit in this turn, newest first. */
+  readonly earlierEdits?: readonly QaArtifactView[];
   readonly workflow?: {
     readonly id: string;
     readonly revision: number;
