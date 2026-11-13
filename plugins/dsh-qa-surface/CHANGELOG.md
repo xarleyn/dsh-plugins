@@ -1,3 +1,73 @@
+## 0.20.0 (2026-11-12)
+
+### 🚀 Features
+
+- Add a configurable named source catalogue shared with Git, bounded source-scoped ([f41b7c2b](https://github.com/xarleyn/dsh-plugins/commit/f41b7c2b))
+  code search and reading, documentation edition mapping, source-labelled provenance
+  and routing instructions. Persist an owner-controlled per-chat source preference
+  on the server and snapshot it for delegated children and forks. Existing read-only
+  access roots remain independently configured; selection does not grant filesystem
+  access.
+
+  Add a chat source selector that restores the server preference and saves draft
+  selection before the first prompt, with read-only, busy and error states.
+
+- Confirm owner-scoped form readiness before sending a QA prompt, including the ([3cda1681](https://github.com/xarleyn/dsh-plugins/commit/3cda1681))
+  first prompt in a new chat. Surface form polling failures with a retry action
+  and refresh on browser focus instead of silently losing interactive readiness.
+  Add validate-only form requests with field paths, policy diagnostics and current
+  client/upload capabilities. Clarify extension-based file requirements and the
+  immutable result returned when resuming a submitted form.
+  Group answers, validation and item-bound files visually, highlight the current
+  step, improve file upload/replacement controls and allow dismissing the completed
+  form confirmation without changing submitted data.
+
+- Allow role and account overrides for request concurrency while preserving their model grants. Keep queue status on its authenticated wire contract and restore chats with pending input without interrupting a turn when a draft is opened. ([](https://github.com/xarleyn/dsh-plugins/commit/))
+- Let users choose a chat model from the alternatives granted to their role or ([0f8e9712](https://github.com/xarleyn/dsh-plugins/commit/0f8e9712))
+  account. Keep the configured default for new chats, persist each chat's choice,
+  and enforce model grants at the authenticated Host boundary.
+  Combine model and code-source choices in one compact nested composer menu,
+  with keyboard navigation, current-value marks and independent persisted settings.
+
+- Organize chat history in virtual folders, pin important chats, and arrange chats ([0ed44134](https://github.com/xarleyn/dsh-plugins/commit/0ed44134))
+  and folders with drag and drop. Keep the presentation metadata in browser storage,
+  separately for each account and QA route, without moving session files or workspaces.
+  Allow each external API integration token to store a server-side virtual folder
+  default for new conversations. Import routing hints into authenticated history
+  without overriding later manual organization.
+
+
+### 🩹 Fixes
+
+- Make integration attachment counts configurable through integration.maxAttachments. ([ad937985](https://github.com/xarleyn/dsh-plugins/commit/ad937985))
+  The default inherits the chat attachment limit instead of imposing a separate
+  five-file ceiling. Expose the override in attachment settings and reject excess
+  files with the effective limit while retaining byte and media-type checks.
+  Apply changed limits to subsequent HTTP requests and recognize quoted or
+  unquoted multipart parameters without losing attachment parts.
+
+- Deliver the filtered skill catalog with complete personas and clarify search ([bbfb751a](https://github.com/xarleyn/dsh-plugins/commit/bbfb751a))
+  refusals, attachment readers, and the workspace roots available to a session.
+
+- Seed an operator-selected subset of deployment skills into persistent shared storage once, including resources. Preserve saved edits and removals across restarts and retain audience and tool metadata when the shared version is loaded. ([3cd7920d](https://github.com/xarleyn/dsh-plugins/commit/3cd7920d))
+- Keep file drag-and-drop in the active QA surface ahead of the Host attachment ([79413749](https://github.com/xarleyn/dsh-plugins/commit/79413749))
+  overlay. Route page-wide drops to the composer and form-field drops to their own
+  upload receiver, respect disabled controls, and restore Host handling on exit.
+  Preserve ordinary text dragging and chat organization.
+
+- Apply explicit central model replacements to every policy layer and safely ([46e6596c](https://github.com/xarleyn/dsh-plugins/commit/46e6596c))
+  reconcile idle owned chats using the current Host model selection. Trusted
+  nested experts inherit the owning chat's model policy.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-documents to 0.8.3
+- Updated @yadsh/dsh-plugin-kit to 0.8.0
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.19.0 (2026-11-09)
 
 ### 🚀 Features

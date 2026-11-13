@@ -22,8 +22,8 @@ export interface QaChangelogEntry {
 
 export const QA_CHANGELOG: readonly QaChangelogEntry[] = [
   {
-    version: "0.20.0",
-    date: "2026-11-09",
+    version: "0.21.0",
+    date: "2026-11-13",
     sections: [
       {
         title: "Выбор модели субагента",
@@ -44,6 +44,12 @@ export const QA_CHANGELOG: readonly QaChangelogEntry[] = [
           "Ассистент может искать значения и формулы по листам, исправлять ячейки присланной Excel-таблицы и сравнивать результат с исходником перед выдачей отдельного файла. Проверка версии защищает от правок устаревшей копии; оформление и остальные части книги XLSX сохраняются.",
         ],
       },
+    ],
+  },
+  {
+    version: "0.20.0",
+    date: "2026-11-09",
+    sections: [
       {
         title: "Общие редактируемые навыки",
         items: [
