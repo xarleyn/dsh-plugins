@@ -1,3 +1,20 @@
+## 0.2.12 (2026-11-13)
+
+### 🩹 Fixes
+
+- Let QA agents discover the chat owner's available models and start native ([4da194ef](https://github.com/xarleyn/dsh-plugins/commit/4da194ef))
+  subagents on an explicitly selected model, enforcing current account and role
+  grants, reasoning efforts, availability and delegation depth before startup.
+  Keep answer review waiting for native activations started by QA delegation tools.
+
+- Prevent accidental repeat edits from the same input within a turn. Group previous ([383c8271](https://github.com/xarleyn/dsh-plugins/commit/383c8271))
+  outputs while keeping them downloadable, and support a byte-identical Save As.
+  Defer answer review while native child runs are active.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.2.11 (2026-11-12)
 
 ### 🩹 Fixes

@@ -1,3 +1,38 @@
+## 0.21.0 (2026-11-13)
+
+### 🚀 Features
+
+- Add an operator-configurable extension denylist and refusal message for native ([d7216ad4](https://github.com/xarleyn/dsh-plugins/commit/d7216ad4))
+  file writes and edits in QA chats, including delegated agents. Block .py and
+  .pyw by default and apply settings changes on the next tool call.
+
+- Let QA agents discover the chat owner's available models and start native ([4da194ef](https://github.com/xarleyn/dsh-plugins/commit/4da194ef))
+  subagents on an explicitly selected model, enforcing current account and role
+  grants, reasoning efforts, availability and delegation depth before startup.
+  Keep answer review waiting for native activations started by QA delegation tools.
+
+
+### 🩹 Fixes
+
+- Edit existing XLSX, CSV and TSV attachments into new artifacts with source-version ([8a157918](https://github.com/xarleyn/dsh-plugins/commit/8a157918))
+  checks and bounded cell patches. Preserve unrelated XLSX package parts and expose
+  edited workbooks as downloadable chat attachments.
+
+  Add literal multi-sheet search and deterministic cell/sheet comparisons, with
+  source-bound pagination, optional cell formatting and XLSX package-part hashes.
+
+- Prevent accidental repeat edits from the same input within a turn. Group previous ([383c8271](https://github.com/xarleyn/dsh-plugins/commit/383c8271))
+  outputs while keeping them downloadable, and support a byte-identical Save As.
+  Defer answer review while native child runs are active.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-documents to 0.9.0
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.20.0 (2026-11-12)
 
 ### 🚀 Features
