@@ -30,7 +30,7 @@ interface VolatileUpdateEmitFace {
 
 /** The plugin's own fiber, read the way the Loader reads it. */
 interface FiberFace {
-  readonly config: unknown;
+  readonly effectiveConfig: unknown;
   readonly ctx: Context;
   dispose(): Promise<void>;
 }
@@ -96,7 +96,7 @@ async function host(
     configured,
     fiber,
     commit(patch: Record<string, unknown>) {
-      const live = fiber.config as Record<string, unknown>;
+      const live = fiber.effectiveConfig as Record<string, unknown>;
       for (const [key, value] of Object.entries(patch)) {
         live[key] = { get: () => value };
       }

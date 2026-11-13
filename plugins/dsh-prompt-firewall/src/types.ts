@@ -1,7 +1,7 @@
 import type { Volatile } from "@deepseek-ai/cordis";
 import type {
   AssembledSection,
-  PromptAssembly,
+  PromptPresentation,
 } from "@deepseek-ai/dsh-system-prompt";
 
 export type FirewallMode = "off" | "audit" | "blocklist" | "allowlist";
@@ -167,4 +167,6 @@ export interface FirewallLogger {
 
 /** Upstream currently strips `complete` before the waterfall; kept for compatible hosts. */
 export type FirewallSection = AssembledSection & { complete?: boolean };
-export type FirewallAssembly = PromptAssembly & { sections: FirewallSection[] };
+export type FirewallAssembly = PromptPresentation & {
+  sections: FirewallSection[];
+};

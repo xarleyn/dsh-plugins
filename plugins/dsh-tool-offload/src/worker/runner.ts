@@ -111,9 +111,8 @@ export function createSubagentRunner(
         request.signal,
         AbortSignal.timeout(request.profile.timeoutMs),
       ]);
-      const agentOptions: NonNullable<
-        SubagentActivationSpec["request"]["agentOptions"]
-      > = {};
+      const agentOptions: NonNullable<SubagentActivationSpec["agentOptions"]> =
+        {};
       // A profile that pins no model follows the policy of the chat this tool
       // result came from, rather than the model that chat happens to be on.
       const policy =
@@ -132,12 +131,10 @@ export function createSubagentRunner(
         activation = await subagents.startActivation({
           provider: request.profile.subagentProvider,
           label: request.label,
-          request: {
-            prompt: [{ type: "text", text: request.prompt }],
-            parent: request.parent,
-            agentOptions,
-            agentPreset,
-          },
+          prompt: [{ type: "text", text: request.prompt }],
+          parent: request.parent,
+          agentOptions,
+          agentPreset,
           signal,
           // Caller delivery returns the result to this call alone: the worker
           // answers through the replaced tool content, so the parent model

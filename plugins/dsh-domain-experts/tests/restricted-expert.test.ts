@@ -91,10 +91,8 @@ function harness(
   const spec: SubagentActivationSpec = {
     provider: "spawn",
     label: "domain-expert:demo",
-    request: {
-      parent: agentOf({ id: "parent" }),
-      prompt: [{ type: "text", text: "Check the fixture." }],
-    },
+    parent: agentOf({ id: "parent" }),
+    prompt: [{ type: "text", text: "Check the fixture." }],
     signal: new AbortController().signal,
     delivery: "caller",
   };

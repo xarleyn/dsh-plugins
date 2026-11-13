@@ -1,3 +1,4 @@
+import { Peer } from "@deepseek-ai/dsh-client-connection";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -513,7 +514,11 @@ describe("wiring: the config reaches the host", () => {
   it("hands the entry redirect to the index injector while the switch is on", async () => {
     const { ctx, dispose } = await world();
     const table: IndexInjection[] = [];
-    ctx.emit("webserver/index-inject", table);
+    ctx.emit(
+      "webserver/index-inject",
+      table,
+      new Peer(ctx, { principal: { kind: "owner" } }),
+    );
     expect(table).toEqual([
       {
         kind: "script",
@@ -529,7 +534,11 @@ describe("wiring: the config reaches the host", () => {
       entry: { redirectNonLoopback: false },
     });
     const table: IndexInjection[] = [];
-    ctx.emit("webserver/index-inject", table);
+    ctx.emit(
+      "webserver/index-inject",
+      table,
+      new Peer(ctx, { principal: { kind: "owner" } }),
+    );
     expect(table).toEqual([]);
     await dispose();
   });

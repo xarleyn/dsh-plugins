@@ -1,7 +1,8 @@
 # Compatibility policy
 
-The monorepo keeps tested DeepSeek Harness ranges in pnpm named catalogs. The
-current baseline is Cordis 4.0.4 and the DSH `0.1.7-rc.2` package family.
+The workspace builds against DeepSeek Harness `0.2.2-rc.3`, Cordis `4.1.0`
+and Schemastery `3.19.0`. Running this Harness release requires Node
+`>=24.9.0`. The plugin workspace uses the pnpm version in its root manifest.
 
 Every publishable plugin carries `compatibility.json`. Its `node` value must
 exactly match `package.json#engines.node`, and the repository package-hygiene
@@ -20,8 +21,11 @@ and release decision.
 `pnpm-workspace.yaml` defines two DSH catalogs:
 
 - `catalog:dsh` contains the compatible peer ranges shipped in public package
-  manifests. Cordis uses `~4.0.4` because the supported loader `~1.0.5` requires
-  Cordis 4.0.x. DSH packages use `>=0.1.7-rc.2 <0.3.0-0`.
+  manifests. Cordis accepts `~4.0.4 || ~4.1.0`. The shared DSH range names the
+  tested 0.2.1 and 0.2.2 release candidates explicitly because npm excludes
+  prereleases on a different version tuple from an ordinary range. Plugins
+  that use the new delegation, session or LLM failure APIs set their own peer
+  floor at `0.2.2-rc.3`.
 - `catalog:dsh-dev` contains exact versions used by local builds and CI.
 
 `catalog:runtime` is not a DSH catalog: it holds a third-party runtime range that
@@ -49,7 +53,7 @@ instance.
 | `@yadsh/dsh-domain-experts` | Cordis, schemastery, agent, session, settings, storage-domain, subagent, tools, gateway, client renderer/settings, Typert protocol, React |
 | `@yadsh/dsh-draft-sessions` | Cordis, gateway, api-session-controller, api-workspace-controller, session, client connection/locale/renderer/UI, Typert protocol |
 | `@yadsh/dsh-git-readonly` | tools, schemastery |
-| `@yadsh/dsh-humanizer` | Cordis, schemastery, tools (checked against 0.2.0-rc.2) |
+| `@yadsh/dsh-humanizer` | Cordis, schemastery, tools |
 | `@yadsh/dsh-kv-persist` | Cordis, schemastery, LLM |
 | `@yadsh/dsh-l10n-overrides` | Cordis, client locale |
 | `@yadsh/dsh-jev-compaction` | Cordis, schemastery, LLM, session |
@@ -123,6 +127,20 @@ rather than relocated. See
 [DSH-0.1.7-MIGRATION.md](DSH-0.1.7-MIGRATION.md) — sections 8–13 — for the
 `rc.1 → rc.2` delta, the measured failures, the open owner decisions and the
 per-package work breakdown.
+
+## Upgrading from 0.2.1-rc.3
+
+QA, Answer Review, Domain Experts and Tool Offload pass the parent and prompt
+directly to `startActivation`. The returned name addresses a child in control
+tools. Its Session id still identifies durable history. QA uses the owned
+chat transport for event pages and passes the stored image reference when
+reading attachment bytes. The extended LLM provider preserves its own failure
+codes through `LlmError.fromFailure`.
+
+Upgrade all processes sharing a Session store together. Once the new Harness
+records a version 3 subagent catalog, the previous Harness cannot open that
+Session. Restoring the old release requires the corresponding pre-upgrade
+store. See the [upstream migration guide](https://github.com/deepseek-ai/deepseek-harness/blob/dsh-v0.2.2-rc.3/docs/upgrade-guide/v0.2.2-alpha.3/subagent-names/guide.md).
 
 ## Upgrade rules
 

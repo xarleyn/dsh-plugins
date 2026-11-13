@@ -1588,9 +1588,17 @@ export class QaSessionController {
   private async readAttachmentUrl(attachmentId: string): Promise<string> {
     const session = this.session;
     if (session === undefined) throw new Error("no bound session");
-    const result = await session.readAttachment(
-      attachmentId as Parameters<SessionFace["readAttachment"]>[0],
-    );
+    const reference = this.state.messages
+      .flatMap((message) =>
+        message.role === "user" ? (message.images ?? []) : [],
+      )
+      .find(
+        (image) =>
+          image.attachmentId === attachmentId && image.reference !== undefined,
+      )?.reference;
+    if (reference === undefined)
+      throw new Error("Missing stored image reference.");
+    const result = await session.readAttachment(reference);
     if (!result.ok) {
       throw new Error(`${result.error.code}: ${result.error.message}`);
     }

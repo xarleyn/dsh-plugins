@@ -210,7 +210,7 @@ stable plugin-log categories (`safety-gate/check|block|warn|classifier-error`).
 
 ## Compatibility
 
-- DeepSeek Harness `>=0.1.7-rc.2 <0.2.0` (channel `next`), extension points:
+- DeepSeek Harness `>=0.1.7-rc.2 <0.3.0-0 || 0.2.1-rc.3 || 0.2.2-rc.3` (channel `next`), extension points:
   `agent/pre-step`, `llm/stream`, `tools/pre-execute`, `tools/post-execute`.
 - Node.js `^22.19.0 || >=24.0.0`.
 - See [compatibility.json](./compatibility.json) for the machine-readable

@@ -1,3 +1,4 @@
+import * as NativeExecutor from "@deepseek-ai/dsh-tool-executor-native";
 import { Context } from "@deepseek-ai/cordis";
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import { createScope } from "@deepseek-ai/dsh-scope";
@@ -29,6 +30,7 @@ async function setup() {
   const ctx = new Context();
   await ctx.plugin(SystemPrompt, {});
   await ctx.plugin(ToolRuntime);
+  await ctx.plugin(NativeExecutor);
   const root = { session: { header: {} } } as unknown as Agent;
   const child = {
     session: {
@@ -55,13 +57,22 @@ async function setup() {
       : qaCeilingDenial(new Set(), execution.name),
   );
   const call = (agent: Agent, name = "structured_output") =>
-    ctx.tools.execute({
-      callId: "capture" as never,
-      name,
-      arguments: {},
-      agent,
-      signal: new AbortController().signal,
-    });
+    ctx.tools
+      .execute({
+        calls: [
+          {
+            type: "tool-call",
+            id: "capture" as Parameters<
+              typeof ctx.tools.execute
+            >[0]["calls"][number]["id"],
+            name,
+            arguments: JSON.stringify({}),
+          },
+        ],
+        agent,
+        signal: new AbortController().signal,
+      })
+      .then((batch) => batch.results[0]!.result);
   return { ctx, root, child, call };
 }
 

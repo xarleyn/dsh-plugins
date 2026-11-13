@@ -1,3 +1,4 @@
+import { qaDelegatedHeader } from "./shared/session-lineage.js";
 import type { Context } from "@deepseek-ai/cordis";
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import type { QaQueueStatus } from "./types.js";
@@ -280,7 +281,12 @@ export function qaRequestFamilyBusy(ctx: Context, root: Agent): boolean {
   const family = new Set([root]);
   for (const owner of family) {
     for (const child of agents) {
-      if (family.has(child) || !ctx.agents.isOwnedBy(child.id, owner)) continue;
+      if (
+        family.has(child) ||
+        !qaDelegatedHeader(child.session.header) ||
+        child.session.header.parentSession !== owner.session.id
+      )
+        continue;
       if (child.status === "running") return true;
       family.add(child);
     }
@@ -294,7 +300,10 @@ export function qaRequestRoots(
   required: boolean,
 ): readonly Agent[] {
   const registry = ctx.get("agents");
-  if (typeof registry?.roots === "function") return registry.roots();
+  if (typeof registry?.list === "function")
+    return registry
+      .list()
+      .filter((agent) => !qaDelegatedHeader(agent.session.header));
   if (required)
     throw new Error("The request queue requires the Host root-agent registry.");
   return [];

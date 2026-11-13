@@ -165,7 +165,7 @@ function surfaceWithAttachment(
 }
 
 function promptTextOf(spec: SubagentActivationSpec): string {
-  return spec.request.prompt
+  return spec.prompt
     .filter(
       (block): block is Extract<ContentBlock, { type: "text" }> =>
         block.type === "text",
@@ -213,10 +213,10 @@ describe("reviewer sees uploaded attachments", () => {
         ...images,
         fileBlock(),
       ]);
-      expect(
-        spec.request.prompt.filter((block) => block.type === "image"),
-      ).toEqual(images);
-      expect(spec.request.prompt).not.toContainEqual(fileBlock());
+      expect(spec.prompt.filter((block) => block.type === "image")).toEqual(
+        images,
+      );
+      expect(spec.prompt).not.toContainEqual(fileBlock());
       const text = promptTextOf(spec);
       expect(text).not.toContain(
         "image omitted because this model accepts text only",

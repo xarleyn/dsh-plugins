@@ -14,7 +14,7 @@ if (
   );
 }
 for (const release of harness.testedReleases) {
-  if (typeof release !== "string" || !/^0\.1\.\d+-rc\.\d+$/.test(release)) {
+  if (typeof release !== "string" || !/^0\.[12]\.\d+-rc\.\d+$/.test(release)) {
     throw new Error(`invalid tested DSH release ${JSON.stringify(release)}`);
   }
 }

@@ -246,7 +246,9 @@ describe("provider profile lifecycle", () => {
         }
       })(),
     ).rejects.toMatchObject({ code: "NO_ADAPTER" });
-    expect(new LlmError("x", "X")).toBeInstanceOf(Error);
+    expect(LlmError.fromFailure({ message: "x", code: "X" })).toBeInstanceOf(
+      Error,
+    );
   });
 
   it("rejects unsupported or unresolved image input before provider I/O", async () => {

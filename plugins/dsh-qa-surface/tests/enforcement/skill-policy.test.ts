@@ -1,3 +1,4 @@
+import * as NativeExecutor from "@deepseek-ai/dsh-tool-executor-native";
 import { Context } from "@deepseek-ai/cordis";
 import { agentEvents } from "@deepseek-ai/dsh-agent";
 import type { Agent, PreStepDecision } from "@deepseek-ai/dsh-agent";
@@ -79,6 +80,7 @@ async function setup(options: {
   const ctx = new Context();
   await ctx.plugin(SystemPrompt, {});
   await ctx.plugin(ToolRuntime);
+  await ctx.plugin(NativeExecutor);
   await ctx.plugin(SkillRegistry);
   ctx.tools.register(globalTool("read"));
   ctx.tools.register(
@@ -232,6 +234,7 @@ async function propose(
       messages: [...messages],
       turn: 1,
       step: 1,
+      modelSelection: { provider: "demo", model: "demo" },
       signal: new AbortController().signal,
     },
     () => Promise.resolve({ kind: "enter" as const, messages: [...messages] }),
@@ -249,16 +252,25 @@ describe("QA skill policy consumer", () => {
       logger: logger(),
     });
     const call = () =>
-      ctx.tools.execute({
-        callId: "resource-read" as never,
-        name: "read",
-        arguments: {
-          file_path:
-            "/workspace/project/opt/qa-skills/allowed-skill/references/workflow.md",
-        },
-        agent,
-        signal: new AbortController().signal,
-      });
+      ctx.tools
+        .execute({
+          calls: [
+            {
+              type: "tool-call",
+              id: "resource-read" as Parameters<
+                typeof ctx.tools.execute
+              >[0]["calls"][number]["id"],
+              name: "read",
+              arguments: JSON.stringify({
+                file_path:
+                  "/workspace/project/opt/qa-skills/allowed-skill/references/workflow.md",
+              }),
+            },
+          ],
+          agent,
+          signal: new AbortController().signal,
+        })
+        .then((batch) => batch.results[0]!.result);
     const before = await call();
     expect(JSON.stringify(before)).not.toContain("Retry read");
     const loaded = (await load(agent, "allowed-skill")) as { content: string };

@@ -375,7 +375,7 @@ describe("plugin wiring", () => {
       "The runtime uses file locks around journal writes.",
     );
     const carrier = scopeTarget({}, agent);
-    const run = { id: "child-1", runId: "run-1" };
+    const run = { id: "child-1", runId: "run-1", parentSessionId: agent.id };
     const lifecycle = (event: string) =>
       events
         .find((item) => item.event === event)!

@@ -1,7 +1,7 @@
 import type { Context } from "@deepseek-ai/cordis";
 import { SessionId } from "@deepseek-ai/dsh-session/types";
 import { ReasoningEffortId } from "@deepseek-ai/dsh-llm";
-import type { Agent, ModelSelection } from "@deepseek-ai/dsh-agent";
+import type { Agent } from "@deepseek-ai/dsh-agent";
 import type { QaModelOptions, QaModelPair } from "../types.js";
 import type {
   SessionSelectModelRequest,
@@ -46,7 +46,7 @@ export async function userModelOptions(
   const agent =
     sessionId === null ? undefined : ctx.agents.get(SessionId(sessionId));
   const facts =
-    agent === undefined ? policy.pair : sessionModelSelection(ctx, agent);
+    agent === undefined ? policy.pair : sessionModelSelection(agent);
   const selected =
     facts?.provider === undefined || facts.model === undefined
       ? undefined
@@ -130,13 +130,12 @@ export async function selectUserModel(
           agent: Agent,
           operation: () => Promise<T>,
         ): Promise<T>;
-        selectForNextRequest(agent: Agent, selection: ModelSelection): void;
       };
     }
   ).agents;
   if (
     typeof controller?.serializeImageAdmission !== "function" ||
-    typeof controller.selectForNextRequest !== "function"
+    typeof agent.model?.select !== "function"
   )
     throw new Error("This Host does not support chat-local model selection.");
   return controller.serializeImageAdmission(agent, async () => {
@@ -165,7 +164,7 @@ export async function selectUserModel(
         ? {}
         : { reasoningEffort: selected.reasoningEffort }),
     };
-    controller.selectForNextRequest(agent, pair);
+    agent.model.select(pair);
     return { selected: pair };
   });
 }

@@ -26,13 +26,11 @@ export interface QaSubagentsFace {
     readonly label: string;
     readonly signal: AbortSignal;
     readonly delivery: "parent";
-    readonly request: {
-      readonly parent: Agent;
-      readonly prompt: ContentBlock[];
-      readonly agentOptions: AgentOptions;
-      readonly maxDepth?: number;
-    };
-  }): Promise<{ readonly childId: string }>;
+    readonly parent: Agent;
+    readonly prompt: ContentBlock[];
+    readonly agentOptions: AgentOptions;
+    readonly maxDepth?: number;
+  }): Promise<{ readonly name: string }>;
 }
 
 export interface QaSubagentToolsOptions {
@@ -103,7 +101,7 @@ export function createQaSubagentTool(
   return defineTool({
     name: "qa_subagent",
     description:
-      "Delegate a self-contained task to a fresh subagent on an allowed model. Choose an exact provider/model pair and allowed reasoning_effort from qa_list_subagent_models. Include all necessary context. The child inherits this agent's preset, workspace and permission boundaries. Returns a child id; completion is delivered automatically. Do independent work or end this step without another tool call. Do not poll list_agents, send reminders, or interrupt a child to hurry it. Independent delegations may start together.",
+      "Delegate a self-contained task to a fresh subagent on an allowed model. Choose an exact provider/model pair and allowed reasoning_effort from qa_list_subagent_models. Include all necessary context. The child inherits this agent's preset, workspace and permission boundaries. Returns the child name used by control tools. Completion is delivered automatically. Do independent work or end this step without another tool call. Do not poll list_agents, send reminders, or interrupt a child to hurry it. Independent delegations may start together.",
     parameters: {
       description: {
         type: "string",
@@ -137,7 +135,7 @@ export function createQaSubagentTool(
         additionalProperties: false,
         properties: {
           kind: { type: "string", const: "activation", required: true },
-          subagentId: { type: "string", required: true },
+          name: { type: "string", required: true },
           provider: { type: "string", required: true },
           model: { type: "string", required: true },
           reasoningEffort: { type: "string" },
@@ -216,16 +214,14 @@ export function createQaSubagentTool(
         label: args.description,
         signal: exec.signal,
         delivery: "parent",
-        request: {
-          parent,
-          prompt: [{ type: "text", text: args.prompt }],
-          agentOptions,
-          ...(maxDepth === undefined ? {} : { maxDepth }),
-        },
+        parent,
+        prompt: [{ type: "text", text: args.prompt }],
+        agentOptions,
+        ...(maxDepth === undefined ? {} : { maxDepth }),
       });
       return {
         kind: "activation" as const,
-        subagentId: started.childId,
+        name: started.name,
         ...agentOptions,
       };
     },

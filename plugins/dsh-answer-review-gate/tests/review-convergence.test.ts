@@ -167,7 +167,7 @@ class ScriptedFace implements SubagentsFace {
   }
 
   taskTextOf(index: number): string {
-    const prompt = this.started[index]!.request.prompt;
+    const prompt = this.started[index]!.prompt;
     return (prompt[prompt.length - 1] as { type: "text"; text: string }).text;
   }
 }

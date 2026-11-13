@@ -424,14 +424,22 @@ export function subagentsFaceOf(runtime: Context["subagents"]): SubagentsFace {
     startActivation: (spec: SubagentActivationSpec) =>
       runtime.startActivation(spec),
     childrenOf: async (parentSessionId: string, signal: AbortSignal) => {
-      const rows = await runtime.listChildren(
-        parentSessionId as Parameters<Context["subagents"]["listChildren"]>[0],
+      const rows = await runtime.listDescendants(
+        parentSessionId as Parameters<
+          Context["subagents"]["listDescendants"]
+        >[0],
         signal,
       );
-      return rows.map((row) => ({
-        sessionId: String(row.id),
-        label: row.label,
-      }));
+      return rows.flatMap((row) =>
+        row.kind === "child" && row.depth === 1
+          ? [
+              {
+                sessionId: String(row.id),
+                label: row.label,
+              },
+            ]
+          : [],
+      );
     },
   };
 }

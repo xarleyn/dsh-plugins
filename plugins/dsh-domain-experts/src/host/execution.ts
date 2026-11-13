@@ -256,25 +256,23 @@ async function executeExpert(
   const spec: SubagentActivationSpec = {
     provider: dependencies.subagentProvider,
     label: expertLabelOf(definition.id),
-    request: {
-      // The start contract no longer carries a per-child persona: the Host
-      // composes a child's persona and tools from its Agent Preset. The
-      // composed policy therefore leads the child's first message and the
-      // caller's request follows it, so a candidate answer — anything the
-      // caller embedded in the request — still cannot read as deployment
-      // instruction.
-      prompt: [
-        { type: "text", text: profile.policy },
-        { type: "text", text: profile.task },
-        ...(input.images ?? []),
-      ],
-      parent: input.parent,
-      maxDepth: definition.delegation.maxDepth,
-      ...agentOptionsOf(definition, modelPolicy),
-      ...(input.structuredOutput === true
-        ? { outputSchema: EXPERT_REVIEW_OUTPUT_SCHEMA }
-        : {}),
-    },
+    // The start contract no longer carries a per-child persona: the Host
+    // composes a child's persona and tools from its Agent Preset. The
+    // composed policy therefore leads the child's first message and the
+    // caller's request follows it, so a candidate answer — anything the
+    // caller embedded in the request — still cannot read as deployment
+    // instruction.
+    prompt: [
+      { type: "text", text: profile.policy },
+      { type: "text", text: profile.task },
+      ...(input.images ?? []),
+    ],
+    parent: input.parent,
+    maxDepth: definition.delegation.maxDepth,
+    ...agentOptionsOf(definition, modelPolicy),
+    ...(input.structuredOutput === true
+      ? { outputSchema: EXPERT_REVIEW_OUTPUT_SCHEMA }
+      : {}),
     signal: input.signal,
     // Parent delivery notifies the model; caller delivery returns the result
     // to this call alone. A foreground expert answers through its tool result,

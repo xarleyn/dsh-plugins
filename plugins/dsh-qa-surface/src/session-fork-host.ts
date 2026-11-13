@@ -84,7 +84,13 @@ export async function forkQaSession(
   if (access.isDelegatedChild(sourceId))
     throw new Error("A delegated session cannot be forked as a QA chat.");
   await admission.secureSession(token, sourceId);
-  const source = await ctx.sessionController.inspect(SessionId(sourceId));
+  const liveSource = ctx.agents.get(SessionId(sourceId))?.session;
+  if (liveSource === undefined)
+    throw new Error("The source agent is unavailable.");
+  const source = {
+    meta: liveSource.header,
+    events: liveSource.snapshotEvents(),
+  };
   if (qaDelegatedHeader(source.meta))
     throw new Error("A delegated session cannot be forked as a QA chat.");
   const boundary = qaForkBoundary(source.events, answerSeq);

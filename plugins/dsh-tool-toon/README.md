@@ -104,7 +104,7 @@ See [SPEC.md](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-tool-
 
 ## Compatibility
 
-- Installed Host API checked against `0.2.1-rc.3` (see `compatibility.json`).
+- Installed Host API checked against `0.2.2-rc.3` (see `compatibility.json`).
 - A deployment needs the package installed and its host process restarted before
   new tool calls use this format. Local tests do not establish live Jira or model acceptance.
 

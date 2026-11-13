@@ -47,6 +47,7 @@
     "@deepseek-ai/schemastery": "catalog:dsh"
   },
   "devDependencies": {
+    "@deepseek-ai/dsh-tool-executor-native": "catalog:dsh-dev",
     "@deepseek-ai/cordis": "catalog:dsh-dev",
     "@deepseek-ai/dsh-tools": "catalog:dsh-dev",
     "@deepseek-ai/schemastery": "catalog:dsh-dev",

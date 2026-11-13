@@ -187,13 +187,13 @@ describe("createSubagentRunner start contract (SPEC §6.1, §9.5)", () => {
     expect(spec?.provider).toBe("spawn");
     expect(spec?.label).toBe("dsh-tool-offload:read");
     expect(spec?.delivery).toBe("caller");
-    expect(spec?.request.agentPreset).toBe("bare-worker");
-    expect(spec?.request.agentOptions).toEqual({
+    expect(spec?.agentPreset).toBe("bare-worker");
+    expect(spec?.agentOptions).toEqual({
       provider: "zai",
       model: "glm-4.5-air",
       maxTokens: 2_500,
     });
-    expect(spec?.request.prompt).toEqual([{ type: "text", text: "PROMPT" }]);
+    expect(spec?.prompt).toEqual([{ type: "text", text: "PROMPT" }]);
     expect(spec?.signal).toBeInstanceOf(AbortSignal);
   });
 
@@ -204,7 +204,7 @@ describe("createSubagentRunner start contract (SPEC §6.1, §9.5)", () => {
       workers: { default: { agentPreset: "bare-worker" } },
     }).workers.default!;
     await runner.run(baseRequest({ profile: inherited }));
-    expect(specs[0]?.request.agentOptions).toEqual({ maxTokens: 4_000 });
+    expect(specs[0]?.agentOptions).toEqual({ maxTokens: 4_000 });
   });
 });
 
