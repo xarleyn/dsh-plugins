@@ -1,3 +1,23 @@
+## 0.2.11 (2026-11-12)
+
+### 🩹 Fixes
+
+- Preserve absolute paths for saved review packets. Support cancellable expert ([c31e8975](https://github.com/xarleyn/dsh-plugins/commit/c31e8975))
+  review budgets with explicit failures for incompatible backends and exhausted
+  limits. Count trusted delegated descendants within the same review budget.
+
+- Honor the configured OpenViking HTTP timeout in bridged MCP calls. Expose independent-review budgets and reviewer configuration through the Host settings forms, applying committed changes to subsequent review operations. ([8e63dfef](https://github.com/xarleyn/dsh-plugins/commit/8e63dfef))
+- Bound each review round with a configurable deadline and carry prior findings into subsequent rounds so revisions are assessed against the outstanding objections. ([](https://github.com/xarleyn/dsh-plugins/commit/))
+- Report independent review timeouts, exhausted tool budgets, repeated refusals and cancellation with their specific failure reasons instead of a generic unfinished-expert error. Failed reviews remain unverified. ([15775d00](https://github.com/xarleyn/dsh-plugins/commit/15775d00))
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-kit to 0.8.0
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.2.10 (2026-11-09)
 
 ### 🩹 Fixes

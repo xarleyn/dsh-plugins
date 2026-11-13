@@ -1,3 +1,15 @@
+## 0.8.0 (2026-11-12)
+
+### 🚀 Features
+
+- Add a shared named code source catalogue contract, configuration validation, ([8d89d178](https://github.com/xarleyn/dsh-plugins/commit/8d89d178))
+  explicit source selection and default resolution. Source identifiers and labels
+  are independent of directory names, and selection does not grant filesystem access.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.7.0 (2026-11-09)
 
 ### 🚀 Features

@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-tool-toon",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Lossless TOON formatting for DeepSeek Harness JSON tool results before they enter model context",
   "repository": {
     "type": "git",
