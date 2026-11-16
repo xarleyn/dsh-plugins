@@ -36,7 +36,7 @@ import {
 } from "../profile.js";
 import { normalizeStarters, validateStartersWrite } from "../starters.js";
 import { validateCredentials, validatePassword } from "./credentials.js";
-import { QaAccountsDatabase } from "./database.js";
+import { QaAccountsDatabase, type QaAccountRemoval } from "./database.js";
 import type {
   QaHistoryFolderTarget,
   QaOwnedSessionsResult,
@@ -674,6 +674,8 @@ export class QaAccounts {
       (candidate) => candidate.id === owner.userId,
     );
     if (ownerUser === undefined) {
+      // Administrators read retained history through admin.conversation. A live
+      // session needs an existing owner whose access policy it can use.
       throw new QaAccountsError(
         "session-owned-elsewhere",
         "the session owner no longer exists",
@@ -1168,16 +1170,8 @@ export class QaAccounts {
     return skillActivations;
   }
 
-  deleteAccount(
-    userId: string,
-    requireEmptyHistory: boolean,
-    beforeCommit?: (retained: number) => void,
-  ): number {
-    const retained = this.database.deleteAccount(
-      userId,
-      requireEmptyHistory,
-      beforeCommit,
-    );
+  deleteAccount(userId: string, options: QaAccountRemoval = {}): number {
+    const retained = this.database.deleteAccount(userId, options);
     this.file = this.database.loadAll();
     return retained;
   }

@@ -721,6 +721,22 @@ export class QaQualityStore {
     return record;
   }
 
+  /** Record the intent before erasing files and publish it only if the work succeeds. */
+  withAudit(
+    input: Parameters<QaQualityStore["appendAudit"]>[0],
+    work: () => void,
+  ): void {
+    try {
+      this.storage.transaction(() => {
+        this.appendAudit(input);
+        work();
+      });
+    } catch (error) {
+      this.file = this.load();
+      throw error;
+    }
+  }
+
   auditEvents(): readonly QaAdminAuditEvent[] {
     this.reload();
     return this.file.audit;

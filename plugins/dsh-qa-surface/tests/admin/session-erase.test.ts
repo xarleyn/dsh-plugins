@@ -79,12 +79,14 @@ describe("stored-session removal", () => {
 
   it("checks the whole batch for unavailable stored sessions before removing any directory", async () => {
     const home = fixture();
-    await expect(
+    expect(() =>
       createSessionEraser(home).erase(
         ["session-a", "missing"],
         new Set(["missing"]),
       ),
-    ).rejects.toMatchObject({ reason: "conversation-not-removable" });
+    ).toThrow(
+      expect.objectContaining({ reason: "conversation-not-removable" }),
+    );
     expect(
       existsSync(path.join(home, "sessions", "--e-work--", "session-a")),
     ).toBe(true);

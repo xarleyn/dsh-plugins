@@ -501,11 +501,8 @@ export class QaSurface extends TypertRemoteService {
       // Deletion is the console's alone: the sidebar's delete stays a
       // per-browser row, and only an administrator removes the chat itself.
       sessionFiles: createSessionEraser(),
-      dropSources: (sessionId) => {
-        this.provenance.dropSession(sessionId);
-        this.sharing().dropSession(sessionId);
-      },
-      dropSharingForUser: (userId) => this.sharing().dropUser(userId),
+      dropSources: (sessionId) => this.provenance.dropSession(sessionId),
+      sharing: () => this.sharing(),
       // The console writes skills through the same service the owner's editor
       // uses, so an administrator's save is path-checked, validated and
       // published to DSH by exactly the one code path that already does it.

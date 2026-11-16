@@ -152,7 +152,7 @@ describe("OIDC account storage and access boundaries", () => {
       role: "admin",
     });
     const reader = f.store.loginOidc(identity());
-    f.open().deleteAccount(reader.user.id, false);
+    f.open().deleteAccount(reader.user.id);
     expect(f.store.verifyToken(reader.token)).toBeNull();
     expect(() =>
       f.store.loginOidc({ ...identity(), autoProvision: false }),

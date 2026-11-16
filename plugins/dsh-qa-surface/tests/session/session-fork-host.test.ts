@@ -132,7 +132,7 @@ function world() {
   const provenance = { forkSnapshots: vi.fn(), dropSession: vi.fn() };
   const logger = { info: vi.fn(), error: vi.fn() } as unknown as PluginLogger;
   const sessionFiles = {
-    erase: vi.fn(async (ids: readonly string[]) => ({
+    erase: vi.fn((ids: readonly string[]) => ({
       removed: ids,
       absent: [],
     })),
@@ -220,7 +220,7 @@ describe("owner-scoped fork transaction", () => {
     w.admission.secureSession.mockImplementation(async (_token, id) => {
       if (id !== "parent") throw new Error("rejected");
     });
-    w.sessionFiles.erase.mockImplementation(async () => ({
+    w.sessionFiles.erase.mockImplementation(() => ({
       removed: [],
       absent: [],
     }));

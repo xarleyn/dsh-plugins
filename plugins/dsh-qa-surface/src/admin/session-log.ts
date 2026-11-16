@@ -165,7 +165,7 @@ export interface QaStoredSessionEraser {
   erase(
     sessionIds: readonly string[],
     required?: ReadonlySet<string>,
-  ): Promise<QaSessionEraseOutcome>;
+  ): QaSessionEraseOutcome;
 }
 
 /**
@@ -466,10 +466,10 @@ export function createSessionEraser(home?: string): QaStoredSessionEraser {
     );
 
   return {
-    async erase(
+    erase(
       sessionIds: readonly string[],
       required?: ReadonlySet<string>,
-    ): Promise<QaSessionEraseOutcome> {
+    ): QaSessionEraseOutcome {
       const removed: string[] = [];
       const absent: string[] = [];
       const rootPath = root();

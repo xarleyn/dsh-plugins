@@ -7,6 +7,7 @@ import { QaAccounts, QaAccountsError } from "../../src/accounts/store.js";
 import { QaAccessService } from "../../src/access/service.js";
 import { QaRoleRepository } from "../../src/access/role-repository.js";
 import { QaAdminService } from "../../src/admin/service.js";
+import { QaChatSharingStore } from "../../src/chat-sharing/store.js";
 import { QaQualityStore } from "../../src/admin/quality-store.js";
 import {
   staticSessionLogReader,
@@ -243,6 +244,12 @@ export function harness(
     repository: roles,
   });
   const quality = new QaQualityStore(path.join(root, "quality.json"));
+  let sharingStore: QaChatSharingStore | undefined;
+  const sharing = () =>
+    (sharingStore ??= new QaChatSharingStore(
+      path.join(root, "sharing.db"),
+      () => accounts,
+    ));
   // The skill store the console writes through. It is the real service rather
   // than a double: the console's contract is that it adds authorization and an
   // audit row around exactly the storage the owner's own editor uses, so a fake
@@ -280,6 +287,7 @@ export function harness(
   const service = new QaAdminService({
     accounts: () => accounts,
     quality: () => quality,
+    sharing,
     roles: () => roles,
     access: () => access,
     skills: () => skills,
@@ -326,6 +334,7 @@ export function harness(
     service,
     accounts,
     quality,
+    sharing,
     roles,
     skills,
     skillConfig,
@@ -359,7 +368,7 @@ export function fakeEraser(listed: readonly string[]): QaStoredSessionEraser & {
   const calls: (readonly string[])[] = [];
   return {
     calls,
-    erase: async (sessionIds: readonly string[]) => {
+    erase: (sessionIds: readonly string[]) => {
       calls.push([...sessionIds]);
       return {
         removed: sessionIds.filter((sessionId) => listed.includes(sessionId)),

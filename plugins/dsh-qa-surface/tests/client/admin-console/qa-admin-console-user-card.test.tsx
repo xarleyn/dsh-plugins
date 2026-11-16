@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { adminApi, renderConsole } from "./qa-admin-console.helpers.js";
 import type { QaAdminUserDetail } from "../../../src/types.js";
@@ -45,6 +51,43 @@ function checkbox(): HTMLInputElement {
 }
 
 describe("admin user detail card", () => {
+  it("preserves the current page when a dismissed removal finishes", async () => {
+    let finish!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const deleteUser = vi.fn(async () => {
+      await pending;
+      return { ok: true as const, value: 14 };
+    });
+    renderConsole(
+      adminApi({
+        user: async () => ({ ok: true, value: detail() }),
+        deleteUser,
+      }),
+      "/qa/admin/users/u1",
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Удалить аккаунт…" }),
+    );
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Удалить аккаунт",
+      }),
+    );
+    expect(deleteUser).toHaveBeenCalledOnce();
+    act(() => {
+      window.history.pushState(null, "", "/qa/admin/audit");
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await act(async () => {
+      finish();
+      await pending;
+    });
+    expect(window.location.pathname).toBe("/qa/admin/audit");
+  });
+
   it("keeps the dialog open on refusal and omits the history option for an empty account", async () => {
     const user = { ...detail().user, conversations: 0 };
     const deleteUser = vi.fn(async () => ({

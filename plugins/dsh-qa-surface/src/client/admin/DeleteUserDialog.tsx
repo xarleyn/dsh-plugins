@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import type { QaAdminUserRow } from "../../types.js";
 import { QaModal } from "../components/QaModal.js";
 import { pluralRu } from "../settings/format.js";
@@ -15,6 +15,13 @@ export function DeleteUserDialog(props: {
   const [purge, setPurge] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+  const mounted = useRef(false);
+  useLayoutEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const { user } = props;
   const name = user.fullName || user.displayName;
   const close = () => {
@@ -31,6 +38,7 @@ export function DeleteUserDialog(props: {
         purge,
         user.conversations,
       );
+      if (!mounted.current) return;
       if (!result.ok) throw result.error;
       const scope =
         result.value === 0
@@ -38,6 +46,7 @@ export function DeleteUserDialog(props: {
           : ` ${purge ? "Удалено" : "Сохранено"} разговоров — ${String(result.value)}.`;
       props.onDeleted(`Аккаунт «${name}» удалён.${scope}`);
     } catch (reason) {
+      if (!mounted.current) return;
       setError(adminErrorMessage(reason));
       setBusy(false);
     }

@@ -3,21 +3,46 @@ import { fakeEraser, harness } from "./admin-service.helpers.js";
 import { staticSessionLogReader } from "../../src/admin/session-log.js";
 
 describe("admin account removal", () => {
-  it("rolls the credential deletion back and permits a retry when recording the removal fails", async () => {
-    const { service, accounts, admin, alice, quality } = harness();
-    const token = accounts.mintServiceToken(alice.token);
-    vi.spyOn(quality, "appendAudit").mockImplementationOnce(() => {
-      throw new Error("audit unavailable");
-    });
-    await expect(
-      service.deleteUser(admin.token, alice.user.id),
-    ).rejects.toThrow("audit unavailable");
-    expect(accounts.verifyServiceToken(token.token)?.userId).toBe(
-      alice.user.id,
-    );
-    expect(await service.deleteUser(admin.token, alice.user.id)).toBe(1);
-    expect(accounts.verifyServiceToken(token.token)).toBeNull();
-  });
+  it.each([false, true])(
+    "rolls credentials and shared access back on audit failure before erasing files (purge=%s)",
+    async (purge) => {
+      const files = fakeEraser(["session-alice"]);
+      const { service, accounts, admin, alice, bob, quality, sharing } =
+        harness({ sessionFiles: files });
+      const store = sharing();
+      store.set(alice.token, "session-alice", bob.user.email, "collaborate");
+      store.recordAuthor(
+        alice.token,
+        store.access(alice.token, "session-alice"),
+        "q",
+      );
+      const token = accounts.mintServiceToken(alice.token);
+      vi.spyOn(quality, "appendAudit").mockImplementationOnce(() => {
+        throw new Error("audit unavailable");
+      });
+      await expect(
+        service.deleteUser(admin.token, alice.user.id, purge),
+      ).rejects.toThrow("audit unavailable");
+      expect(accounts.verifyServiceToken(token.token)?.userId).toBe(
+        alice.user.id,
+      );
+      expect(store.grants(alice.token, "session-alice")).toHaveLength(1);
+      expect(store.requestActor("session-alice", "q")?.displayName).toBe(
+        alice.user.displayName,
+      );
+      expect(files.calls).toHaveLength(0);
+      expect(await service.deleteUser(admin.token, alice.user.id, purge)).toBe(
+        1,
+      );
+      expect(store.requestActor("session-alice", "q")?.displayName).toBe(
+        purge ? undefined : "Удалённый пользователь",
+      );
+      expect(
+        store.storage.db.prepare("SELECT 1 FROM grants").get(),
+      ).toBeUndefined();
+      expect(accounts.verifyServiceToken(token.token)).toBeNull();
+    },
+  );
   it("revokes credentials, releases the email and retains history without an eraser", async () => {
     const { service, accounts, quality, admin, alice } = harness();
     const credential = accounts.mintServiceToken(alice.token);
@@ -38,6 +63,9 @@ describe("admin account removal", () => {
     const chat = await service.conversation(admin.token, "session-alice");
     expect(chat.summary.displayName).toBe("Удалённый пользователь");
     expect(chat.messages.length).toBeGreaterThan(0);
+    expect(() =>
+      accounts.ensureSessionAccess(admin.token, "session-alice"),
+    ).toThrow(expect.objectContaining({ reason: "session-owned-elsewhere" }));
     expect(quality.allFeedback()).toHaveLength(1);
     const replacement = accounts.register(alice.user.email, "new-password-1");
     expect(replacement.user.id).not.toBe(alice.user.id);
@@ -50,6 +78,20 @@ describe("admin account removal", () => {
       actorId: admin.user.id,
       targetId: alice.user.id,
     });
+  });
+
+  it("rechecks ownership before erasure if a session was reserved during listing", async () => {
+    const files = fakeEraser(["session-alice"]);
+    const log = staticSessionLogReader({});
+    const { service, accounts, admin, alice } = harness({
+      sessionFiles: files,
+      sessionLog: log,
+    });
+    const pending = service.deleteUser(admin.token, alice.user.id, true);
+    accounts.reserveSession(alice.token, "new-chat");
+    await expect(pending).rejects.toMatchObject({ reason: "account-changed" });
+    expect(files.calls).toHaveLength(0);
+    expect(accounts.ownedSessionIds(alice.token)).toHaveLength(2);
   });
 
   it("erases all owned conversations and their delegated sessions but preserves another owner's fork", async () => {
@@ -74,6 +116,10 @@ describe("admin account removal", () => {
     expect(accounts.ownerIdOf("fork")).toBe(bob.user.id);
     expect(quality.manualQueue()).toEqual([]);
     expect(accounts.whoami(alice.token).authenticated).toBe(false);
+    expect(() =>
+      accounts.reserveSessionForUser(alice.user, "late-chat"),
+    ).toThrow(expect.objectContaining({ reason: "account-unknown" }));
+    expect(accounts.ownerIdOf("late-chat")).toBeUndefined();
   });
 
   it("checks permissions, the last administrator and every live conversation before erasing any", async () => {
