@@ -13,6 +13,22 @@ const CREATED = [
 ].join("\n");
 
 describe("artifactsOfToolResult", () => {
+  it("cards only the final workbook from an isolated worker", () => {
+    const plan = '{"mode":"dry-run","plannedCells":2}';
+    const file =
+      "xlsx: .qa/artifacts/documents/doc_demo/result.xlsx (85 B, sha256 abc…)";
+    expect(artifactsOfToolResult("qa_trip_ids", plan)).toEqual([]);
+    expect(
+      artifactsOfToolResult("qa_trip_ids", [plan, file].join("\n")),
+    ).toEqual([
+      {
+        path: ".qa/artifacts/documents/doc_demo/result.xlsx",
+        name: "result.xlsx",
+        format: "xlsx",
+        bytes: 85,
+      },
+    ]);
+  });
   it.each(["xlsx", "csv", "tsv"])("cards an edited %s attachment", (format) => {
     expect(
       artifactsOfToolResult(
