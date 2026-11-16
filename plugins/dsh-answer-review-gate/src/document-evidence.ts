@@ -177,11 +177,42 @@ const normalize = (value: string) =>
     .trim()
     .toLowerCase();
 
+/** Pipes within verbatim Markdown table quotations are evidence, not columns. */
+function comparisonColumns(line: string): string[] {
+  const fields: string[] = [];
+  const quotes: Record<string, string> = {
+    '"': '"',
+    "«": "»",
+    "“": "”",
+    "`": "`",
+  };
+  let close: string | undefined;
+  let start = 0;
+  for (let index = 0; index < line.length; index++) {
+    const char = line[index]!;
+    if (close !== undefined) {
+      if (char === close) close = undefined;
+    } else if (quotes[char] !== undefined) {
+      close = quotes[char];
+    } else if (char === "|") {
+      fields.push(line.slice(start, index).trim());
+      start = index + 1;
+    }
+  }
+  fields.push(line.slice(start).trim());
+  return fields;
+}
+
 function comparisonFields(line: string, pair: string) {
-  const [key, ...fields] = line
-    .trim()
-    .split("|")
-    .map((s) => s.trim());
+  // Native experts may put the CHECK after a short introductory sentence.
+  const marker = new RegExp(`\\bCHECK ${pair}\\s*\\|`, "u").exec(line);
+  if (marker === null) return;
+  // A quoted/code example is not the reviewer's own comparison assertion.
+  if (
+    [...line.slice(0, marker.index)].some((char) => '"«»“”`[]<>'.includes(char))
+  )
+    return;
+  const [key, ...fields] = comparisonColumns(line.slice(marker.index));
   if (key !== "CHECK " + pair) return;
   if (fields.length >= 3 && fields[2]) return [fields[0]!, fields[1]!] as const;
   const [source, document] = fields.join("|").split(/\s+(?:→|->)\s+/u);
