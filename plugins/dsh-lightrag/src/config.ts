@@ -8,18 +8,20 @@
  * is documented — this is the deployment contract (SPEC §4.2).
  */
 
+import type { Volatile } from "@deepseek-ai/cordis";
 import z from "@deepseek-ai/schemastery";
-
-/** Retrieval modes the LightRAG `/query` endpoint accepts (SPEC §3). */
-export const QUERY_MODES = [
-  "local",
-  "global",
-  "hybrid",
-  "naive",
-  "mix",
-  "bypass",
-] as const;
-export type QueryMode = (typeof QUERY_MODES)[number];
+import {
+  LIGHTRAG_DEFAULTS,
+  QUERY_MODES,
+  type QueryMode,
+  type ResolvedLightRagConfig,
+} from "./settings.js";
+export {
+  LIGHTRAG_DEFAULTS,
+  QUERY_MODES,
+  type QueryMode,
+  type ResolvedLightRagConfig,
+} from "./settings.js";
 
 /** Raw user-facing configuration. */
 export interface LightRagConfig {
@@ -58,32 +60,27 @@ export interface LightRagConfig {
   };
 }
 
-/** Fully defaulted, clamped configuration used by the client and the tools. */
-export interface ResolvedLightRagConfig {
-  readonly enabled: boolean;
-  readonly endpoint: string;
-  readonly apiKey: string;
-  readonly timeoutMs: number;
-  readonly queryMode: QueryMode;
-  readonly queryTopK: number;
-  readonly queryMaxAnswerBytes: number;
-  readonly documentsMaxListed: number;
-  readonly writesEnabled: boolean;
-  readonly writesMaxTextBytes: number;
-}
-
-export const LIGHTRAG_DEFAULTS: ResolvedLightRagConfig = {
-  enabled: true,
-  endpoint: "http://127.0.0.1:9621",
-  apiKey: "",
-  timeoutMs: 60_000,
-  queryMode: "mix",
-  queryTopK: 20,
-  queryMaxAnswerBytes: 200_000,
-  documentsMaxListed: 200,
-  writesEnabled: false,
-  writesMaxTextBytes: 200_000,
+/** Settings references supplied by the Host's volatile configuration loader. */
+export type LiveLightRagConfig = {
+  readonly [K in keyof LightRagConfig]-?: Volatile<LightRagConfig[K]>;
 };
+
+/** Read each volatile section once so an operation uses one configuration. */
+export function snapshotLightRagConfig(
+  source: LightRagConfig | LiveLightRagConfig = {},
+): LightRagConfig {
+  return Object.fromEntries(
+    Object.entries(source).map(([key, value]) => [
+      key,
+      value !== null &&
+      typeof value === "object" &&
+      "get" in value &&
+      typeof value.get === "function"
+        ? value.get()
+        : value,
+    ]),
+  ) as LightRagConfig;
+}
 
 function clampInteger(
   value: number | undefined,
@@ -138,27 +135,31 @@ export function resolveQueryMode(raw: unknown): QueryMode {
     : LIGHTRAG_DEFAULTS.queryMode;
 }
 
-export const LightRagConfigSchema: z<LightRagConfig> = z
+export const LightRagConfigSchema = z
   .object({
     enabled: z
       .boolean()
       .default(true)
+      .volatile()
       .description("Register the LightRAG knowledge-base tools."),
     endpoint: z
       .string()
       .default(LIGHTRAG_DEFAULTS.endpoint)
+      .volatile()
       .description(
         "Origin of the LightRAG server, e.g. http://lightrag:9621 (no path, credentials or query).",
       ),
     apiKey: z
       .string()
       .default("")
+      .volatile()
       .description(
         "API key sent as X-API-Key; empty falls back to LIGHTRAG_API_KEY.",
       ),
     timeoutMs: z
       .number()
       .default(LIGHTRAG_DEFAULTS.timeoutMs)
+      .volatile()
       .description(
         "Wall-clock budget per HTTP request in milliseconds (1000-300000).",
       ),
@@ -179,7 +180,8 @@ export const LightRagConfigSchema: z<LightRagConfig> = z
           .default(LIGHTRAG_DEFAULTS.queryMaxAnswerBytes)
           .description("Byte cap for the returned answer (1024-1048576)."),
       })
-      .description("Limits for dsh_lightrag_query."),
+      .description("Limits for dsh_lightrag_query.")
+      .volatile(),
     documents: z
       .object({
         maxListed: z
@@ -187,7 +189,8 @@ export const LightRagConfigSchema: z<LightRagConfig> = z
           .default(LIGHTRAG_DEFAULTS.documentsMaxListed)
           .description("Maximum documents listed by one call (1-1000)."),
       })
-      .description("Limits for dsh_lightrag_documents."),
+      .description("Limits for dsh_lightrag_documents.")
+      .volatile(),
     writes: z
       .object({
         enabled: z
@@ -201,9 +204,13 @@ export const LightRagConfigSchema: z<LightRagConfig> = z
           .default(LIGHTRAG_DEFAULTS.writesMaxTextBytes)
           .description("Byte cap for one inserted text (1024-1048576)."),
       })
-      .description("Write tools; off by default."),
+      .description("Write tools; off by default.")
+      .volatile(),
   })
-  .description("LightRAG knowledge-base tools.");
+  .description("LightRAG knowledge-base tools.") as unknown as z<
+  LightRagConfig,
+  LiveLightRagConfig
+>;
 
 /** Normalize and clamp raw configuration into the resolved shape. */
 export function resolveLightRagConfig(

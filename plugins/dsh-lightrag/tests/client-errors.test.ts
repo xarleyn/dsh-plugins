@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { createLightRagClient } from "../src/client.js";
+import { createLightRagClient } from "../src/http-client.js";
 import { LIGHTRAG_DEFAULTS } from "../src/config.js";
 import { caught } from "./client.helpers.js";
 import {

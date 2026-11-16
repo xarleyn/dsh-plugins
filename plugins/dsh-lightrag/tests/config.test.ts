@@ -9,6 +9,7 @@ import {
   resolveLightRagConfig,
   resolveLightRagEndpoint,
   resolveQueryMode,
+  snapshotLightRagConfig,
 } from "../src/config.js";
 
 const NO_ENV = {};
@@ -190,7 +191,9 @@ describe("resolveQueryMode", () => {
 describe("LightRagConfigSchema", () => {
   it("exposes the same defaults through the Schemastery contract", () => {
     const resolved = LightRagConfigSchema({});
-    expect(resolveLightRagConfig(resolved, NO_ENV)).toEqual(LIGHTRAG_DEFAULTS);
+    expect(
+      resolveLightRagConfig(snapshotLightRagConfig(resolved), NO_ENV),
+    ).toEqual(LIGHTRAG_DEFAULTS);
   });
 
   it("documents every field of the configuration surface", () => {
@@ -214,6 +217,20 @@ describe("LightRagConfigSchema", () => {
           `${group}.${key}`,
         ).toBeTruthy();
       }
+    }
+  });
+
+  it("exposes all sections as editable live settings", () => {
+    for (const key of [
+      "enabled",
+      "endpoint",
+      "apiKey",
+      "timeoutMs",
+      "query",
+      "documents",
+      "writes",
+    ]) {
+      expect(LightRagConfigSchema.dict?.[key]?.meta.volatile, key).toBe(true);
     }
   });
 });

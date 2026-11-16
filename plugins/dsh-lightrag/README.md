@@ -97,7 +97,20 @@ read-only one.
 
 ## Configuration
 
-Configure the plugin under the `lightrag` key in the DSH profile.
+Open **Plugins → LightRAG Knowledge Base → dsh-lightrag** to edit the server
+address, API key, request timeout, retrieval mode, document limits and write
+permissions. The card uses the `dsh-lightrag` row's settings namespace, matching
+`cordis.patch.yml`; existing composition values remain the defaults.
+
+Changes are saved together with **Сохранить** and apply to new tool calls without
+a restart. **Отменить** discards the draft and reloads current settings. Invalid
+origins and out-of-range limits are rejected before saving. Clearing a numeric
+field restores its inherited value. The API key is masked; an empty key uses the
+server's `LIGHTRAG_API_KEY` and never reads that environment secret into the card.
+Browsers without write access see disabled controls. Enabling writes also requires
+the deployment's tool policy to grant the write tools.
+
+For configuration files, set these options on the `dsh-lightrag` profile row.
 
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
@@ -133,7 +146,7 @@ by name.
 ## Compatibility
 
 - DeepSeek Harness `>=0.1.7-rc.2 <0.3.0-0 || 0.2.1-rc.3 || 0.2.2-rc.3` (channel `next`), host feature
-  `tools/register`.
+  `tools/register`, client feature `plugins.row.config` for the settings card.
 - Node `^22.19.0 || >=24.0.0`.
 
 The machine-readable contract is
