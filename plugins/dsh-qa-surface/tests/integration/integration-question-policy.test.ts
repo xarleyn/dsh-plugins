@@ -16,11 +16,15 @@ function fixture() {
     get seq() {
       return events.length;
     },
-    eventAt: (seq: number) => events[seq - 1],
+    surface: { nodes: [] as number[] },
+    eventAt: (seq: number) => events[seq],
   };
+  const childEvents: typeof events = [];
   const child = {
     id: "child",
     header: { origin: "subagent", parentSession: "root" },
+    surface: { nodes: [] as number[] },
+    eventAt: (seq: number) => childEvents[seq],
   };
   let parentAvailable = true;
   const listeners = new Map<string, (...args: never[]) => unknown>();
@@ -51,28 +55,56 @@ function fixture() {
         id === "root" && parentAvailable ? root : undefined,
     },
   } as unknown as Context;
-  const policy = new QaIntegrationQuestionPolicy(
-    ctx,
-    () => accounts,
-    () => "root",
-  );
+  const createPolicy = () =>
+    new QaIntegrationQuestionPolicy(
+      ctx,
+      () => accounts,
+      () => "root",
+    );
+  let policy = createPolicy();
   const agent = { id: "root", session: root } as unknown as Agent;
   const delegated = { id: "child", session: child } as unknown as Agent;
-  const step = async (turn: number, requestIds: string[], current = agent) => {
+  const step = async (
+    turn: number,
+    requestIds: string[],
+    current = agent,
+    commit = true,
+  ) => {
     const messages = requestIds.map((rpcId) => ({
       source: { kind: "user", rpcId },
       content: [],
     }));
-    return (await listeners.get("agent/pre-step")!(
+    const decision = (await listeners.get("agent/pre-step")!(
       { agent: current, turn } as never,
-      (async () => ({ kind: "continue", messages })) as never,
-    )) as { messages: { content?: { text?: string }[] }[] };
+      (async () => ({ kind: "enter", messages })) as never,
+    )) as {
+      messages: { source?: { kind: string }; content?: { text?: string }[] }[];
+    };
+    if (commit) {
+      const session = current === agent ? root : child;
+      const log = current === agent ? events : childEvents;
+      log.push({ type: "turn/start", data: { turn } });
+      for (const message of decision.messages) {
+        session.surface.nodes.push(log.length);
+        log.push({ type: "user/message", data: message });
+      }
+    }
+    return decision;
   };
   return {
     releaseParent: () => {
       parentAvailable = false;
     },
-    policy,
+    get policy() {
+      return policy;
+    },
+    reload: () => {
+      policy.dispose();
+      policy = createPolicy();
+    },
+    compact: (current = agent) => {
+      (current === agent ? root : child).surface.nodes.splice(0);
+    },
     agent,
     delegated,
     root,
@@ -83,6 +115,73 @@ function fixture() {
 }
 
 describe("integration question policy", () => {
+  it.each(["allowed", "no-questions"])(
+    "keeps unchanged %s guidance once across steps and turns while enforcing every turn",
+    async (requestId) => {
+      const f = fixture();
+      expect((await f.step(1, [requestId])).messages).toHaveLength(2);
+      expect((await f.step(1, [])).messages).toEqual([]);
+      for (const turn of [2, 3]) {
+        expect((await f.step(turn, [requestId])).messages).toHaveLength(1);
+        const mode = requestId === "allowed" ? "untimed" : "blocked";
+        expect(f.policy.mode(f.agent)).toBe(mode);
+        expect(f.policy.mode(f.delegated)).toBe(mode);
+      }
+      f.policy.dispose();
+    },
+  );
+
+  it("restores unchanged blocked guidance immediately after compaction, including in a child", async () => {
+    const f = fixture();
+    await f.step(1, ["no-questions"]);
+    await f.step(1, [], f.delegated);
+    f.compact();
+    f.compact(f.delegated);
+    expect((await f.step(1, [])).messages.at(-1)?.content?.[0]?.text).toBe(
+      QA_INTEGRATION_NO_CLARIFICATIONS,
+    );
+    expect(
+      (await f.step(1, [], f.delegated)).messages.at(-1)?.content?.[0]?.text,
+    ).toBe(QA_INTEGRATION_NO_CLARIFICATIONS);
+    expect((await f.step(1, [])).messages).toEqual([]);
+    expect(f.guard("ask_user_question")).toBe(QA_INTEGRATION_NO_CLARIFICATIONS);
+    f.policy.dispose();
+  });
+
+  it("preserves retained guidance after reload and restores it after removal", async () => {
+    const f = fixture();
+    await f.step(1, ["no-questions"]);
+    f.reload();
+    expect((await f.step(1, [])).messages).toEqual([]);
+    expect(f.guard("ask_user_question")).toBe(QA_INTEGRATION_NO_CLARIFICATIONS);
+    f.compact();
+    expect((await f.step(2, ["allowed"])).messages).toHaveLength(2);
+    expect(f.guard("ask_user_question")).toBeUndefined();
+    f.policy.dispose();
+  });
+
+  it("emits the latest changed policy even when an older matching note remains in history", async () => {
+    const f = fixture();
+    await f.step(1, ["allowed"]);
+    expect(
+      (await f.step(2, ["no-questions"])).messages.at(-1)?.content?.[0]?.text,
+    ).toBe(QA_INTEGRATION_NO_CLARIFICATIONS);
+    expect(
+      (await f.step(3, ["allowed"])).messages.at(-1)?.content?.[0]?.text,
+    ).toContain("previous integration turn's restriction no longer applies");
+    expect((await f.step(4, ["allowed"])).messages).toHaveLength(1);
+    expect(f.guard("ask_user_question")).toBeUndefined();
+    f.policy.dispose();
+  });
+
+  it("does not treat an abandoned guidance proposal as retained", async () => {
+    const f = fixture();
+    expect(
+      (await f.step(1, ["allowed"], f.agent, false)).messages,
+    ).toHaveLength(2);
+    expect((await f.step(1, ["allowed"])).messages).toHaveLength(2);
+    f.policy.dispose();
+  });
   it("refuses a clarification when an attested child cannot resolve its root policy", () => {
     const f = fixture();
     f.releaseParent();

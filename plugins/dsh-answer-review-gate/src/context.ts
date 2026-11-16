@@ -2,10 +2,11 @@ import type { CandidateSession } from "./candidate.js";
 import { scopeOf } from "@deepseek-ai/dsh-scope";
 import type { Context } from "@deepseek-ai/cordis";
 
-/** Accumulated human scope decisions, independent of injected model/plugin notes. */
-export function reviewConversationContext(session: CandidateSession): string {
-  const messages: string[] = [];
-  const events = session.snapshotEvents();
+/** Canonical originals reachable from the current surface's compaction checkpoints. */
+export function activeHistoryNodes(
+  session: CandidateSession,
+  events = session.snapshotEvents(),
+): Set<number> {
   const summaries = new Map<string, readonly number[]>();
   for (const event of events) {
     if (event.type !== "compaction/summary") continue;
@@ -46,6 +47,14 @@ export function reviewConversationContext(session: CandidateSession): string {
       pending.push(seq);
     }
   }
+  return nodes;
+}
+
+/** Accumulated human scope decisions, independent of injected model/plugin notes. */
+export function reviewConversationContext(session: CandidateSession): string {
+  const messages: string[] = [];
+  const events = session.snapshotEvents();
+  const nodes = activeHistoryNodes(session, events);
   for (const seq of [...nodes].sort((a, b) => a - b)) {
     const event = session.eventAt(seq);
     if (event?.type !== "user/message") continue;

@@ -116,13 +116,20 @@ export function harness(options: {
   /** Run one pre-step the way the loop does, recording what it appended. */
   const step = async (
     session: FakeSession,
+    options: {
+      readonly commit?: boolean;
+      readonly proposed?: readonly FakeMessage[];
+    } = {},
   ): Promise<readonly FakeMessage[]> => {
     const agent = { id: session.id, session };
     const question: FakeMessage = {
       content: [{ type: "text", text: "?" }],
       source: { kind: "user" },
     };
-    const claimed: readonly FakeMessage[] = [question];
+    const claimed: readonly FakeMessage[] = [
+      question,
+      ...(options.proposed ?? []),
+    ];
     let decision: { kind: string; messages: readonly FakeMessage[] } = {
       kind: "enter",
       messages: claimed,
@@ -138,9 +145,13 @@ export function harness(options: {
     );
     // The loop appends what the step returned; the injector reads it back
     // through the session surface on the next step.
-    for (const message of appended) {
-      session.events.push({ type: "user/message", data: message });
-      session.surface.nodes.push(session.events.length - 1);
+    if (options.commit !== false) {
+      for (const message of decision.messages.filter(
+        (entry) => entry !== question,
+      )) {
+        session.events.push({ type: "user/message", data: message });
+        session.surface.nodes.push(session.events.length - 1);
+      }
     }
     return appended;
   };

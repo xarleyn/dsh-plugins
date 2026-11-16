@@ -852,10 +852,26 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
             revision,
             sha256,
           ),
-        readWorkspaceFileChunk: (token, sessionId, path, offset, version) =>
+        readWorkspaceFileChunk: (
+          token,
+          sessionId,
+          path,
+          offset,
+          version,
+          sha256Prefix,
+        ) =>
           (
             policyRemote as unknown as Required<QaSourceApi>
-          ).readWorkspaceFileChunk(token, sessionId, path, offset, version),
+          ).readWorkspaceFileChunk(
+            token,
+            sessionId,
+            path,
+            offset,
+            version,
+            // The generated Remote requires every positional slot, even when
+            // the Host accepts an omitted JSON field on subsequent chunks.
+            sha256Prefix,
+          ),
         sources: (token, sessionId) =>
           policyRemote.sources(token, sessionId) as unknown as ReturnType<
             QaSourceApi["sources"]

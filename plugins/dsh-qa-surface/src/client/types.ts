@@ -422,6 +422,7 @@ export interface QaSourceApi {
     path: string,
     offset: number,
     version: string | null,
+    sha256Prefix?: string,
   ): Promise<RemoteResult<QaWorkspaceFileChunk>>;
   sources(
     token: string,
@@ -515,6 +516,7 @@ export type QaBoundSourceApi = {
     path: string,
     offset: number,
     version: string | null,
+    sha256Prefix?: string,
   ): Promise<RemoteResult<QaWorkspaceFileChunk>>;
   sources(
     sessionId: string,

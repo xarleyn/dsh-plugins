@@ -96,6 +96,25 @@ export function parseAnswerReview(receipt: unknown): QaAnswerReview | null {
     !statuses.has(value.status)
   )
     return null;
+  if (
+    value.documents !== undefined &&
+    (!Array.isArray(value.documents) ||
+      !value.documents.length ||
+      !value.documents.every(
+        (doc) =>
+          doc &&
+          typeof doc.name === "string" &&
+          doc.name.length > 0 &&
+          typeof doc.sha256 === "string" &&
+          /^[a-f0-9]{64}$/u.test(doc.sha256) &&
+          Array.isArray(doc.sourceSha256) &&
+          doc.sourceSha256.every(
+            (digest: unknown) =>
+              typeof digest === "string" && /^[a-f0-9]{64}$/u.test(digest),
+          ),
+      ))
+  )
+    return null;
   return value as QaAnswerReview;
 }
 

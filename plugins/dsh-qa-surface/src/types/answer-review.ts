@@ -1,5 +1,10 @@
 /** Host-recorded review of one immutable assistant message. */
 export interface QaAnswerReview {
+  readonly documents?: readonly {
+    readonly name: string;
+    readonly sha256: string;
+    readonly sourceSha256: readonly string[];
+  }[];
   readonly version: 1;
   readonly candidateSeq: number;
   readonly candidateHash: string;

@@ -1,8 +1,10 @@
 import type { Agent, PreStepDecision } from "@deepseek-ai/dsh-agent";
 import { SessionId } from "@deepseek-ai/dsh-session/types";
 import { qaDelegatedHeader } from "./shared/session-lineage.js";
+import { requestedDocument } from "./shared/document-redelivery.js";
+import { originalDocument } from "./chat-sharing/document-delivery.js";
 import type { Context } from "@deepseek-ai/cordis";
-import { createUserMessage } from "@deepseek-ai/dsh-llm";
+import { QaNoteAdmission } from "./shared/retained-qa-notes.js";
 import type { ContextSnapshotSection } from "@deepseek-ai/dsh-llm";
 import type { PluginLogger } from "@yadsh/dsh-plugin-log";
 import type { QaAccounts } from "./accounts/store.js";
@@ -60,6 +62,7 @@ export const QA_DELEGATION_NOTE_TEMPLATE =
   "Delegate only work that belongs to the expert's source. Handle uploaded workbook edits yourself. After dispatch do independent work or end this step without tools; the Host delivers completion. Do not poll list_agents, send reminders, restart the task or interrupt a working child to hurry it. " +
   "When you start a background subagent, give the delegation a short vivid name in its description field: two or three words in the user's language that say what the run is for («Сверка отчётов», \"Log triage\"). The QA surface shows that description as the subagent's display name in the operator's panel and completion notices.";
 export const QA_DOCUMENTS_NOTE_TEMPLATE =
+  "When the user asks to send a previous DOCX again, reuse the exact filename from the successful document tool result. The chat attaches the matching original under the reply. For a generic request with several different DOCX outputs, ask which filename to send. Do not recreate, revise or convert a file for a resend. " +
   "Load the available spreadsheet skill before processing a workbook. Build the complete address map before writing. Combine disjoint edits into one call up to the cell limit; if more are required, continue from the last returned path AND full hash. Use filename for the requested download name; Save As an existing workbook with filename and edits: []. Only report a name or totals verified on the returned file. " +
   "Use spreadsheet_find for literal key/value/formula lookup across sheets and follow nextCursor to null; truncatedFields marks shortened previews. Use spreadsheet_diff before delivering edits: compare changed cells against the plan, and request comparePackageParts for whole-package XLSX object preservation checks. Formula-cache comparison is optional and never recalculates formulas. " +
   "For changes to an existing XLSX/CSV/TSV, inspect/read it first and use `spreadsheet_edit` with its expectedSha256 and bounded cell patches. Pass the admitted attachment path directly; no workspace copy is required. The tool returns a new file and leaves the upload unchanged. Verify the returned file with spreadsheet_read before delivering it; use onlyIfBlank when filling empty fields. ODS/FODS editing is unsupported. " +
@@ -175,16 +178,15 @@ export interface QaPromptNotesOptions {
  * the transcript projection already hides every non-`subagent` context note
  * from the QA audience. Each note is written once per text rather than once
  * per step — the session's own surface is the state, so a resume or a plugin
- * reload never duplicates a note — and written again only when its text
- * actually changes.
+ * reload never duplicates a retained note — and written again when its text
+ * changes or compaction removes it from the active surface.
  *
  * The notes are advisory text, never authority: nothing here is enforced by
  * the model's compliance. The lockdown (allow-list, guards, permission
  * preset) is host-side and holds whatever the conversation says.
  */
 export class QaPromptNotes {
-  /** `${agentId}:${noteName}` → the text the note already carries. */
-  private readonly carried = new Map<string, string>();
+  private readonly admission: QaNoteAdmission;
   private readonly disposePreStep: () => void;
   private disposed = false;
 
@@ -192,6 +194,7 @@ export class QaPromptNotes {
     private readonly ctx: Context,
     private readonly options: QaPromptNotesOptions,
   ) {
+    this.admission = new QaNoteAdmission(ctx);
     this.disposePreStep = ctx.on(
       "agent/pre-step",
       async ({ agent, signal }, next): Promise<PreStepDecision> => {
@@ -217,7 +220,7 @@ export class QaPromptNotes {
     if (this.disposed) return;
     this.disposed = true;
     this.disposePreStep();
-    this.carried.clear();
+    this.admission.dispose();
   }
 
   /** Append every note whose text this step does not already carry. */
@@ -225,33 +228,16 @@ export class QaPromptNotes {
     if (decision.kind === "reject") return decision;
     const config = this.options.config();
     const root = this.rootSessionId(agent);
-    const pending = [
+    return this.admission.propose(agent, decision, [
       ...this.identityNotes(root, config),
       ...this.sourcesNotes(root, config),
       ...this.delegationNotes(root),
       ...this.documentsNotes(root),
+      ...this.redeliveryNotes(agent, root),
       ...this.sourcePriorityNotes(root),
       ...this.codeSourceNotes(root, config, String(agent.session.id)),
       ...this.branchNotes(root),
-    ].filter((note) => this.carriedText(agent, note.name) !== note.text);
-    if (pending.length === 0) return decision;
-    return {
-      ...decision,
-      messages: [
-        ...decision.messages,
-        ...pending.map((note) => {
-          this.carried.set(this.carriedKey(agent, note.name), note.text);
-          return createUserMessage({
-            content: [{ type: "text", text: note.text }],
-            source: {
-              kind: "qa-notes",
-              form: "snapshot",
-              sections: [{ name: note.name, text: note.text }],
-            },
-          });
-        }),
-      ],
-    };
+    ]);
   }
 
   /** Keep Git and file lookups on the same configured tree, including in children. */
@@ -370,6 +356,31 @@ export class QaPromptNotes {
    * pipeline's own refusal is a report to make, not a reason to try a third
    * reader.
    */
+  private redeliveryNotes(agent: Agent, root: string): readonly QaPromptNote[] {
+    if (root !== String(agent.session.id) || !this.options.isQaSession(root))
+      return [];
+    const nodes = agent.session.surface.nodes;
+    for (let i = nodes.length - 1; i >= 0; i--) {
+      const seq = nodes[i]!;
+      const event = agent.session.eventAt(seq);
+      if (event?.type !== "user/message" || event.data.source.kind !== "user")
+        continue;
+      if (!event.data.content.every((part) => part.type === "text")) return [];
+      const target = requestedDocument(
+        event.data.content
+          .map((part) => (part.type === "text" ? part.text : ""))
+          .join(" "),
+      );
+      if (target === undefined) return [];
+      const file = originalDocument(agent.session, seq, target);
+      const text = file
+        ? `For user request ${seq}, the chat will attach the original DOCX to your reply. Confirm delivery using this exact filename: ${JSON.stringify(file.name)}. No new document or conversion is needed.`
+        : `For user request ${seq}, there is no unique matching DOCX from an earlier successful producer in this chat. Ask which original to send; do not claim a file was attached or create a replacement.`;
+      return [{ name: "dsh-qa-surface:document-redelivery", text }];
+    }
+    return [];
+  }
+
   private documentsNotes(rootSessionId: string): readonly QaPromptNote[] {
     if (!this.options.isQaSession(rootSessionId)) return [];
     if (!this.options.config().notes.documents.enabled) return [];
@@ -406,35 +417,6 @@ export class QaPromptNotes {
             : renderTemplate(template, {}).trim(),
       },
     ];
-  }
-
-  private carriedKey(agent: Agent, noteName: string): string {
-    return `${String(agent.id)}:${noteName}`;
-  }
-
-  /**
-   * The text one note already carries in this agent's conversation. Process
-   * memory answers it after the first step; a cold read walks the durable
-   * surface so a resumed session or a reloaded plugin does not write twice.
-   */
-  private carriedText(agent: Agent, noteName: string): string | undefined {
-    const key = this.carriedKey(agent, noteName);
-    const cached = this.carried.get(key);
-    if (cached !== undefined) return cached;
-    for (const seq of [...agent.session.surface.nodes].reverse()) {
-      const event = agent.session.eventAt(seq);
-      if (event?.type !== "user/message") continue;
-      const source = event.data.source;
-      if (source.kind !== "qa-notes") continue;
-      const sections = source.form === "snapshot" ? source.sections : [];
-      if (!sections.some((section) => section.name === noteName)) continue;
-      const text = event.data.content
-        .flatMap((block) => (block.type === "text" ? [block.text] : []))
-        .join("\n\n");
-      this.carried.set(key, text);
-      return text;
-    }
-    return undefined;
   }
 
   /**

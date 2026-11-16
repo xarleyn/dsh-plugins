@@ -201,6 +201,20 @@ describe("current answer review", () => {
     expect(screen.getByRole("status").getAttribute("title")).toContain(
       "проверку этой версии",
     );
+    const document = {
+      name: "report.docx",
+      sha256: "a".repeat(64),
+      sourceSha256: ["b".repeat(64)],
+    };
+    view.rerender(
+      <QaAnswerReviewStatus review={{ ...review, documents: [document] }} />,
+    );
+    expect(screen.getByRole("status").textContent).toContain(
+      "Проверен DOCX · report.docx",
+    );
+    expect(screen.getByRole("status").getAttribute("title")).toContain(
+      document.sha256,
+    );
     for (const status of ["failure", "cancelled", "waived"] as const) {
       view.rerender(<QaAnswerReviewStatus review={{ ...review, status }} />);
       expect(screen.getByRole("status").textContent).not.toContain(

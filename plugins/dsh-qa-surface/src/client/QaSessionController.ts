@@ -12,6 +12,7 @@ import type {
 import type { ConversationBinding } from "@deepseek-ai/dsh-client-ui-conversation/client";
 import type { UserMessage } from "@deepseek-ai/dsh-llm";
 import { bytesToBase64 } from "./base64.js";
+import { requestedDocument } from "../shared/document-redelivery.js";
 import {
   QA_DEFAULT_ANSWER_MODES,
   qaAnswerModes,
@@ -723,7 +724,11 @@ export class QaSessionController {
         return false;
       }
     }
-    if (fastReview) {
+    const fileRequest =
+      this.sharingApi !== undefined &&
+      attachments.length === 0 &&
+      requestedDocument(prompt) !== undefined;
+    if (fastReview && !fileRequest) {
       this.requestQueueNotice = null;
       const target = await this.liveTarget();
       if (target === undefined) return false;

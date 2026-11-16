@@ -20,6 +20,14 @@ import {
 import type { ResolvedAnswerReviewGateConfig } from "./config.js";
 import { DelegationTracker } from "./delegation-tracker.js";
 import {
+  documentTargets,
+  prepareDocumentEvidence,
+  type DocumentSubject,
+  type DocumentTarget,
+  type DocumentsReader,
+  type FileReference,
+} from "./document-evidence.js";
+import {
   createDomainExpertBackend,
   createSubagentBackend,
 } from "./adapters/reviewers.js";
@@ -74,6 +82,13 @@ export interface GateLogSink {
 }
 
 interface GateSessionState {
+  observeRead?:
+    | ((child: string, file: string, lines: readonly string[]) => void)
+    | undefined;
+  documentSubjects?: readonly DocumentSubject[] | undefined;
+  verifiedDocument?:
+    | { targets: string; check: (signal: AbortSignal) => Promise<void> }
+    | undefined;
   candidateSeq?: number;
   lastReceipt?: string;
   /** Completed review attempts in the current user turn. */
@@ -113,6 +128,8 @@ interface GateSessionState {
 }
 
 export interface AnswerReviewGateDeps {
+  readonly fileReadPath?: (file: FileReference) => string | undefined;
+  readonly documents?: () => DocumentsReader | undefined;
   readonly publishStatus?: (agent: GateAgent, receipt: ReviewReceipt) => void;
   readonly config: () => ResolvedAnswerReviewGateConfig;
   readonly logger: GateLogSink;
@@ -162,6 +179,15 @@ export class AnswerReviewGate {
     this.delegation.forgetSession(sessionId);
   }
 
+  observeReviewerRead(
+    parentSession: string,
+    child: string,
+    file: string,
+    lines: readonly string[],
+  ): void {
+    this.states.get(parentSession)?.observeRead?.(child, file, lines);
+  }
+
   /** Turn number of the session's latest observed boundary (best effort, informational). */
   lastSeenTurnOf(sessionId: string): number {
     return this.states.get(sessionId)?.lastTurn ?? 0;
@@ -204,7 +230,7 @@ export class AnswerReviewGate {
     // and the round counter died on every such change, so a candidate that had
     // already passed was reviewed again and each turn handed out a fresh round
     // budget — the reported loop.
-    const collected = collectCandidate(agent.session);
+    const collected = collectCandidate(agent.session, this.deps.fileReadPath);
     const state = this.stateFor(sessionId, collected?.requestSeq ?? null, turn);
     if (
       config.trackBackgroundDelegations &&
@@ -219,6 +245,12 @@ export class AnswerReviewGate {
     }
 
     if (collected === null) return null;
+    const targets = documentTargets(
+      agent.session,
+      collected.requestSeq,
+      collected.candidateSeq,
+      collected.text,
+    );
     state.candidateSeq = collected.candidateSeq;
     const hash = candidateHash(collected.text);
     if (
@@ -247,7 +279,11 @@ export class AnswerReviewGate {
       this.publishReceipt(agent, state, hash, "waived");
       return "waived";
     }
-    if (collected.text.length < config.minCandidateChars) return null;
+    if (
+      collected.text.length < config.minCandidateChars &&
+      targets.length === 0
+    )
+      return null;
     // A post-review check: `round` counts the reviews this user turn has
     // already run, so a first draft is never told it argued with a review that
     // never happened — the demand would both misread the draft and announce a
@@ -284,7 +320,24 @@ export class AnswerReviewGate {
       );
       return "answer-shape";
     }
-    if (state.lastPassedHash === hash) {
+    let alreadyPassed = state.lastPassedHash === hash;
+    if (alreadyPassed && (targets.length || state.verifiedDocument)) {
+      alreadyPassed = false;
+      if (state.verifiedDocument?.targets === JSON.stringify(targets)) {
+        state.reviewing = true;
+        try {
+          await state.verifiedDocument.check(signal);
+          alreadyPassed = true;
+        } catch {
+          state.lastPassedHash = undefined;
+          state.verifiedDocument = undefined;
+          state.documentSubjects = undefined;
+        } finally {
+          state.reviewing = false;
+        }
+      }
+    }
+    if (alreadyPassed) {
       this.publishReceipt(agent, state, hash, "pass");
       this.deps.logger.info("gate.candidate-already-passed", {
         sessionId,
@@ -318,6 +371,7 @@ export class AnswerReviewGate {
       turn,
       hash,
       collected,
+      targets,
       state,
       signal,
       config,
@@ -335,6 +389,7 @@ export class AnswerReviewGate {
     turn: number,
     hash: string,
     collected: CollectedCandidate,
+    targets: readonly DocumentTarget[],
     state: GateSessionState,
     signal: AbortSignal,
     config: ResolvedAnswerReviewGateConfig,
@@ -379,8 +434,60 @@ export class AnswerReviewGate {
     let verdict: ReviewVerdict;
     this.publishReceipt(agent, state, hash, "reviewing");
     try {
+      state.documentSubjects = undefined;
+      state.verifiedDocument = undefined;
+      state.lastPassedHash = undefined;
+      const review = async () => {
+        const evidence = targets.length
+          ? await prepareDocumentEvidence({
+              targets,
+              files: collected.requestFiles ?? [],
+              cwd: agent.session.header.cwd ?? "",
+              sessionId,
+              documents: this.deps.documents?.(),
+              pathFor: this.deps.fileReadPath,
+              signal: round.signal,
+            })
+          : undefined;
+        round.signal.throwIfAborted();
+        state.observeRead = evidence?.observeRead;
+        let decision = await backend.review(
+          evidence
+            ? { ...input, documentReview: evidence.instructions }
+            : input,
+        );
+        if (evidence) {
+          const misnamed = targets.filter((t) => t.filenameMismatch);
+          if (decision.verdict === "pass" && misnamed.length) {
+            decision = {
+              verdict: "revise",
+              confidence: "high",
+              summary:
+                "The displayed DOCX filename differs from the producer receipt.",
+              issues: misnamed.map((t) => ({
+                severity: "major",
+                category: "unsupported",
+                claim: "The answer identifies an output file.",
+                problem: "Its spelling differs from the generated filename.",
+                requiredFix: "Use the exact generated path: " + t.path,
+              })),
+            };
+          }
+          if (decision.verdict === "pass")
+            await evidence.verify(decision.summary, decision.reviewerSessionId);
+          await evidence.verifyOriginals(round.signal);
+          round.signal.throwIfAborted();
+          state.documentSubjects = evidence.subjects;
+          if (decision.verdict === "pass")
+            state.verifiedDocument = {
+              targets: JSON.stringify(targets),
+              check: evidence.verifyOriginals,
+            };
+        }
+        return decision;
+      };
       verdict = await withRoundDeadline(
-        backend.review(input),
+        review(),
         config.reviewer.roundTimeoutMs,
         round,
       );
@@ -418,6 +525,7 @@ export class AnswerReviewGate {
         backend,
       );
     } finally {
+      state.observeRead = undefined;
       signal.removeEventListener("abort", forwardAbort);
     }
     state.round += 1;
@@ -607,6 +715,10 @@ export class AnswerReviewGate {
       candidateSeq: state.candidateSeq,
       candidateHash: hash,
       requestSeq: state.userTurn,
+      ...((status === "pass" || status === "revise") &&
+      state.documentSubjects?.length
+        ? { documents: state.documentSubjects }
+        : {}),
       round: state.round,
       status,
       at: this.deps.now(),
@@ -646,6 +758,8 @@ export class AnswerReviewGate {
       existing.failureSteered = false;
       existing.answerShapeSteered = false;
       existing.lastPassedHash = undefined;
+      existing.documentSubjects = undefined;
+      existing.verifiedDocument = undefined;
       existing.history = [];
     }
     return existing;

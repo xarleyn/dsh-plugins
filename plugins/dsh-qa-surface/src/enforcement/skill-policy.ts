@@ -14,6 +14,7 @@ import type {
 import type { QaAgentToolGrants } from "./tool-grants.js";
 import type {} from "../prompt-notes.js";
 import { userInvocableSkillNames } from "../access/model.js";
+import { QaNoteAdmission } from "../shared/retained-qa-notes.js";
 import {
   skillResourceGuidance,
   skillResourcePathHint,
@@ -156,7 +157,7 @@ export function installQaSkillPolicy(
   let disposePrompt: () => void = () => undefined;
   let disposeGesture: () => void = () => undefined;
   const catalog = renderCatalog(visible);
-  let catalogCarried = false;
+  const admission = new QaNoteAdmission(agent.ctx);
   try {
     disposePaths = agent.ctx.tools.guard((execution) => {
       if (execution.name !== "read") return undefined;
@@ -186,41 +187,11 @@ export function installQaSkillPolicy(
         // A complete persona drops system-prompt sections. Carry the same
         // filtered catalog in the conversation, as the other QA notes do.
         // The durable surface also prevents duplication after a plugin reload.
-        if (!catalogCarried && catalog !== "") {
-          const messages = [
-            ...agent.session.surface.nodes.flatMap((seq) => {
-              const event = agent.session.eventAt(seq);
-              return event?.type === "user/message" ? [event.data] : [];
-            }),
-            ...decision.messages,
-          ];
-          catalogCarried = messages.some(
-            ({ source }) =>
-              source.kind === "qa-notes" &&
-              source.form === "snapshot" &&
-              source.sections.some(
-                (section) =>
-                  section.name === CATALOG_NOTE && section.text === catalog,
-              ),
-          );
-          if (!catalogCarried) {
-            decision = {
-              ...decision,
-              messages: [
-                ...decision.messages,
-                createUserMessage({
-                  content: [{ type: "text", text: catalog }],
-                  source: {
-                    kind: "qa-notes",
-                    form: "snapshot",
-                    sections: [{ name: CATALOG_NOTE, text: catalog }],
-                  },
-                }),
-              ],
-            };
-            catalogCarried = true;
-          }
-        }
+        decision = admission.propose(
+          agent,
+          decision,
+          catalog === "" ? [] : [{ name: CATALOG_NOTE, text: catalog }],
+        );
         if (
           !decision.messages.some(
             (message) => invokedSkill(message) !== undefined,
@@ -271,6 +242,7 @@ export function installQaSkillPolicy(
       { prepend: true },
     );
   } catch (error) {
+    admission.dispose();
     disposeGesture();
     disposePrompt();
     disposePaths();
@@ -278,6 +250,7 @@ export function installQaSkillPolicy(
     throw error;
   }
   return () => {
+    admission.dispose();
     disposeGesture();
     disposePrompt();
     disposePaths();

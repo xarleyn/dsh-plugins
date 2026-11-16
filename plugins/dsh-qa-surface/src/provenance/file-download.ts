@@ -28,6 +28,7 @@ export async function readWorkspaceFileChunk(
   request: QaAllowedFileRequest & {
     readonly offset: number;
     readonly version: string | null;
+    readonly sha256Prefix?: string;
   },
 ): Promise<QaWorkspaceFileChunk> {
   if (!Number.isSafeInteger(request.offset) || request.offset < 0) {
@@ -50,6 +51,18 @@ export async function readWorkspaceFileChunk(
       (request.version !== null && request.version !== version)
     ) {
       throw new QaSourcePreviewError("unavailable");
+    }
+    if (request.sha256Prefix !== undefined && request.offset === 0) {
+      if (!/^[a-f0-9]{16,64}$/u.test(request.sha256Prefix))
+        throw new QaSourcePreviewError("unavailable");
+      const digest = createHash("sha256");
+      for await (const block of handle.createReadStream({
+        start: 0,
+        autoClose: false,
+      }))
+        digest.update(block);
+      if (!digest.digest("hex").startsWith(request.sha256Prefix))
+        throw new QaSourcePreviewError("unavailable");
     }
     const buffer = Buffer.alloc(
       Math.min(QA_DOWNLOAD_CHUNK_BYTES, before.size - request.offset),

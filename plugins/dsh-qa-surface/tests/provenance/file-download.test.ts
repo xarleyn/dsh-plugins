@@ -20,6 +20,26 @@ afterEach(async () => {
 });
 
 describe("complete workspace download", () => {
+  it("requires the original producer hash before releasing a repeated download", async () => {
+    const cwd = await workspace();
+    const bytes = Buffer.from("original document");
+    const filePath = "report.docx";
+    const options = {
+      cwd,
+      filePath,
+      offset: 0,
+      version: null,
+      sha256Prefix: createHash("sha256")
+        .update(bytes)
+        .digest("hex")
+        .slice(0, 16),
+    };
+    await writeFile(join(cwd, filePath), bytes);
+    const first = await readWorkspaceFileChunk(options);
+    expect(Buffer.from(first.base64, "base64")).toEqual(bytes);
+    await writeFile(join(cwd, filePath), "replaced document");
+    await expect(readWorkspaceFileChunk(options)).rejects.toThrow();
+  });
   it("reassembles a binary larger than the preview cap without dropping bytes", async () => {
     const cwd = await workspace();
     const original = Buffer.alloc(2_400_003);

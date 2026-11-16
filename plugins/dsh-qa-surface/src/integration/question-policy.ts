@@ -1,11 +1,10 @@
 import type { Context } from "@deepseek-ai/cordis";
 import type { Agent } from "@deepseek-ai/dsh-agent";
-import { createUserMessage } from "@deepseek-ai/dsh-llm";
 import { SessionSeq, type Session } from "@deepseek-ai/dsh-session";
 import type { QaAccounts } from "../accounts/store.js";
-import type { QaNotesMessageSource } from "../prompt-notes.js";
 import type { QaQuestionMode } from "../questions.js";
 import { qaDelegatedHeader } from "../shared/session-lineage.js";
+import { QaNoteAdmission } from "../shared/retained-qa-notes.js";
 
 const NOTE = "dsh-qa-surface:integration-clarifications";
 export const QA_INTEGRATION_NO_CLARIFICATIONS =
@@ -15,11 +14,11 @@ const ALLOWED_NOTE =
 
 /** A queued request's durable policy follows its turn and its delegated agents. */
 export class QaIntegrationQuestionPolicy {
+  private readonly admission: QaNoteAdmission;
   private readonly turns = new Map<
     string,
     { turn: number; mode: QaQuestionMode }
   >();
-  private readonly notes = new Map<string, string>();
   private readonly disposers: (() => void)[];
 
   constructor(
@@ -28,6 +27,7 @@ export class QaIntegrationQuestionPolicy {
     private readonly qaRoot: (id: string) => string | undefined = () =>
       undefined,
   ) {
+    this.admission = new QaNoteAdmission(ctx);
     this.disposers = [
       ctx.on(
         "agent/pre-step",
@@ -47,27 +47,13 @@ export class QaIntegrationQuestionPolicy {
             state = { turn, mode };
             this.turns.set(id, state);
           }
-          // Refresh the note on the next turn too, so a prior restriction cannot
-          // silently carry into browser input or a token which allows questions.
-          const blocked = state.mode === "blocked";
-          const key = `${state.turn}:${blocked}`;
-          if (this.notes.get(String(agent.id)) === key) return decision;
-          this.notes.set(String(agent.id), key);
-          const text = blocked
-            ? QA_INTEGRATION_NO_CLARIFICATIONS
-            : ALLOWED_NOTE;
-          const source: QaNotesMessageSource = {
-            kind: "qa-notes",
-            form: "snapshot",
-            sections: [{ name: NOTE, text }],
-          };
-          return {
-            ...decision,
-            messages: [
-              ...decision.messages,
-              createUserMessage({ content: [{ type: "text", text }], source }),
-            ],
-          };
+          const text =
+            state.mode === "blocked"
+              ? QA_INTEGRATION_NO_CLARIFICATIONS
+              : ALLOWED_NOTE;
+          return this.admission.propose(agent, decision, [
+            { name: NOTE, text },
+          ]);
         },
         { global: true },
       ),
@@ -82,7 +68,6 @@ export class QaIntegrationQuestionPolicy {
         "agent/disposed",
         ({ agent }) => {
           this.turns.delete(String(agent.id));
-          this.notes.delete(String(agent.id));
         },
         { global: true },
       ),
@@ -138,7 +123,7 @@ export class QaIntegrationQuestionPolicy {
   private recover(session: Session): { turn: number; mode: QaQuestionMode } {
     let mode: QaQuestionMode = "timed";
     let turn = 0;
-    for (let seq = Number(session.seq); seq > 0; seq--) {
+    for (let seq = Number(session.seq) - 1; seq >= 0; seq--) {
       const event = session.eventAt(SessionSeq(seq));
       if (event?.type === "turn/start") {
         turn = event.data.turn;
@@ -155,6 +140,6 @@ export class QaIntegrationQuestionPolicy {
   dispose(): void {
     for (const stop of this.disposers) stop();
     this.turns.clear();
-    this.notes.clear();
+    this.admission.dispose();
   }
 }

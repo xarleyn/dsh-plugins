@@ -40,7 +40,19 @@ export function QaAnswerReviewStatus({
 }: {
   readonly review: QaAnswerReview;
 }) {
-  const [label, detail] = reviewCopy[review.status];
+  const docs = review.documents;
+  const [label, detail] =
+    docs?.length && (review.status === "pass" || review.status === "revise")
+      ? [
+          `${review.status === "pass" ? "Проверен DOCX" : "Замечания к DOCX"} · ${docs.map((d) => d.name).join(", ")}`,
+          docs
+            .map(
+              (d) =>
+                `${d.name} · SHA-256 ${d.sha256} · исходных файлов ${d.sourceSha256.length}`,
+            )
+            .join("\n"),
+        ]
+      : reviewCopy[review.status];
   return (
     <span
       className="dsh-qa-review"
