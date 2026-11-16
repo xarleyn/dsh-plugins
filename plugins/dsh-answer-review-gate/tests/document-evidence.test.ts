@@ -10,7 +10,11 @@ import {
 } from "../src/index.js";
 import type { GateAgent } from "../src/gate.js";
 import type { ReviewReceipt } from "../src/receipt.js";
-import type { DocumentsReader } from "../src/document-evidence.js";
+import {
+  prepareDocumentEvidence,
+  type DocumentsReader,
+  type FileReference,
+} from "../src/document-evidence.js";
 import type { ExpertRunResult } from "../src/types.js";
 
 const hash = (text: string) => createHash("sha256").update(text).digest("hex");
@@ -282,4 +286,79 @@ it("rejects a self-only document pass when a follow-up has retained source files
   );
   expect(await f.stop()).toBe("failure");
   expect(f.receipts.some((r) => r.status === "pass")).toBe(false);
+});
+
+it("credits every evidence key for a shared cached extraction, only to the child that read it", async () => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), "document-cache-"));
+  dirs.push(cwd);
+  const source = path.join(cwd, "source", "report.docx");
+  const target = path.join(cwd, "output", "report.docx");
+  const markdownPath = path.join(cwd, "extract", "document.md");
+  const manifestPath = path.join(cwd, "extract", "manifest.json");
+  const binary = "identical document bytes";
+  const digest = hash(binary);
+  for (const file of [source, target, markdownPath])
+    await mkdir(path.dirname(file), { recursive: true });
+  await writeFile(source, binary);
+  await writeFile(target, binary);
+  await writeFile(markdownPath, report);
+  await writeFile(
+    path.join(cwd, "output", "manifest.json"),
+    JSON.stringify({
+      scope: { sessionId: "parent" },
+      outputs: [
+        {
+          format: "docx",
+          status: "created",
+          path: "report.docx",
+          sha256: digest,
+        },
+      ],
+    }),
+  );
+  await writeFile(
+    manifestPath,
+    JSON.stringify({
+      scope: { sessionId: "parent" },
+      input: { sha256: digest },
+      outputs: [
+        {
+          format: "md",
+          status: "created",
+          path: "document.md",
+          sha256: hash(report),
+        },
+      ],
+    }),
+  );
+  const evidence = await prepareDocumentEvidence({
+    sessionId: "parent",
+    cwd,
+    targets: [
+      { path: "output/report.docx", digestPrefix: digest.slice(0, 16) },
+    ],
+    files: [
+      {
+        attachmentId: ("sha256:" + digest) as FileReference["attachmentId"],
+        name: "report.docx",
+        bytes: binary.length,
+      },
+    ],
+    pathFor: () => source,
+    documents: {
+      async toMarkdown() {
+        return { markdownPath, manifestPath };
+      },
+    },
+    signal: new AbortController().signal,
+  });
+  const proof = `CHECK S1 D1 | ${report} | ${report} | The cached extraction is identical.`;
+  await expect(evidence.verify(proof, "reviewer")).rejects.toThrow(
+    "review-document-not-read",
+  );
+  evidence.observeRead("reviewer", markdownPath, [report]);
+  await expect(evidence.verify(proof, "reviewer")).resolves.toBeUndefined();
+  await expect(evidence.verify(proof, "other-reviewer")).rejects.toThrow(
+    "review-document-not-read",
+  );
 });

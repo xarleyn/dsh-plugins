@@ -120,7 +120,13 @@ const request = (id: string): SessionPromptRequest =>
 const signal = () => new AbortController().signal;
 describe("authenticated QA chat transport", () => {
   it("forwards a compound resend and creation request to the native prompt handler", async () => {
-    const f = fixture();
+    const session = {
+      snapshotEvents: () => [],
+      surface: { nodes: [] },
+      eventAt: () => undefined,
+      append: vi.fn(),
+    };
+    const f = fixture(session);
     const input = {
       ...request("compound"),
       content: [
@@ -132,6 +138,7 @@ describe("authenticated QA chat transport", () => {
     };
     await f.transport.prompt(f.owner.token, input, signal());
     expect(f.native.prompt).toHaveBeenCalledOnce();
+    expect(session.append).not.toHaveBeenCalled();
   });
   it("settles a resend once without starting a writer or reviewer turn", async () => {
     const events = [

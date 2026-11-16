@@ -315,7 +315,7 @@ export async function prepareDocumentEvidence(options: {
   const pages = new Map<string, string>();
   const pageLines = new Map<string, readonly string[]>();
   const readers = new Map<string, Map<string, Set<string>>>();
-  const readPaths = new Map<string, string>();
+  const readPaths = new Map<string, string[]>();
   const locations: string[] = [];
   for (const item of inputs) {
     signal.throwIfAborted();
@@ -363,7 +363,8 @@ export async function prepareDocumentEvidence(options: {
     pageLines.set(item.key, content.split(/\r?\n/u).map(normalize));
     if (!body) throw new ReviewerFailure("review-document-empty", item.key);
     pages.set(item.key, body);
-    readPaths.set(path.normalize(readable), item.key);
+    const readPath = path.normalize(readable);
+    readPaths.set(readPath, [...(readPaths.get(readPath) ?? []), item.key]);
     locations.push(
       JSON.stringify({
         key: item.key,
@@ -410,14 +411,16 @@ export async function prepareDocumentEvidence(options: {
         ". A D-to-D pair checks the deliverable against the user request without a source file. An answer about review status is not a document review.",
     ].join("\n"),
     observeRead(child: string, file: string, lines: readonly string[]) {
-      const key = readPaths.get(path.normalize(file));
-      if (!key || !lines.length) return;
+      const keys = readPaths.get(path.normalize(file));
+      if (!keys || !lines.length) return;
       let windows = readers.get(child);
       if (!windows) readers.set(child, (windows = new Map()));
-      let excerpts = windows.get(key);
-      if (!excerpts) windows.set(key, (excerpts = new Set()));
-      excerpts.add(normalize(lines.join("\n")));
-      for (const line of lines) excerpts.add(normalize(line));
+      for (const key of keys) {
+        let excerpts = windows.get(key);
+        if (!excerpts) windows.set(key, (excerpts = new Set()));
+        excerpts.add(normalize(lines.join("\n")));
+        for (const line of lines) excerpts.add(normalize(line));
+      }
     },
     async verify(summary: string, child: string | undefined) {
       const windows = child ? readers.get(child) : undefined;
