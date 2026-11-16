@@ -1,5 +1,7 @@
 import type { PluginLogger } from "@yadsh/dsh-plugin-log";
 import type { QaAccounts } from "../accounts/store.js";
+import type { QaChatSharingStore } from "../chat-sharing/store.js";
+import type { QaSessionPurge } from "./session-purge.js";
 import { QaAccountsError } from "../accounts/store.js";
 import type { QaAccessService } from "../access/service.js";
 import type { QaRoleRepository } from "../access/role-repository.js";
@@ -206,6 +208,8 @@ export interface QaAdminServiceOptions {
    * pretending it did.
    */
   readonly sessionFiles?: QaStoredSessionEraser;
+  readonly sessionPurge?: QaSessionPurge;
+  readonly onRemovalRecoveryError?: (error: unknown) => void;
   /**
    * The skill store both scopes read and write, resolved lazily so the console
    * never constructs storage before someone opens its skills page.
@@ -221,6 +225,7 @@ export interface QaAdminServiceOptions {
   readonly domainExperts?: () => QaDomainExpertsFace | undefined;
   /** Drops the sources a conversation collected, when the deployment keeps any. */
   readonly dropSources?: (sessionId: string) => void;
+  readonly sharing?: () => QaChatSharingStore;
   readonly logger: PluginLogger;
   readonly redactor?: QaAdminRedactor;
   readonly clock?: QaServiceClock;
@@ -231,28 +236,24 @@ export interface QaAdminServiceOptions {
  * delegated from it, transitively. A subagent's session is part of the answer
  * it ran inside, so a conversation does not leave its children behind.
  */
-function descendantsOf(
-  sessionId: string,
+function conversationSessions(
+  roots: readonly string[],
   headers: readonly QaStoredSessionHeader[],
 ): readonly string[] {
-  const found: string[] = [];
-  const queue = [sessionId];
-  while (queue.length > 0) {
-    const parent = queue.shift();
-    if (parent === undefined) break;
-    for (const header of headers) {
-      if (
-        header.isFork === true ||
-        header.parentSessionId !== parent ||
-        found.includes(header.id)
-      ) {
-        continue;
-      }
-      found.push(header.id);
-      queue.push(header.id);
-    }
+  const children = new Map<string, string[]>();
+  for (const header of headers) {
+    if (header.parentSessionId === undefined || header.isFork === true)
+      continue;
+    const siblings = children.get(header.parentSessionId);
+    if (siblings) siblings.push(header.id);
+    else children.set(header.parentSessionId, [header.id]);
   }
-  return found;
+  // Set iteration visits newly added children and stops even on malformed cycles.
+  const targets = new Set(roots);
+  for (const parent of targets) {
+    for (const child of children.get(parent) ?? []) targets.add(child);
+  }
+  return [...targets];
 }
 
 function isoOf(epochMs: number): string {
@@ -329,6 +330,7 @@ function sameWindow(
 
 export class QaAdminService {
   private readonly redactor: QaAdminRedactor;
+  private readonly deletingUsers = new Set<string>();
   /** The aggregate pass running now, shared by the callers waiting for it. */
   private scanning: QaRunningScan | undefined;
   private readonly transcripts = new Map<
@@ -427,7 +429,8 @@ export class QaAdminService {
           conversationId: record.sessionId,
           userId: record.userId,
           displayName:
-            directory.get(record.userId)?.displayName ?? record.userId,
+            directory.get(record.userId)?.displayName ??
+            "Удалённый пользователь",
           email: directory.get(record.userId)?.email ?? "",
           subroleId: record.subroleId ?? "",
           adminPreview: record.adminPreview === true,
@@ -918,6 +921,137 @@ export class QaAdminService {
     });
   }
 
+  /** Return the actual number of conversations kept or removed. Only true opts into erasure. */
+  async deleteUser(
+    token: string,
+    userId: string,
+    deleteConversations = false,
+    expectedConversations?: number,
+  ): Promise<number> {
+    const { accounts, actor } = this.require(token, "users.manage");
+    const purge = deleteConversations === true;
+    if (this.deletingUsers.has(userId))
+      throw new QaAccountsError(
+        "account-changed",
+        "account removal already in progress",
+      );
+    this.deletingUsers.add(userId);
+    let stopWatching: (() => void) | undefined;
+    let staging = false;
+    try {
+      const checkTarget = () => {
+        if (!accounts.accountById(userId, true))
+          throw new QaAccountsError("account-unknown", "no such account");
+        this.assertAdminSurvives(accounts, userId, "user", "last-admin");
+      };
+      checkTarget();
+      let roots: string[] = [];
+      let headers: readonly QaStoredSessionHeader[] = [];
+      let targets: readonly string[] = [];
+      if (purge) {
+        this.require(token, "conversations.delete");
+        this.options.sessionPurge?.recover(accounts, userId);
+        roots = accounts
+          .listOwnershipRecords()
+          .filter((row) => row.userId === userId)
+          .map((row) => row.sessionId);
+        if (
+          expectedConversations !== undefined &&
+          expectedConversations !== roots.length
+        )
+          throw new QaAccountsError(
+            "account-changed",
+            "conversation count changed since confirmation",
+          );
+        if (roots.length > 0) {
+          const started: QaStoredSessionHeader[] = [];
+          stopWatching = this.options.sessionLog.watchCreated?.((header) =>
+            started.push(header),
+          );
+          const listing = await this.options.sessionLog.list();
+          if (!listing.complete)
+            throw new QaAccountsError(
+              "conversation-list-incomplete",
+              "cannot enumerate delegated sessions",
+            );
+          this.require(token, "users.manage");
+          this.require(token, "conversations.delete");
+          headers = listing.headers;
+          targets = conversationSessions(roots, headers);
+          if (
+            conversationSessions(roots, [...headers, ...started]).length !==
+            targets.length
+          )
+            throw new QaAccountsError(
+              "account-changed",
+              "delegated sessions changed during listing",
+            );
+        }
+      }
+      const sharing = this.options.sharing?.();
+      const quality = this.options.quality();
+      const kept = accounts.deleteAccount(userId, {
+        beforeRemoval: () => {
+          if (this.options.sessionPurge?.recover(accounts, userId) && purge)
+            throw new QaAccountsError(
+              "account-changed",
+              "session histories were restored during listing",
+            );
+        },
+        ...(purge ? { purge: { roots, sessions: targets } } : {}),
+        metadata: {
+          ...(sharing ? { sharingPath: sharing.storage.filePath } : {}),
+          qualityPath: quality.filePath,
+          audit: (retained, db) => {
+            const event = quality.appendAudit(
+              {
+                actorId: actor.id,
+                action: "user.deleted",
+                targetType: "user",
+                targetId: userId,
+                after: {
+                  deleteConversations: purge,
+                  removed: roots.length,
+                  retained,
+                },
+              },
+              db,
+            );
+            quality.dropConversations(targets, db);
+            return event;
+          },
+        },
+        beforeCommit: () => {
+          if (targets.length === 0) return;
+          const purgeFiles = this.options.sessionPurge;
+          if (!purgeFiles)
+            throw new QaAccountsError(
+              "conversation-not-removable",
+              "recoverable session removal is unavailable",
+            );
+          this.removeStoredConversations(targets, headers, (ids, required) => {
+            staging = true;
+            return purgeFiles.stage(accounts, userId, ids, required);
+          });
+        },
+      });
+      try {
+        accounts.recoverAccountRemovals(userId);
+      } catch (error) {
+        this.options.onRemovalRecoveryError?.(error);
+        throw new QaAccountsError(
+          "account-removal-pending",
+          "account removed; reconciliation is pending",
+        );
+      }
+      return purge ? roots.length : kept;
+    } finally {
+      stopWatching?.();
+      this.deletingUsers.delete(userId);
+      if (staging) this.options.sessionPurge?.recover(accounts, userId);
+    }
+  }
+
   async updateUser(
     token: string,
     userId: string,
@@ -1033,6 +1167,7 @@ export class QaAdminService {
     accounts: QaAccounts,
     targetId: string,
     nextRole: QaAccountRole,
+    reason: "forbidden" | "last-admin" = "forbidden",
   ): void {
     if (nextRole === "admin") return;
     const admins = accounts
@@ -1043,7 +1178,7 @@ export class QaAdminService {
     const survivor = admins.some((user) => user.id !== targetId);
     if (!survivor) {
       throw new QaAccountsError(
-        "forbidden",
+        reason,
         "the deployment must keep at least one enabled administrator",
       );
     }
@@ -1351,13 +1486,6 @@ export class QaAdminService {
     conversationId: string,
   ): Promise<QaConversationDeletion> {
     const { accounts, actor } = this.require(token, "conversations.delete");
-    const eraser = this.options.sessionFiles;
-    if (eraser === undefined) {
-      throw new QaAccountsError(
-        "conversation-not-removable",
-        "this deployment serves no stored-conversation removal",
-      );
-    }
     const owner = accounts.ownerIdOf(conversationId);
     const listing = await this.options.sessionLog.list();
     const headers = new Map(
@@ -1373,47 +1501,19 @@ export class QaAdminService {
         "this conversation is unknown to the deployment",
       );
     }
-    const targets = [
-      conversationId,
-      ...descendantsOf(conversationId, listing.headers),
-    ];
-    const held = targets.find((sessionId) =>
-      this.options.sessionLog.live(sessionId),
-    );
-    if (held !== undefined) {
-      throw new QaAccountsError(
-        "conversation-live",
-        "the Harness still holds this conversation open",
-      );
-    }
-    const outcome = await eraser.erase(targets);
-    if (
-      headers.has(conversationId) &&
-      !outcome.removed.includes(conversationId)
-    ) {
-      // The Harness lists the chat, storage has no directory for it: this
-      // deployment keeps sessions somewhere directories do not express, and
-      // dropping the records would leave the chat itself behind.
-      throw new QaAccountsError(
-        "conversation-not-removable",
-        "this deployment does not store conversations as directories",
-      );
-    }
-    accounts.forgetSessions(new Set(targets));
+    const targets = conversationSessions([conversationId], listing.headers);
+    const outcome = this.removeStoredConversations(targets, listing.headers);
+    const sharing = this.options.sharing?.();
     const qualityRows = this.options.quality().dropConversations(targets);
-    for (const sessionId of targets) this.options.dropSources?.(sessionId);
-    // A removed log is never read again, so its projection must not survive to
-    // answer a later page: the cache holds it as if the conversation existed.
-    for (const sessionId of targets) this.transcripts.delete(sessionId);
+    for (const id of targets) this.options.dropSources?.(id);
+    for (const id of targets) sharing?.dropSession(id);
+    accounts.forgetSessions(new Set(targets));
     this.options.quality().appendAudit({
       actorId: actor.id,
       action: "conversation.deleted",
       targetType: "conversation",
       targetId: conversationId,
-      before: {
-        owner: owner ?? null,
-        sessions: targets.length,
-      },
+      before: { owner: owner ?? null, sessions: targets.length },
       after: { removed: outcome.removed.length },
     });
     this.options.logger.info("admin.conversation-deleted", {
@@ -1428,6 +1528,53 @@ export class QaAdminService {
       sessions: Object.freeze([...outcome.removed]),
       qualityRows,
     });
+  }
+
+  private removeStoredConversations(
+    targets: readonly string[],
+    headers: readonly QaStoredSessionHeader[],
+    stage?: (
+      ids: readonly string[],
+      required: ReadonlySet<string>,
+    ) => ReturnType<QaStoredSessionEraser["erase"]>,
+  ) {
+    const eraser = this.options.sessionFiles;
+    if (!stage && !eraser)
+      throw new QaAccountsError(
+        "conversation-not-removable",
+        "this deployment serves no stored-conversation removal",
+      );
+    const held = targets.find((sessionId) =>
+      this.options.sessionLog.live(sessionId),
+    );
+    if (held !== undefined) {
+      throw new QaAccountsError(
+        "conversation-live",
+        "the Harness still holds this conversation open",
+      );
+    }
+    const targetSet = new Set(targets);
+    const required = new Set(
+      headers
+        .filter((header) => targetSet.has(header.id))
+        .map((header) => header.id),
+    );
+    const outcome = stage
+      ? stage(targets, required)
+      : eraser!.erase(targets, required);
+    if (outcome.absent.some((id) => required.has(id))) {
+      // The Harness lists the chat, storage has no directory for it: this
+      // deployment keeps sessions somewhere directories do not express, and
+      // dropping the records would leave the chat itself behind.
+      throw new QaAccountsError(
+        "conversation-not-removable",
+        "this deployment does not store conversations as directories",
+      );
+    }
+    // A removed log is never read again, so its projection must not survive to
+    // answer a later page: the cache holds it as if the conversation existed.
+    for (const sessionId of targets) this.transcripts.delete(sessionId);
+    return outcome;
   }
   private failuresOf(
     conversationId: string,

@@ -3,6 +3,37 @@ import { randomUUID } from "node:crypto";
 import { createServer } from "node:net";
 import http from "node:http";
 
+export function launchToken(log) {
+  const match = /https?:\/\/[^\s]+\/\?token=([^\s]+)/u.exec(log.join(""));
+  return match?.[1];
+}
+
+export function bootGraph(html) {
+  const marker = 'globalThis["__DSH_BOOT__"] = ';
+  const start = html.indexOf(marker);
+  if (start === -1)
+    throw new Error("DSH index did not expose its client graph");
+  const valueStart = start + marker.length;
+  const valueEnd = html.indexOf("</script>", valueStart);
+  if (valueEnd === -1) throw new Error("DSH client graph was truncated");
+  return JSON.parse(html.slice(valueStart, valueEnd));
+}
+
+export async function authenticateBrowser(port, authority, token) {
+  const response = await requestWithAuthority(
+    port,
+    authority,
+    `/?token=${encodeURIComponent(token)}`,
+  );
+  const setCookie = response.headers["set-cookie"]?.[0];
+  if (response.status !== 303 || setCookie === undefined) {
+    throw new Error(
+      `DSH browser authentication failed: ${response.status} ${response.body.slice(0, 200)}`,
+    );
+  }
+  return setCookie.split(";", 1)[0];
+}
+
 /** Run a command to completion, rejecting with its captured output on failure. */
 export function run(command, args, options = {}) {
   return new Promise((resolve, reject) => {

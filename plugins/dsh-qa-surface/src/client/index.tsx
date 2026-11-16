@@ -56,6 +56,7 @@ import type {
   QaSessionsApi,
   QaSkillApi,
   QaSlashApi,
+  QaAnswerModesApi,
   QaSourceApi,
   QaChatCodeSourceApi,
 } from "./types.js";
@@ -175,6 +176,12 @@ interface QaAdminRemote {
     userId: string,
     update: QaAdminUserUpdate,
   ): Promise<RemoteResult<QaAdminUserDetail>>;
+  adminDeleteUser(
+    token: string,
+    userId: string,
+    deleteConversations: boolean,
+    expectedConversations: number,
+  ): Promise<RemoteResult<number>>;
   adminPasswordResetRequests(
     token: string,
   ): Promise<RemoteResult<readonly QaPasswordResetRequest[]>>;
@@ -558,7 +565,9 @@ interface QaPolicyRemote extends QaAccountsApi, QaAdminRemote {
     sessionId: string,
     line: string,
     attachments: readonly QaSlashSubmitAttachment[],
+    modes?: readonly import("../shared/answer-modes.js").QaAnswerMode[],
   ): Promise<RemoteResult<QaSlashExecution>>;
+  prepareAnswerModes: QaAnswerModesApi["prepare"];
 }
 
 /** The assembled Client Remote plus this plugin's own qaSurface namespace. */
@@ -751,6 +760,18 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
         user: (token, userId) => policyRemote.adminUser(token, userId),
         updateUser: (token, userId, update) =>
           policyRemote.adminUpdateUser(token, userId, update),
+        deleteUser: (
+          token,
+          userId,
+          deleteConversations,
+          expectedConversations,
+        ) =>
+          policyRemote.adminDeleteUser(
+            token,
+            userId,
+            deleteConversations,
+            expectedConversations,
+          ),
         passwordResetRequests: (token) =>
           policyRemote.adminPasswordResetRequests(token),
         resetPassword: (token, userId, password) =>
@@ -953,8 +974,12 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
       const slashApi: QaSlashApi = {
         catalog: (token, sessionId) =>
           policyRemote.slashCatalog(token, sessionId),
-        execute: (token, sessionId, line, attachments) =>
-          policyRemote.slashExecute(token, sessionId, line, attachments),
+        execute: (token, sessionId, line, attachments, modes) =>
+          policyRemote.slashExecute(token, sessionId, line, attachments, modes),
+      };
+      const answerModesApi: QaAnswerModesApi = {
+        prepare: (token, sessionId, requestId, modes) =>
+          policyRemote.prepareAnswerModes(token, sessionId, requestId, modes),
       };
       // The account gate rides its own remote; a stale token simply answers
       // "not authenticated" and the browser shows the login card.
@@ -1257,6 +1282,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
             questionApi,
             formApi,
             slashApi,
+            answerModesApi,
             accounts,
             panels,
             settingsSections,

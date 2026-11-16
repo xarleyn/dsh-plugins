@@ -1,4 +1,5 @@
 import { SqliteDatabase } from "@yadsh/dsh-plugin-kit/sqlite";
+import type { DatabaseSync } from "node:sqlite";
 import type { QaAccounts } from "../accounts/store.js";
 import type {
   QaChatAccess,
@@ -6,6 +7,35 @@ import type {
   QaChatMode,
   QaChatAuthor,
 } from "./types.js";
+
+function removeSession(
+  db: DatabaseSync,
+  schema: "main" | "qa_sharing",
+  id: string,
+): void {
+  db.prepare(`DELETE FROM ${schema}.grants WHERE session_id=?`).run(id);
+  db.prepare(`DELETE FROM ${schema}.authors WHERE session_id=?`).run(id);
+  db.prepare(
+    `INSERT INTO ${schema}.revisions VALUES (?,1)
+    ON CONFLICT(session_id) DO UPDATE SET revision=revision+1`,
+  ).run(id);
+}
+
+/** Called on the accounts connection inside its deletion transaction. */
+export function dropAttachedUserSharing(
+  db: DatabaseSync,
+  id: string,
+  sessions: readonly string[],
+): void {
+  db.prepare("DELETE FROM qa_sharing.grants WHERE owner_id=? OR user_id=?").run(
+    id,
+    id,
+  );
+  db.prepare(
+    "UPDATE qa_sharing.authors SET display_name=? WHERE user_id=?",
+  ).run("Удалённый пользователь", id);
+  for (const session of sessions) removeSession(db, "qa_sharing", session);
+}
 
 /** Separate schema: installing sharing does not upgrade the accounts CLI's DB. */
 export class QaChatSharingStore {
@@ -246,16 +276,7 @@ export class QaChatSharingStore {
   }
 
   dropSession(id: string): void {
-    this.storage.transaction(() => {
-      this.storage.db.prepare("DELETE FROM grants WHERE session_id=?").run(id);
-      this.storage.db.prepare("DELETE FROM authors WHERE session_id=?").run(id);
-      this.storage.db
-        .prepare(
-          `INSERT INTO revisions VALUES (?,1)
-        ON CONFLICT(session_id) DO UPDATE SET revision=revision+1`,
-        )
-        .run(id);
-    });
+    this.storage.transaction(() => removeSession(this.storage.db, "main", id));
   }
 
   actorStillAllowed(

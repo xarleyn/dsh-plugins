@@ -338,6 +338,8 @@ export interface QaPendingQuestion {
   readonly sessionId: string;
   readonly questions: readonly QaPendingQuestionItem[];
   readonly createdAt: number;
+  /** Host deadline fixed at creation, or null for an integration clarification. */
+  readonly expiresAt: number | null;
 }
 
 /**
@@ -401,6 +403,8 @@ export interface QaSessionState {
    * anything. `0` means no chat — see `QA_SESSION_IDLE_STATE`.
    */
   readonly chatKey: number;
+  readonly composerTurn?: number;
+  readonly composerActivity?: import("./answer-review.js").QaComposerActivity;
   readonly messages: readonly QaMessage[];
   /** Immediate send feedback, kept outside the durable transcript. */
   readonly pendingMessage: QaPendingUserMessage | null;

@@ -2,14 +2,14 @@
  * Spacing for a running turn's stream frames. A running turn's frames arrive
  * at animation-frame cadence, so re-projections are spaced at least the
  * configured interval apart: the first frame of a window projects at once and
- * further frames are absorbed (the memoized render path replays nothing, so
- * absorbing a frame only defers it). Everything outside a running turn —
- * phase flips, errors, turn completion — projects immediately, and a
- * non-running notification also cancels an absorbed window so the final
- * state never waits for it. Zero disables the spacing entirely.
+ * further frames share one trailing projection of the latest state. A review
+ * can start on the last frame before the reviewer goes quiet. Leaving a
+ * running turn clears pending work and projects immediately. Zero disables
+ * the spacing entirely.
  */
 export class StreamPublisher {
   private timer: ReturnType<typeof setTimeout> | undefined;
+  private pending: (() => void) | undefined;
 
   constructor(private readonly intervalMs: number) {}
 
@@ -24,11 +24,17 @@ export class StreamPublisher {
       emit();
       return;
     }
-    if (this.timer !== undefined) return;
-    emit();
+    if (this.timer !== undefined) {
+      this.pending = emit;
+      return;
+    }
     this.timer = setTimeout(() => {
       this.timer = undefined;
+      const pending = this.pending;
+      this.pending = undefined;
+      if (pending !== undefined) this.publish(true, pending);
     }, this.intervalMs);
+    emit();
   }
 
   /**
@@ -37,6 +43,7 @@ export class StreamPublisher {
    * must not swallow the first frame of a fresh binding.
    */
   clear(): void {
+    this.pending = undefined;
     if (this.timer === undefined) return;
     clearTimeout(this.timer);
     this.timer = undefined;

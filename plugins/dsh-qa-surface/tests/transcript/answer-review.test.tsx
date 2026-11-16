@@ -10,6 +10,8 @@ import type {
 import type { QaAnswerReview, QaMessage } from "../../src/types.js";
 import {
   readAnswerReview,
+  composerActivity,
+  latestChatTurn,
   answerReviewConversationDefinition as definition,
   QA_REVIEW_NODE,
 } from "../../src/client/answer-review.js";
@@ -41,6 +43,51 @@ const event = (
   }) as unknown as SessionEventLike;
 
 describe("current answer review", () => {
+  it("limits the dock to the latest answer of the current turn on live events and replay", () => {
+    const turn = { turn: 4, status: "open" } as NonNullable<
+      ReturnType<typeof latestChatTurn>
+    >;
+    const answer = {
+      id: "a",
+      role: "assistant",
+      text: "Draft",
+      status: "committed",
+      turn: 4,
+      review,
+    } as const;
+    for (const status of [
+      "reviewing",
+      "recovering",
+      "revise",
+      "failure",
+      "pass",
+      "waived",
+      "cancelled",
+    ] as const) {
+      const rows = [{ ...answer, review: { ...review, status } }];
+      expect(composerActivity(turn, rows, true)).toBe(status);
+      expect(composerActivity(turn, rows, false)).toBe(
+        status === "reviewing" || status === "recovering" ? undefined : status,
+      );
+    }
+    expect(composerActivity({ ...turn, turn: 5 }, [answer], true)).toBe(
+      "writing",
+    );
+    expect(
+      composerActivity({ ...turn, status: "closed" }, [answer], true),
+    ).toBeUndefined();
+    expect(
+      composerActivity(turn, [answer, { ...answer, review: undefined }], true),
+    ).toBe("writing");
+    expect(
+      composerActivity(
+        turn,
+        [answer, { id: "u", role: "user", text: "Next", status: "committed" }],
+        true,
+      ),
+    ).toBe("writing");
+  });
+
   it("reads producer metadata and refuses human text, unknown statuses and malformed identity", () => {
     expect(readAnswerReview(event())).toEqual(review);
     expect(readAnswerReview(event(review, "user"))).toBeNull();
@@ -152,7 +199,7 @@ describe("current answer review", () => {
     view.rerender(<QaAnswerReviewStatus review={review} />);
     expect(screen.getByRole("status").textContent).toBe("Ответ проверен");
     expect(screen.getByRole("status").getAttribute("title")).toContain(
-      "актуальный результат",
+      "проверку этой версии",
     );
     const document = {
       name: "report.docx",

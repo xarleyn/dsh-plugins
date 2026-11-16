@@ -82,6 +82,31 @@ describe("QA question gate ownership", () => {
 });
 
 describe("QA question gate lifecycle", () => {
+  it("drops a disposed child's untimed question, and its sibling's only when the owner is disposed", async () => {
+    const { gate, ask, fire } = gateFor({
+      interactive: true,
+      attested: ["root"],
+      questionMode: () => "untimed",
+    });
+    const askFromChild = (id: string) => {
+      fire("session/created")({ id, header: { parentSession: "root" } });
+      return ask({ questions: QUESTIONS, agent: sessionAgent(id) });
+    };
+    const first = askFromChild("child-1");
+    const second = askFromChild("child-2");
+    const pending = gate.list("root");
+    expect(pending.map(({ expiresAt }) => expiresAt)).toEqual([null, null]);
+
+    fire("agent/disposed")({ agent: sessionAgent("child-1") });
+    expect(gate.list("root")).toEqual([pending[1]]);
+    await expect(first).rejects.toThrow(/closed the question/u);
+
+    fire("agent/disposed")({ agent: sessionAgent("root") });
+    expect(gate.list("root")).toEqual([]);
+    await expect(second).rejects.toThrow(/closed the question/u);
+    gate.dispose();
+  });
+
   it("closes a parked question when the asking agent stops running", async () => {
     const { gate, ask, fire } = gateFor({
       interactive: true,

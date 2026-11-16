@@ -9,6 +9,8 @@ import { QaChatTransport } from "./chat-sharing/transport.js";
 import { QaChatTurnGuard } from "./chat-sharing/turn-guard.js";
 import { installQaNativeFence } from "./chat-sharing/native-fence.js";
 import { QaIntegrationQuestionPolicy } from "./integration/question-policy.js";
+import { QaAnswerModes } from "./answer-modes.js";
+import type { QaAnswerMode } from "./shared/answer-modes.js";
 import {
   qaChatPublishedFile,
   qaChatAttachmentPath,
@@ -90,6 +92,7 @@ import {
 import { formFailure, QaFormError } from "./forms/errors.js";
 import type { QaFormCommand, QaFormResult, QaFormView } from "./forms/types.js";
 import { QaSessionOwnership } from "./session-ownership.js";
+import { createSessionPurge } from "./admin/session-purge.js";
 import { QaLlmIdentity } from "./llm-identity.js";
 import { registerTurnFailureLog } from "./turn-failure-log.js";
 import { entryRedirectRow } from "./entry-redirect.js";
@@ -340,6 +343,7 @@ export class QaSurface extends TypertRemoteService {
   }
   private readonly provenance: QaProvenanceHost;
   private readonly notes: QaPromptNotes;
+  private readonly answerModes: QaAnswerModes;
   /** Assigned after the admission gate; that gate only reads it per execution. */
   private readonly tools!: QaTools;
   /** Account-remote bodies; the wire signatures stay on this class. */
@@ -462,10 +466,40 @@ export class QaSurface extends TypertRemoteService {
         ctx.get("attachments") as unknown as QaFormHostAttachments | undefined,
       (sessionId, file) => this.admission.grantAttachmentFile(sessionId, file),
     );
+    const deferRemoval = (error: unknown) => {
+      this.logger.warn("admin.session-purge-cleanup-pending", {
+        message: String(
+          error instanceof Error && error.cause ? error.cause : error,
+        ),
+      });
+    };
+    const sessionPurge = createSessionPurge(
+      (id) => this.provenance.dropSession(id),
+      deferRemoval,
+    );
     this.accountRemotes = createQaAccountRemotes({
+      onOpen: (accounts) => sessionPurge.recover(accounts),
+      onRemovalRecoveryError: deferRemoval,
       getConfig: () => this.getConfig(),
       logger: this.logger,
     });
+    ctx.effect(() => {
+      const timer = setInterval(() => {
+        try {
+          const accounts = this.accountRemotes.resolve(this.getConfig());
+          if (!accounts) return;
+          try {
+            accounts.recoverAccountRemovals();
+          } finally {
+            sessionPurge.recover(accounts);
+          }
+        } catch (error) {
+          deferRemoval(error);
+        }
+      }, 60_000);
+      timer.unref();
+      return () => clearInterval(timer);
+    }, "qa-surface: pending session purge cleanup");
     // One durable-session reader for the whole plugin: the console lists the
     // deployment's conversations with it, and the access service tells a chat
     // from a delegated child with it.
@@ -498,8 +532,10 @@ export class QaSurface extends TypertRemoteService {
       // Deletion is the console's alone: the sidebar's delete stays a
       // per-browser row, and only an administrator removes the chat itself.
       sessionFiles: createSessionEraser(),
-      ...(this.getConfig().accounts.enabled ? { sharing: this.sharing() } : {}),
+      sessionPurge,
+      onRemovalRecoveryError: deferRemoval,
       dropSources: (sessionId) => this.provenance.dropSession(sessionId),
+      sharing: () => this.sharing(),
       // The console writes skills through the same service the owner's editor
       // uses, so an administrator's save is path-checked, validated and
       // published to DSH by exactly the one code path that already does it.
@@ -667,6 +703,11 @@ export class QaSurface extends TypertRemoteService {
       this.admission.knowsSession(sessionId),
     );
     ownership.install(ctx);
+    this.answerModes = new QaAnswerModes(ctx, ownership);
+    ctx.effect(
+      () => () => this.answerModes.dispose(),
+      "qa-surface: answer modes",
+    );
     new QaLlmIdentity(ctx, {
       rootOf: (sessionId) => ownership.rootOf(sessionId),
       accounts: () => this.accountRemotes.resolve(this.getConfig()),
@@ -692,10 +733,18 @@ export class QaSurface extends TypertRemoteService {
       ownership,
       this.logger,
       (agent) =>
-        integrationQuestionPolicy.allowed(agent) &&
-        !this.formGate?.hasSession(
+        this.formGate?.hasSession(
           ownership.rootOf(String(agent.session.id)) ?? "",
-        ),
+        )
+          ? "blocked"
+          : integrationQuestionPolicy.mode(agent),
+      {
+        prepare: (request) => this.answerModes.prepareQuestion(request),
+        answered: (request, answer) =>
+          this.answerModes.answered(request, answer),
+        cancelled: (request) => this.answerModes.cancelled(request),
+      },
+      () => this.getConfig().interaction.questionTimeoutMinutes,
     );
     this.formGate = new QaFormGate(
       () => this.forms(),
@@ -706,7 +755,7 @@ export class QaSurface extends TypertRemoteService {
       (exec) =>
         this.getConfig().forms.enabled &&
         exec.agent !== undefined &&
-        integrationQuestionPolicy.allowed(exec.agent) &&
+        integrationQuestionPolicy.mode(exec.agent) !== "blocked" &&
         this.admission.knowsSession(String(exec.agent.session.id)),
       () =>
         this.getConfig().accounts.enabled &&
@@ -854,6 +903,7 @@ export class QaSurface extends TypertRemoteService {
     ctx.effect(
       () =>
         listenVolatile("loader/volatile-update", () => {
+          this.admission.refreshDiscoveryMode();
           this.tools.refreshForms();
           if (!this.getConfig().forms.enabled) this.formGate.cancelAll();
         }),
@@ -1803,6 +1853,23 @@ export class QaSurface extends TypertRemoteService {
     );
   }
 
+  @Remote("adminDeleteUser")
+  adminDeleteUser(
+    token: string,
+    userId: string,
+    deleteConversations: boolean,
+    expectedConversations: number,
+  ): Promise<number> {
+    return this.accountRemotes.runAsync(() =>
+      this.admin.deleteUser(
+        token,
+        userId,
+        deleteConversations,
+        expectedConversations,
+      ),
+    );
+  }
+
   @Remote("adminPasswordResetRequests")
   adminPasswordResetRequests(
     token: string,
@@ -1863,12 +1930,9 @@ export class QaSurface extends TypertRemoteService {
     token: string,
     conversationId: string,
   ): Promise<QaConversationDeletion> {
-    return this.accountRemotes.runAsync(async () => {
-      const result = await this.admin.deleteConversation(token, conversationId);
-      if (this.getConfig().accounts.enabled)
-        for (const id of result.sessions) this.sharing().dropSession(id);
-      return result;
-    });
+    return this.accountRemotes.runAsync(() =>
+      this.admin.deleteConversation(token, conversationId),
+    );
   }
 
   @Remote("adminFeedback")
@@ -2956,13 +3020,42 @@ export class QaSurface extends TypertRemoteService {
    * the transcript row is read from.
    */
   @Remote("slashExecute")
-  slashExecute(
+  async slashExecute(
     token: string,
     sessionId: string,
     line: string,
     attachments: readonly QaSlashSubmitAttachment[],
+    modes?: readonly QaAnswerMode[],
   ): Promise<QaSlashExecution> {
-    return this.slashRemotes.execute(token, sessionId, line, attachments);
+    const execute = () =>
+      this.slashRemotes.execute(token, sessionId, line, attachments);
+    if (modes === undefined) return execute();
+    const proof = await this.secureSession(token, sessionId);
+    if (
+      proof.chatAccess !== undefined &&
+      proof.chatAccess.mode !== "owner" &&
+      proof.chatAccess.mode !== "collaborate"
+    )
+      throw new Error("Read-only chat access cannot change answer modes.");
+    return this.answerModes.withCommand(sessionId, modes, execute);
+  }
+
+  @Remote("prepareAnswerModes")
+  async prepareAnswerModes(
+    token: string,
+    sessionId: string,
+    requestId: string,
+    modes: readonly QaAnswerMode[],
+  ): Promise<boolean> {
+    const proof = await this.secureSession(token, sessionId);
+    if (
+      proof.chatAccess !== undefined &&
+      proof.chatAccess.mode !== "owner" &&
+      proof.chatAccess.mode !== "collaborate"
+    )
+      throw new Error("Read-only chat access cannot change answer modes.");
+    this.answerModes.prepare(sessionId, requestId, modes);
+    return true;
   }
 
   /**

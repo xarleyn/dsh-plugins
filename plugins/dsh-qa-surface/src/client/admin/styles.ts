@@ -8,6 +8,18 @@
  * not a wizard.
  */
 export const QA_ADMIN_CONSOLE_STYLES = String.raw`
+.dsh-qa-admin .dsh-qa-modal__panel:has(.dsh-qa-admin__delete-user){width:min(432px,100%)}
+.dsh-qa-admin .dsh-qa-modal__footer:has(.dsh-qa-admin__confirm-delete){flex-wrap:wrap}
+.dsh-qa-admin .dsh-qa-modal__footer .dsh-qa-admin__confirm-delete,.dsh-qa-admin .dsh-qa-modal__footer .dsh-qa-admin__confirm-delete:hover:not(:disabled){color:var(--dsh-qa-accent-contrast);background:var(--dsh-qa-error-hover);border-color:transparent}
+.dsh-qa-admin__delete-user{display:grid;gap:14px;font-size:14px;line-height:1.45;overflow-wrap:anywhere}
+.dsh-qa-admin__delete-user p{margin:0}
+.dsh-qa-admin__delete-person,.dsh-qa-admin__delete-user label{display:flex;gap:10px;align-items:center}
+.dsh-qa-admin__delete-person>span{display:grid;place-items:center;flex:none;width:38px;height:38px;border-radius:10px;background:var(--dsw-alias-bg-module-platform);font-weight:600}
+.dsh-qa-admin__delete-user small{display:block;color:var(--dsw-alias-label-secondary);font-size:13px}
+.dsh-qa-admin__delete-user label{align-items:flex-start;padding:12px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;cursor:pointer}
+.dsh-qa-admin__delete-user label:has(:checked){border-color:var(--dsh-qa-error);background:color-mix(in srgb,var(--dsh-qa-error) 8%,transparent)}
+.dsh-qa-admin__delete-user input{flex:none;width:17px;height:17px;margin:2px 0 0;accent-color:var(--dsh-qa-error-hover)}
+.dsh-qa-admin__table td>button+.dsh-qa-admin__danger{margin:2px}
 .dsh-qa-model-policy__alternatives{display:grid;gap:8px;margin:16px 0;padding:12px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;min-width:0}
 .dsh-qa-model-policy__alternatives label{display:flex;align-items:center;gap:8px}
 .dsh-qa-model-policy__alternatives input{flex:none}

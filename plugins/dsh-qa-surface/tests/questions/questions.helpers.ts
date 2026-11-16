@@ -1,4 +1,5 @@
-import { QaQuestionGate } from "../../src/questions.js";
+import type { Agent } from "@deepseek-ai/dsh-agent";
+import { QaQuestionGate, type QaQuestionMode } from "../../src/questions.js";
 import { QaSessionOwnership } from "../../src/session-ownership.js";
 import { fakeContext, sessionAgent } from "../helpers/context-fakes.js";
 interface QuestionAnswerItem {
@@ -60,7 +61,8 @@ function gateFor(input: {
   interactive: boolean;
   attested: readonly string[];
   logger?: unknown;
-  questionsAllowed?: () => boolean;
+  questionMode?: (agent: Agent) => QaQuestionMode;
+  timeoutMinutes?: () => number;
 }) {
   const fake = fakeContext();
   const ownership = new QaSessionOwnership((sessionId) =>
@@ -71,7 +73,9 @@ function gateFor(input: {
     () => input.interactive,
     ownership,
     (input.logger ?? SILENT_LOGGER) as never,
-    input.questionsAllowed,
+    input.questionMode,
+    undefined,
+    input.timeoutMinutes,
   );
   gate.install();
   /** Invoke the gate exactly where the user-questions service would. */

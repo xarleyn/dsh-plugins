@@ -1,13 +1,68 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { QA_QUESTIONS_UNSUPPORTED } from "../../src/questions.js";
 import { gateFor, QUESTIONS, sessionAgent } from "./questions.helpers.js";
 
 describe("QA question gate", () => {
-  it("never parks an integration clarification even when the deployment is interactive", async () => {
+  it("releases the tool without a client and tells the agent why there is no answer", async () => {
+    vi.useFakeTimers();
+    const { ask, gate } = gateFor({ interactive: true, attested: ["s1"] });
+    try {
+      const result = expect(
+        ask({ questions: QUESTIONS, agent: sessionAgent("s1") }),
+      ).rejects.toThrow(
+        /timed out after 30 minutes without a user response.*No answer or approval/u,
+      );
+      vi.advanceTimersByTime(30 * 60_000 - 1);
+      const [request] = gate.list("s1");
+      expect(request!.expiresAt).toBe(request!.createdAt + 30 * 60_000);
+      vi.advanceTimersByTime(1);
+      await result;
+      expect(gate.list("s1")).toEqual([]);
+      expect(gate.answer("s1", request!.id, [])).toBe(false);
+    } finally {
+      gate.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it("pins each deadline, refuses a late answer before its timer runs, and clears a settled timer", async () => {
+    vi.useFakeTimers();
+    let minutes = 2;
+    const { ask, gate } = gateFor({
+      interactive: true,
+      attested: ["s1"],
+      timeoutMinutes: () => minutes,
+    });
+    try {
+      const request = { questions: QUESTIONS, agent: sessionAgent("s1") };
+      const expired = expect(ask(request)).rejects.toThrow(
+        /timed out after 2 minutes/u,
+      );
+      const [first] = gate.list("s1");
+      minutes = 10;
+      const answered = ask(request);
+      vi.setSystemTime(first!.createdAt + 2 * 60_000);
+      expect(gate.answer("s1", first!.id, [])).toBe(false);
+      await expired;
+      const [second] = gate.list("s1");
+      expect(second!.expiresAt).toBe(second!.createdAt + 10 * 60_000);
+      expect(
+        gate.answer("s1", second!.id, [{ id: "target", selected: ["В чат"] }]),
+      ).toBe(true);
+      await expect(answered).resolves.toEqual({
+        answers: [{ id: "target", selected: ["В чат"] }],
+      });
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      gate.dispose();
+      vi.useRealTimers();
+    }
+  });
+  it("never parks a blocked integration clarification even when the deployment is interactive", async () => {
     const { gate, ask } = gateFor({
       interactive: true,
       attested: ["s1"],
-      questionsAllowed: () => false,
+      questionMode: () => "blocked",
     });
     await expect(
       ask({ questions: QUESTIONS, agent: sessionAgent("s1") }),
@@ -51,6 +106,7 @@ describe("QA question gate", () => {
         id: expect.any(String),
         sessionId: "s1",
         createdAt: expect.any(Number),
+        expiresAt: expect.any(Number),
         questions: [
           {
             id: "target",

@@ -101,7 +101,15 @@ Chromium on localhost. The default browser suite also exercises the LAN overlay.
 - renders only user text, assistant-visible text and safe status messages;
 - supports streaming, Stop, optional New chat, safe Markdown, copy actions and
   a responsive first-party-style conversation layout;
-- offers a Fast switch beside the composer with a visible warning while on.
+- offers a multi-select answer mode menu beside the composer, with the selected
+  names in its button and explanations on hover and keyboard focus. Deep Thinking
+  is the default. RAG Priority tries LightRAG retrieval modes and reformulated
+  queries first. Other research tools and delegation remain blocked until the
+  user explicitly approves the Host's fixed deep-search question. Refusal,
+  cancellation, skipped questions and an earlier request's consent never grant
+  that permission. If interactive questions or RAG tools are unavailable, the
+  agent reports the gap and cannot silently switch to deep research;
+- keeps Fast combinable with the other modes, with a visible warning while on.
   New ordinary requests, regeneration and approved-document export requests use
   the Host's trusted `/no-review` command for an audited, request-specific waiver.
   Explicit slash commands keep their normal behavior. Fast starts off and resets
@@ -321,6 +329,9 @@ config:
     # answerable form, which owns the composer until it is answered or the
     # turn ends.
     questions: unsupported
+    # Whole minutes to answer a browser-turn question, even with the chat closed.
+    # Allowed API clarifications have no deadline. Open forms chime every five minutes.
+    questionTimeoutMinutes: 30
   # Root-page entry behavior (optional; see "Serving the QA rig over the LAN").
   entry:
     # Inject the root → /qa redirect for non-loopback hostnames.
@@ -441,6 +452,34 @@ invalid-message refusal, reset, and light/dark layouts at 390 and 1440 pixels;
 it also runs as part of the full `e2e:browser` pass.
 
 ### Dynamic QA tools
+
+The Plugins panel → QA Surface → **Инструменты интеграций** controls a
+separate option, `tools.discoveryMode`, for newly attested native QA chats
+with lockdown. It applies only to owner-registered GitLab, TeamCity, Test IT,
+Weblate and Bitrix24 operations. Jira and Confluence remain ordinary tools.
+
+| Mode | What the model sees |
+| --- | --- |
+| `off` (default) | The original schemas, no discovery tool or observations. |
+| `observe` | The same schemas. Host logs report schema counts and estimated JSON bytes for the candidate set (`tool-discovery.observe`) and families actually called (`tool-discovery.used`), without arguments, results or user messages. |
+| `search` | `qa_find_tools` in place of eligible schemas. Search by topic, family or exact name, or browse with pagination. Only a search opens up to five native tools for the next step; browsing runs and opens nothing. |
+
+Loading an operation never executes it. The original callable, argument schema,
+principal checks, approvals and audit trail remain in force. A role cannot use
+search to acquire an unactivated skill grant. A successful skill invocation
+also opens its already granted integration tools for the next step. Revealed tools remain open in
+the current chat; a restored native chat starts from its most recent search
+header and rechecks the current policy. Existing ordinary chats, delegated
+agents, forks, admin previews and PTC-only presets keep their usual tools.
+Switching discovery off lifts this extra filter and removes the finder; it
+does not change the permissions or replay actions. JSON bytes in observations
+are not model tokens or a billing estimate.
+
+For example, `qa_find_tools({"query":"gitlab_repository_tree"})` opens that
+single tool if the chat can use it. `qa_find_tools({"query":"gitlab","browse":true})`
+instead lists one page without changing the next request.
+Run `pnpm --filter @yadsh/dsh-qa-surface run smoke:packed --tool-discovery-settings`
+to check all three modes and reload persistence in a disposable local Host.
 
 A QA deployment tends to grow a large toolset, and attaching all of it at boot
 puts every schema into every request — including the first small talk of a chat

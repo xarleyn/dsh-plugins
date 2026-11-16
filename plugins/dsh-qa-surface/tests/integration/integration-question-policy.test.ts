@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import type { Context } from "@deepseek-ai/cordis";
 import type { QaAccounts } from "../../src/accounts/store.js";
+import { gateFor, QUESTIONS } from "../questions/questions.helpers.js";
 import {
   QaIntegrationQuestionPolicy,
   QA_INTEGRATION_NO_CLARIFICATIONS,
@@ -30,8 +31,13 @@ function fixture() {
   let guard: (execution: unknown) => unknown = () => undefined;
   const accounts = {
     ownerIdOf: (id: string) => (id === "root" ? "owner" : undefined),
-    integrationClarificationsAllowed: (id: string, requestId: string) =>
-      !(id === "root" && requestId === "no-questions"),
+    integrationRequestPolicy: (id: string, requestId: string) =>
+      id === "root"
+        ? new Map([
+            ["allowed", true],
+            ["no-questions", false],
+          ]).get(requestId)
+        : undefined,
   } as unknown as QaAccounts;
   const ctx = {
     on: (name: string, handler: (...args: never[]) => unknown) => {
@@ -178,13 +184,13 @@ describe("integration question policy", () => {
   it("refuses a clarification when an attested child cannot resolve its root policy", () => {
     const f = fixture();
     f.releaseParent();
-    expect(f.policy.allowed(f.delegated)).toBe(false);
+    expect(f.policy.mode(f.delegated)).toBe("blocked");
     f.policy.dispose();
   });
-  it("keeps ordinary delegated questions enabled when the root policy allows them", async () => {
+  it("lets delegated questions inherit the API turn's open-ended wait", async () => {
     const f = fixture();
     await f.step(1, ["allowed"]);
-    expect(f.policy.allowed(f.delegated)).toBe(true);
+    expect(f.policy.mode(f.delegated)).toBe("untimed");
     expect(f.guard("ask_user_question", f.delegated)).toBeUndefined();
     f.policy.dispose();
   });
@@ -194,10 +200,10 @@ describe("integration question policy", () => {
     expect(decision.messages.at(-1)?.content?.[0]?.text).toBe(
       QA_INTEGRATION_NO_CLARIFICATIONS,
     );
-    expect(f.policy.allowed(f.agent)).toBe(false);
+    expect(f.policy.mode(f.agent)).toBe("blocked");
     expect(f.guard("ask_user_question")).toBe(QA_INTEGRATION_NO_CLARIFICATIONS);
     expect(f.guard("read")).toBeUndefined();
-    expect(f.policy.allowed(f.delegated)).toBe(false);
+    expect(f.policy.mode(f.delegated)).toBe("blocked");
     expect(
       (await f.step(1, [], f.delegated)).messages.at(-1)?.content?.[0]?.text,
     ).toBe(QA_INTEGRATION_NO_CLARIFICATIONS);
@@ -211,9 +217,9 @@ describe("integration question policy", () => {
     const f = fixture();
     await f.step(1, ["allowed", "no-questions"]);
     await f.step(1, ["allowed"]);
-    expect(f.policy.allowed(f.agent)).toBe(false);
+    expect(f.policy.mode(f.agent)).toBe("blocked");
     const next = await f.step(2, ["browser-request"]);
-    expect(f.policy.allowed(f.agent)).toBe(true);
+    expect(f.policy.mode(f.agent)).toBe("timed");
     expect(f.guard("ask_user_question")).toBeUndefined();
     expect(next.messages.at(-1)?.content?.[0]?.text).toContain(
       "previous integration turn's restriction no longer applies",
@@ -231,8 +237,59 @@ describe("integration question policy", () => {
         data: { inserted: [{ source: { rpcId: "allowed" } }] },
       },
     );
-    expect(f.policy.allowed(f.agent)).toBe(false);
-    expect(f.policy.allowed(f.delegated)).toBe(false);
+    expect(f.policy.mode(f.agent)).toBe("blocked");
+    expect(f.policy.mode(f.delegated)).toBe("blocked");
+    f.policy.dispose();
+  });
+
+  it("accepts a late API clarification and times out the next browser turn in the same chat", async () => {
+    vi.useFakeTimers();
+    const f = fixture();
+    const { gate, ask } = gateFor({
+      interactive: true,
+      attested: ["root"],
+      questionMode: (agent) => f.policy.mode(agent),
+    });
+    try {
+      await f.step(1, ["allowed"]);
+      await f.step(1, []);
+      const request = { questions: QUESTIONS, agent: f.agent };
+      const result = ask(request);
+      expect(vi.getTimerCount()).toBe(0);
+      vi.advanceTimersByTime(24 * 60 * 60_000);
+      const [pending] = gate.list("root");
+      expect(pending?.expiresAt).toBeNull();
+      const answers = [{ id: "target", selected: ["В чат"] }];
+      expect(gate.answer("root", pending!.id, answers)).toBe(true);
+      await expect(result).resolves.toEqual({ answers });
+
+      await f.step(2, ["browser-request"]);
+      const timed = expect(ask(request)).rejects.toThrow(
+        /timed out after 30 minutes/u,
+      );
+      vi.advanceTimersByTime(30 * 60_000);
+      await timed;
+    } finally {
+      gate.dispose();
+      f.policy.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it("recovers the API exemption from the current turn's consumed request after reload", () => {
+    const f = fixture();
+    f.events.push(
+      { type: "turn/start", data: { turn: 1 } },
+      {
+        type: "user/message",
+        data: { source: { kind: "user", rpcId: "allowed" } },
+      },
+      {
+        type: "agent/inbox/spliced",
+        data: { inserted: [{ source: { rpcId: "no-questions" } }] },
+      },
+    );
+    expect(f.policy.mode(f.delegated)).toBe("untimed");
     f.policy.dispose();
   });
 });

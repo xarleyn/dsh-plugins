@@ -60,6 +60,8 @@ export interface QaSkillPolicyOptions {
   readonly discovered: ReadonlyMap<string, SkillSummary>;
   /** The agent's live tool policy; loading a skill may widen it. */
   readonly grants: QaAgentToolGrants;
+  /** Let a native discovery surface present only tools the skill actually obtained. */
+  readonly onGrant?: (granted: readonly string[]) => void;
   readonly logger: PluginLogger;
   /** Preview sessions exercise the real policy and label their own records. */
   readonly preview?: boolean;
@@ -137,6 +139,7 @@ export function installQaSkillPolicy(
         });
         throw new Error(outcome.reason);
       }
+      options.onGrant?.(outcome.grant.grantedTools);
       if (skill.resourceBase !== undefined)
         loadedResources.set(skill.name, skill.resourceBase);
       const content = [
@@ -215,6 +218,7 @@ export function installQaSkillPolicy(
           }
           const outcome = grants.activate(name, "user");
           if (outcome.status === "activated") {
+            options.onGrant?.(outcome.grant.grantedTools);
             const resource = discovered.get(name)?.resourceBase;
             if (resource !== undefined) loadedResources.set(name, resource);
             return [message];

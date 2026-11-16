@@ -27,6 +27,7 @@ import {
 } from "./config-resolvers/slash-commands.js";
 import type { QaSurfaceConfig } from "./types.js";
 import { QA_FILE_WRITE_EXTENSION_PATTERN } from "./shared/file-write-policy.js";
+import { QA_QUESTION_TIMEOUT_MAX_MINUTES } from "./shared/question-timing.js";
 
 // Every schema default derives from the canonical resolved defaults: the Host
 // feeds the schema-parsed config into resolveConfig, so a default that exists
@@ -236,6 +237,12 @@ const configSchema = z.object({
         // for; the resolver folds it into the one name the config carries.
         .union(["unsupported", "interactive", "enabled"] as const)
         .default(D.interaction.questions),
+      questionTimeoutMinutes: z
+        .number()
+        .step(1)
+        .min(1)
+        .max(QA_QUESTION_TIMEOUT_MAX_MINUTES)
+        .default(D.interaction.questionTimeoutMinutes),
     })
     .default({ ...D.interaction })
     .volatile(),
@@ -519,6 +526,9 @@ const configSchema = z.object({
           blockedExtensions: [...D.tools.fileWritePolicy.blockedExtensions],
         }),
       dynamicActivation: z.boolean().default(D.tools.dynamicActivation),
+      discoveryMode: z
+        .union(["off", "observe", "search"] as const)
+        .default(D.tools.discoveryMode),
       activationSkill: z.string().default(D.tools.activationSkill),
       activationMode: z.union(["all"] as const).default(D.tools.activationMode),
       activationPresets: z

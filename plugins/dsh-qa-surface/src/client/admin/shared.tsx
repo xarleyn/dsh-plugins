@@ -18,6 +18,14 @@ export function errorMessage(error: unknown): string {
  */
 export function adminErrorMessage(error: unknown): string {
   const message = errorMessage(error);
+  if (message.includes("reason: last-admin"))
+    return "На стенде должен остаться хотя бы один активный администратор.";
+  if (message.includes("reason: account-unknown"))
+    return "Этот аккаунт уже удалён.";
+  if (message.includes("reason: account-changed"))
+    return "Данные аккаунта изменились. Закройте окно и обновите список пользователей.";
+  if (message.includes("reason: conversation-list-incomplete"))
+    return "Не удалось получить полный список сессий. Повторите удаление позже.";
   if (/reason: forbidden/u.test(message)) {
     return "У вашей роли нет прав на это действие.";
   }

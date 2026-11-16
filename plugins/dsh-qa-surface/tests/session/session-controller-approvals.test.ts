@@ -62,6 +62,7 @@ describe("QA session controller", () => {
       id: "question-1",
       sessionId: "chat-1",
       createdAt: 1,
+      expiresAt: 1_800_001,
       questions: [
         {
           id: "target",
@@ -127,6 +128,7 @@ describe("QA session controller", () => {
       id: "question-1",
       sessionId: "chat-1",
       createdAt: 1,
+      expiresAt: 1_800_001,
       questions: [
         {
           id: "target",
@@ -170,6 +172,7 @@ describe("QA session controller", () => {
       id: "question-1",
       sessionId: "chat-1",
       createdAt: 1,
+      expiresAt: 1_800_001,
       questions: [
         {
           id: "target",

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import {
   focusable,
@@ -221,7 +221,7 @@ describe("the notice stack inside the surface's Tab ring", () => {
     // last control of `<main>` turns back into `<main>`.
     const lastOfMain = focusable(surface).at(-1);
     if (lastOfMain === undefined) throw new Error("the surface holds nothing");
-    lastOfMain.focus();
+    act(() => lastOfMain.focus());
     expect(fireEvent.keyDown(lastOfMain, { key: "Tab" })).toBe(false);
     expect(surface.contains(focused())).toBe(true);
     expect(stackRoot().contains(focused())).toBe(false);
@@ -246,7 +246,7 @@ describe("the notice stack inside the surface's Tab ring", () => {
     const surface = surfaceRoot();
     const lastOfMain = focusable(surface).at(-1);
     if (lastOfMain === undefined) throw new Error("the surface holds nothing");
-    lastOfMain.focus();
+    act(() => lastOfMain.focus());
 
     // The same key the case above leaves alone: the ring's last step is the
     // stack's last button now, so the edge of `<main>` is a step of the way to

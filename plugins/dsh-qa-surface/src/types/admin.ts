@@ -15,6 +15,7 @@ import type {
 export type QaAdminAuditAction =
   | "user.created"
   | "user.updated"
+  | "user.deleted"
   | "user.enabled"
   | "user.disabled"
   /** An operator set a new password for an account that had requested one. */

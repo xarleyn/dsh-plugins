@@ -9,6 +9,7 @@ import {
 } from "../personal-skills/skill-format.js";
 import { DEFAULT_THINKING_PHRASES } from "../thinking-phrases.js";
 import { DEFAULT_QA_FILE_WRITE_POLICY } from "../shared/file-write-policy.js";
+import { QA_QUESTION_TIMEOUT_DEFAULT_MINUTES } from "../shared/question-timing.js";
 import type { ResolvedQaSurfaceConfig } from "../types.js";
 
 /** The canonical resolved config; every domain resolver defaults from it. */
@@ -63,6 +64,7 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
       // tool gate's `ask` opts in with `interactive`.
       approvals: "blocked",
       questions: "unsupported",
+      questionTimeoutMinutes: QA_QUESTION_TIMEOUT_DEFAULT_MINUTES,
     }),
     lockdown: Object.freeze({
       enabled: true,
@@ -166,6 +168,7 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
       allowOs: true,
     }),
     tools: Object.freeze({
+      discoveryMode: "off" as const,
       fileWritePolicy: DEFAULT_QA_FILE_WRITE_POLICY,
       dynamicActivation: true,
       activationSkill: "qa-surface",

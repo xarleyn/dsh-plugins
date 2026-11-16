@@ -4,6 +4,10 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { freePort, rpc, stopProcess, waitFor } from "./smoke-helpers.mjs";
 import {
+  runReviewDockPass,
+  startReviewProvider,
+} from "./smoke-review-dock.mjs";
+import {
   runChatLayoutPass,
   startLayoutProvider,
 } from "./smoke-chat-layout.mjs";
@@ -24,14 +28,21 @@ export async function runIntegrationFolderBrowserPass(options) {
     hostLog,
     modelSelection = false,
     chatLayoutOnly = false,
+    reviewDockOnly = false,
   } = options;
   const port = await freePort();
   const origin = `http://127.0.0.1:${port}`;
   const patch = join(root, "integration-folder.patch.yml");
   const modelPass =
     !chatLayoutOnly &&
+    !reviewDockOnly &&
     (modelSelection || process.env.DSH_QA_MODEL_SMOKE === "1");
-  const layoutProvider = modelPass ? undefined : await startLayoutProvider();
+  const reviewControl = { answerReady: null, reviewRequested: false };
+  const layoutProvider = reviewDockOnly
+    ? await startReviewProvider(reviewControl)
+    : modelPass
+      ? undefined
+      : await startLayoutProvider();
   const stableCode = join(workspacePath, "stable-code");
   const previewCode = join(workspacePath, "preview-code");
   if (modelPass)
@@ -96,7 +107,21 @@ ${
         baseURL: http://127.0.0.1:${layoutProvider.address().port}/v1
         models:
           - id: layout-demo
-            name: Demo`
+            name: Demo${
+              reviewDockOnly
+                ? `
+          - id: review-demo
+            name: Reviewer
+- id: dsh-answer-review-gate
+  config:
+    failMode: open
+    reviewer:
+      backend: subagent
+      provider: spawn
+      route: qa-layout
+      model: review-demo`
+                : ""
+            }`
 }`,
   );
   const log = [];
@@ -134,13 +159,45 @@ ${
       { args: { token: session.token, subroleId: null, adminPreview: false } },
       cookie,
     );
+    // Create closed, durable conversations across the same restart as the form.
+    const removalExamples = [];
+    if (!modelPass && !reviewDockOnly) {
+      for (const name of ["keep-history", "erase-history"]) {
+        const account = await rpc(
+          origin,
+          "qaSurface/accountsRegister",
+          {
+            args: {
+              email: name + "@example.test",
+              password: "demo-password-two",
+            },
+          },
+          cookie,
+        );
+        const chat = await rpc(
+          origin,
+          "qaSurface/createSession",
+          {
+            args: {
+              token: account.token,
+              subroleId: null,
+              adminPreview: false,
+            },
+          },
+          cookie,
+        );
+        removalExamples.push({ name, account, chat });
+      }
+    }
     await stopProcess(host);
     host = undefined;
-    const formFixture = await seedFormBrowserFixture(
-      dshEnv.DSH_HOME,
-      formSession,
-      session.user.id,
-    );
+    const formFixture = reviewDockOnly
+      ? undefined
+      : await seedFormBrowserFixture(
+          dshEnv.DSH_HOME,
+          formSession,
+          session.user.id,
+        );
     log.length = 0;
     host = spawn(
       process.execPath,
@@ -187,6 +244,82 @@ ${
       },
     );
     await page.goto(`${origin}/?token=${encodeURIComponent(launch)}`);
+    const verifyRemoval = async (adminPage) => {
+      await adminPage.getByTestId("qa-surface-header-admin").click();
+      await adminPage.getByTestId("qa-admin-nav-users").click();
+      for (const { name, account, chat } of removalExamples) {
+        const erase = name === "erase-history";
+        const row = adminPage
+          .getByTestId("qa-admin-users-row")
+          .filter({ hasText: account.user.email });
+        if (erase) {
+          await row.getByRole("button", { name: "Открыть" }).click();
+          await adminPage
+            .getByRole("button", { name: "Удалить аккаунт…", exact: true })
+            .click();
+        } else
+          await row.getByRole("button", { name: /Удалить аккаунт/u }).click();
+        const dialog = adminPage.getByRole("dialog", {
+          name: "Удалить аккаунт?",
+        });
+        assert.equal(await dialog.getByRole("checkbox").isChecked(), false);
+        if (erase) await dialog.getByRole("checkbox").check();
+        await dialog
+          .getByRole("button", {
+            name: erase ? "Удалить аккаунт и 1 разговор" : "Удалить аккаунт",
+            exact: true,
+          })
+          .click();
+        await adminPage
+          .getByRole("status")
+          .filter({ hasText: `Аккаунт «${name}» удалён.` })
+          .waitFor();
+        await row.waitFor({ state: "detached" });
+        const who = await rpc(
+          origin,
+          "qaSurface/accountsWhoami",
+          { args: { token: account.token } },
+          cookie,
+        );
+        assert.equal(who.authenticated, false);
+        const history = await rpc(
+          origin,
+          "qaSurface/adminConversations",
+          {
+            args: {
+              token: session.token,
+              query: { userId: account.user.id },
+              cursor: null,
+              limit: 10,
+            },
+          },
+          cookie,
+        );
+        assert.deepEqual(
+          history.items.map((item) => [item.conversationId, item.displayName]),
+          erase ? [] : [[chat, "Удалённый пользователь"]],
+        );
+      }
+      for (const { chat } of removalExamples.filter(
+        ({ name }) => name === "keep-history",
+      )) {
+        await adminPage.getByTestId("qa-admin-nav-conversations").click();
+        await adminPage
+          .getByTestId("qa-admin-conversations-row")
+          .filter({ hasText: chat })
+          .getByTestId("qa-admin-conversations-open")
+          .click();
+        await adminPage
+          .getByTestId("qa-admin-conversation-transcript")
+          .waitFor();
+        await adminPage.getByText(/Удалённый пользователь ·/u).waitFor();
+        await adminPage.getByTestId("qa-admin-nav-users").click();
+      }
+      await adminPage.getByTestId("qa-admin-back-to-chat").click();
+      console.log(
+        "packed QA account removal: both dialog paths, credentials and stored conversation history passed",
+      );
+    };
     await page.goto(`${origin}/qa`);
     const deferOnboarding = async () => {
       const first = page.getByRole("dialog", {
@@ -214,6 +347,19 @@ ${
       exact: true,
     });
     if (await notice.isVisible()) await notice.click();
+    if (reviewDockOnly) {
+      try {
+        await runReviewDockPass(page, reviewControl);
+      } catch (error) {
+        console.error(
+          "Review dock at failure:",
+          await page.getByTestId("qa-composer").allInnerTexts(),
+        );
+        throw error;
+      }
+      return;
+    }
+    if (removalExamples.length > 0) await verifyRemoval(page);
     await runFormBrowserPass({
       page,
       origin,

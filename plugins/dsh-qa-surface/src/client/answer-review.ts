@@ -4,8 +4,45 @@ import type {
   ConversationSnapshot,
 } from "@deepseek-ai/dsh-client-ui-conversation/client";
 import type { QaAnswerReview } from "../types/answer-review.js";
+import type { QaComposerActivity, QaMessage } from "../types.js";
 
 export const QA_REVIEW_NODE = "qa-answer-review";
+
+export function latestChatTurn(snapshot: ConversationSnapshot | undefined) {
+  const timeline = snapshot?.views.get("chat")?.timeline;
+  const id = timeline?.turnOrder.at(-1);
+  return id === undefined ? undefined : timeline?.turns.get(id);
+}
+
+export function isReviewInProgress(activity?: QaComposerActivity): boolean {
+  return activity === "reviewing" || activity === "recovering";
+}
+
+export function composerActivity(
+  turn: ReturnType<typeof latestChatTurn>,
+  messages: readonly QaMessage[],
+  running: boolean,
+): QaComposerActivity | undefined {
+  // The session's running bit and the conversation timeline publish independently.
+  // A closed turn must not supply the review for a newly starting one.
+  if (running && turn?.status === "closed") return undefined;
+  let review: QaAnswerReview["status"] | undefined;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i];
+    if (message?.role === "user") break;
+    if (message?.role === "assistant") {
+      if (turn && message.turn === turn.turn) review = message.review?.status;
+      break;
+    }
+  }
+  if (review === "cancelled") return review;
+  if (turn?.end?.data.reason.kind === "aborted") {
+    return isReviewInProgress(review) ? "cancelled" : "stopped";
+  }
+  if (review !== undefined && (running || !isReviewInProgress(review)))
+    return review;
+  return running ? "writing" : undefined;
+}
 
 declare module "@deepseek-ai/dsh-client-ui-chat/client" {
   interface ChatNodeDataMap {
