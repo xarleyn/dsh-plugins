@@ -1656,7 +1656,15 @@ export class QaAccounts {
     sessionId: string,
     requestId: string,
   ): boolean {
-    return this.database.integrationClarificationsAllowed(sessionId, requestId);
+    return this.integrationRequestPolicy(sessionId, requestId) !== false;
+  }
+
+  /** Only a request admitted through the integration API has a stored policy. */
+  integrationRequestPolicy(
+    sessionId: string,
+    requestId: string,
+  ): boolean | undefined {
+    return this.database.integrationRequestPolicy(sessionId, requestId);
   }
 
   setServiceTokenHistoryFolder(

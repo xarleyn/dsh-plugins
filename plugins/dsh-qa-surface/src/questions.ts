@@ -74,6 +74,8 @@ export const QA_QUESTIONS_UNSUPPORTED =
  */
 export const QA_ASK_QUESTION_TOOL = "ask_user_question";
 
+export type QaQuestionMode = "timed" | "untimed" | "blocked";
+
 const CANCELLED_MESSAGE =
   "the user closed the question without answering; ask in plain text instead";
 
@@ -110,7 +112,8 @@ export class QaQuestionGate {
     private readonly interactive: () => boolean,
     private readonly ownership: QaSessionOwnership,
     private readonly logger: PluginLogger,
-    private readonly questionsAllowed: (agent: Agent) => boolean = () => true,
+    private readonly questionMode: (agent: Agent) => QaQuestionMode = () =>
+      "timed",
     private readonly policy?: {
       prepare(request: QaQuestionRequest): QaQuestionRequest;
       answered(request: QaQuestionRequest, answer: QaQuestionAnswer): void;
@@ -163,7 +166,11 @@ export class QaQuestionGate {
     const now = Date.now();
     return [...this.pending.values()]
       .map((entry) => entry.view)
-      .filter((view) => view.sessionId === sessionId && now < view.expiresAt)
+      .filter(
+        (view) =>
+          view.sessionId === sessionId &&
+          (view.expiresAt === null || now < view.expiresAt),
+      )
       .sort((left, right) => left.createdAt - right.createdAt);
   }
 
@@ -262,7 +269,7 @@ export class QaQuestionGate {
     const entry = this.pending.get(requestId);
     if (entry?.view.sessionId !== sessionId) return undefined;
     // An RPC can run past the deadline before Node services the timer.
-    if (Date.now() >= entry.view.expiresAt) {
+    if (entry.view.expiresAt !== null && Date.now() >= entry.view.expiresAt) {
       entry.settle({ kind: "cancelled", reason: "timeout" });
       return undefined;
     }
@@ -286,7 +293,8 @@ export class QaQuestionGate {
       this.logger.debug("question.delegated", { reason: "unowned" });
       return next();
     }
-    if (!this.questionsAllowed(request.agent!)) {
+    const mode = this.questionMode(request.agent!);
+    if (mode === "blocked") {
       throw new Error(
         "Clarifying questions are disabled for this integration request. Answer from available evidence without asking for input.",
       );
@@ -296,7 +304,7 @@ export class QaQuestionGate {
       throw new Error(QA_QUESTIONS_UNSUPPORTED);
     }
     request = this.policy?.prepare(request) ?? request;
-    const minutes = this.timeoutMinutes();
+    const minutes = mode === "untimed" ? null : this.timeoutMinutes();
     const outcome = await this.park(sessionId, askingId, request, minutes);
     if (outcome.kind === "cancelled") {
       this.policy?.cancelled?.(request);
@@ -316,7 +324,7 @@ export class QaQuestionGate {
     sessionId: string,
     agentId: string,
     request: QaQuestionRequest,
-    timeoutMinutes: number,
+    timeoutMinutes: number | null,
   ): Promise<QaQuestionOutcome> {
     const signal = request.signal;
     if (signal?.aborted === true)
@@ -324,7 +332,8 @@ export class QaQuestionGate {
     return new Promise<QaQuestionOutcome>((resolve) => {
       const id = randomUUID();
       const createdAt = Date.now();
-      const timeoutMs = timeoutMinutes * 60_000;
+      const timeoutMs =
+        timeoutMinutes === null ? null : timeoutMinutes * 60_000;
       const onAbort = () => finish({ kind: "cancelled", reason: "aborted" });
       const finish = (outcome: QaQuestionOutcome) => {
         if (!this.pending.has(id)) return;
@@ -348,11 +357,14 @@ export class QaQuestionGate {
         resolve(outcome);
       };
       const questions = request.questions.map(normalizeQuestion);
-      const timer = setTimeout(
-        () => finish({ kind: "cancelled", reason: "timeout" }),
-        timeoutMs,
-      );
-      timer.unref?.();
+      const timer =
+        timeoutMs === null
+          ? undefined
+          : setTimeout(
+              () => finish({ kind: "cancelled", reason: "timeout" }),
+              timeoutMs,
+            );
+      timer?.unref?.();
       this.pending.set(id, {
         ownerSessionId: sessionId,
         agentId,
@@ -361,7 +373,7 @@ export class QaQuestionGate {
           sessionId,
           questions,
           createdAt,
-          expiresAt: createdAt + timeoutMs,
+          expiresAt: timeoutMs === null ? null : createdAt + timeoutMs,
         },
         settle: finish,
       });

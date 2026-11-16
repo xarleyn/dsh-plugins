@@ -180,7 +180,7 @@ export function SessionSection(props: ConfigProps) {
           min={1}
           max={QA_QUESTION_TIMEOUT_MAX_MINUTES}
           disabled={disabled}
-          hint="Действует для новых вопросов. Пока вопрос открыт в чате, звуковое напоминание повторяется каждые 5 минут. Если время истекло, ассистент узнает, что ответа не было."
+          hint="Действует для новых вопросов в обычном чате. Вопросы от API-интеграции ждут ответа без ограничения по времени. Пока вопрос открыт, чат напоминает о нём каждые 5 минут."
           testId="qa-settings-question-timeout"
           onChange={(value) =>
             props.write(["interaction", "questionTimeoutMinutes"], value)

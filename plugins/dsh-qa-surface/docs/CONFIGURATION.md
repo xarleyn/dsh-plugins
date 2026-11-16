@@ -708,10 +708,12 @@ form the operator fills in (options, free text, explicit skip and cancel); a
 skipped question is reported as skipped, never guessed. While the form is up it
 takes the composer's place — the operator is answering a tool call that is
 already open — and the run's Stop moves into the form's header, so the turn can
-still be ended. The Host gives each new request `interaction.questionTimeoutMinutes`
+still be ended. The Host gives each new browser-turn question `interaction.questionTimeoutMinutes`
 (default: 30 whole minutes, range: 1–35,791). Changing the setting or reloading
 the page does not reset a pending request's deadline. On expiry the agent is
-told that no answer or approval was given. The open chat shows the deadline,
+told that no answer or approval was given. A clarification from an integration
+API turn that allows questions has no QA deadline, including when a delegated
+agent asks it. The open chat shows the deadline when there is one,
 sounds a chime when the form appears and repeats it every five minutes until
 settlement, never at the deadline. The browser may require a click or keypress
 in the page before it can play sound.

@@ -4,6 +4,7 @@ import { createUserMessage } from "@deepseek-ai/dsh-llm";
 import { SessionSeq, type Session } from "@deepseek-ai/dsh-session";
 import type { QaAccounts } from "../accounts/store.js";
 import type { QaNotesMessageSource } from "../prompt-notes.js";
+import type { QaQuestionMode } from "../questions.js";
 import { qaDelegatedHeader } from "../shared/session-lineage.js";
 
 const NOTE = "dsh-qa-surface:integration-clarifications";
@@ -16,7 +17,7 @@ const ALLOWED_NOTE =
 export class QaIntegrationQuestionPolicy {
   private readonly turns = new Map<
     string,
-    { turn: number; blocked: boolean }
+    { turn: number; mode: QaQuestionMode }
   >();
   private readonly notes = new Map<string, string>();
   private readonly disposers: (() => void)[];
@@ -38,30 +39,21 @@ export class QaIntegrationQuestionPolicy {
           if (this.accounts()?.ownerIdOf(id) === undefined) return decision;
           let state = this.turns.get(id) ?? this.recover(root);
           if (root === agent.session) {
-            state = {
-              turn,
-              blocked:
-                (state.turn === turn && state.blocked) ||
-                decision.messages.some((message) => {
-                  const requestId = (message.source as { rpcId?: string })
-                    .rpcId;
-                  return (
-                    requestId !== undefined &&
-                    this.accounts()?.integrationClarificationsAllowed(
-                      id,
-                      requestId,
-                    ) === false
-                  );
-                }),
-            };
+            let mode: QaQuestionMode =
+              state.turn === turn ? state.mode : "timed";
+            for (const message of decision.messages) {
+              mode = this.includeSource(id, mode, message.source);
+            }
+            state = { turn, mode };
             this.turns.set(id, state);
           }
           // Refresh the note on the next turn too, so a prior restriction cannot
           // silently carry into browser input or a token which allows questions.
-          const key = `${state.turn}:${state.blocked}`;
+          const blocked = state.mode === "blocked";
+          const key = `${state.turn}:${blocked}`;
           if (this.notes.get(String(agent.id)) === key) return decision;
           this.notes.set(String(agent.id), key);
-          const text = state.blocked
+          const text = blocked
             ? QA_INTEGRATION_NO_CLARIFICATIONS
             : ALLOWED_NOTE;
           const source: QaNotesMessageSource = {
@@ -82,7 +74,7 @@ export class QaIntegrationQuestionPolicy {
       ctx.tools.guard((execution) =>
         execution.name === "ask_user_question" &&
         execution.agent !== undefined &&
-        !this.allowed(execution.agent)
+        this.mode(execution.agent) === "blocked"
           ? QA_INTEGRATION_NO_CLARIFICATIONS
           : undefined,
       ),
@@ -97,12 +89,33 @@ export class QaIntegrationQuestionPolicy {
     ];
   }
 
-  allowed(agent: Agent): boolean {
+  mode(agent: Agent): QaQuestionMode {
     const root = this.root(agent);
     const knownRoot = this.qaRoot(String(agent.session.id));
-    if (knownRoot !== undefined && qaDelegatedHeader(root.header)) return false;
+    if (knownRoot !== undefined && qaDelegatedHeader(root.header))
+      return "blocked";
     const state = this.turns.get(String(root.id)) ?? this.recover(root);
-    return !state.blocked;
+    return state.mode;
+  }
+
+  /** The strictest token wins. Browser input has no stored integration policy. */
+  private includeSource(
+    sessionId: string,
+    mode: QaQuestionMode,
+    source: object,
+  ): QaQuestionMode {
+    if (
+      mode === "blocked" ||
+      !("rpcId" in source) ||
+      typeof source.rpcId !== "string"
+    )
+      return mode;
+    const allowed = this.accounts()?.integrationRequestPolicy(
+      sessionId,
+      source.rpcId,
+    );
+    if (allowed === undefined) return mode;
+    return allowed ? "untimed" : "blocked";
   }
 
   private root(agent: Agent): Session {
@@ -122,8 +135,8 @@ export class QaIntegrationQuestionPolicy {
   }
 
   /** Recover after a plugin reload from consumed messages, never queued future input. */
-  private recover(session: Session): { turn: number; blocked: boolean } {
-    let blocked = false;
+  private recover(session: Session): { turn: number; mode: QaQuestionMode } {
+    let mode: QaQuestionMode = "timed";
     let turn = 0;
     for (let seq = Number(session.seq); seq > 0; seq--) {
       const event = session.eventAt(SessionSeq(seq));
@@ -132,17 +145,9 @@ export class QaIntegrationQuestionPolicy {
         break;
       }
       if (event?.type !== "user/message") continue;
-      const requestId = (event.data.source as { rpcId?: string }).rpcId;
-      if (
-        requestId !== undefined &&
-        this.accounts()?.integrationClarificationsAllowed(
-          String(session.id),
-          requestId,
-        ) === false
-      )
-        blocked = true;
+      mode = this.includeSource(String(session.id), mode, event.data.source);
     }
-    const state = { turn, blocked };
+    const state = { turn, mode };
     this.turns.set(String(session.id), state);
     return state;
   }

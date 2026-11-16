@@ -71,7 +71,7 @@ function fixture() {
     () => true,
     ownership,
     { debug() {}, info() {}, warn() {}, error() {} } as never,
-    () => true,
+    undefined,
     {
       prepare: (request) => policy.prepareQuestion(request),
       answered: (request, answer) => policy.answered(request, answer),

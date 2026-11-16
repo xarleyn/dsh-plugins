@@ -80,9 +80,10 @@ function QaQuestionForm({
   const [busy, setBusy] = useState<"answer" | "cancel" | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const questions = request.questions;
-  const deadline = Number.isFinite(request.expiresAt)
-    ? new Date(request.expiresAt)
-    : null;
+  const deadline =
+    request.expiresAt !== null && Number.isFinite(request.expiresAt)
+      ? new Date(request.expiresAt)
+      : null;
   const question = questions[Math.min(index, questions.length - 1)];
   if (question === undefined) return null;
   const draft = drafts[question.id] ?? NO_DRAFT;

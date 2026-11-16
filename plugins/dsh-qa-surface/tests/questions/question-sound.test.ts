@@ -82,6 +82,16 @@ it("stops a settled request and gives the next request its own schedule", () => 
   expect(tones).toEqual([0, 6, 11]);
 });
 
+it("keeps reminding for an open-ended question until it is answered or closed", () => {
+  const { rerender, request, tones } = soundFixture();
+  rerender([{ ...request, expiresAt: null }]);
+  vi.advanceTimersByTime(35 * minute);
+  expect(tones).toEqual([0, 5, 10, 15, 20, 25, 30, 35]);
+  rerender([]);
+  vi.advanceTimersByTime(5 * minute);
+  expect(tones.at(-1)).toBe(35);
+});
+
 it("sounds only a still-live question when the browser unlocks audio", () => {
   const { rerender, request, tones } = soundFixture(true);
   vi.advanceTimersByTime(6 * minute);
