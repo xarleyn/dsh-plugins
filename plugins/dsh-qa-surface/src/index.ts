@@ -501,8 +501,11 @@ export class QaSurface extends TypertRemoteService {
       // Deletion is the console's alone: the sidebar's delete stays a
       // per-browser row, and only an administrator removes the chat itself.
       sessionFiles: createSessionEraser(),
-      ...(this.getConfig().accounts.enabled ? { sharing: this.sharing() } : {}),
-      dropSources: (sessionId) => this.provenance.dropSession(sessionId),
+      dropSources: (sessionId) => {
+        this.provenance.dropSession(sessionId);
+        this.sharing().dropSession(sessionId);
+      },
+      dropSharingForUser: (userId) => this.sharing().dropUser(userId),
       // The console writes skills through the same service the owner's editor
       // uses, so an administrator's save is path-checked, validated and
       // published to DSH by exactly the one code path that already does it.
@@ -1818,6 +1821,23 @@ export class QaSurface extends TypertRemoteService {
     );
   }
 
+  @Remote("adminDeleteUser")
+  adminDeleteUser(
+    token: string,
+    userId: string,
+    deleteConversations: boolean,
+    expectedConversations: number,
+  ): Promise<number> {
+    return this.accountRemotes.runAsync(() =>
+      this.admin.deleteUser(
+        token,
+        userId,
+        deleteConversations,
+        expectedConversations,
+      ),
+    );
+  }
+
   @Remote("adminPasswordResetRequests")
   adminPasswordResetRequests(
     token: string,
@@ -1878,12 +1898,9 @@ export class QaSurface extends TypertRemoteService {
     token: string,
     conversationId: string,
   ): Promise<QaConversationDeletion> {
-    return this.accountRemotes.runAsync(async () => {
-      const result = await this.admin.deleteConversation(token, conversationId);
-      if (this.getConfig().accounts.enabled)
-        for (const id of result.sessions) this.sharing().dropSession(id);
-      return result;
-    });
+    return this.accountRemotes.runAsync(() =>
+      this.admin.deleteConversation(token, conversationId),
+    );
   }
 
   @Remote("adminFeedback")

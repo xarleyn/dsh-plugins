@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { adminApi, renderConsole } from "./qa-admin-console.helpers.js";
 import type { QaAdminUserDetail } from "../../../src/types.js";
@@ -45,6 +45,79 @@ function checkbox(): HTMLInputElement {
 }
 
 describe("admin user detail card", () => {
+  it("keeps the dialog open on refusal and omits the history option for an empty account", async () => {
+    const user = { ...detail().user, conversations: 0 };
+    const deleteUser = vi.fn(async () => ({
+      ok: false as const,
+      error: new Error("reason: last-admin"),
+    }));
+    renderConsole(
+      adminApi({
+        user: async () => ({ ok: true, value: detail({ user }) }),
+        deleteUser,
+      }),
+      "/qa/admin/users/u1",
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Удалить аккаунт…" }),
+    );
+    const dialog = within(screen.getByRole("dialog"));
+    expect(dialog.queryByRole("checkbox")).toBeNull();
+    fireEvent.click(
+      dialog.getByRole("button", { name: "Удалить аккаунт" }),
+    );
+    expect((await dialog.findByRole("alert")).textContent).toContain(
+      "администратор",
+    );
+    expect(deleteUser.mock.calls).toEqual([["token", "u1", false, 0]]);
+    fireEvent.click(dialog.getByRole("button", { name: "Отмена" }));
+    expect(window.location.pathname).toBe("/qa/admin/users/u1");
+  });
+  it.each([false, true])(
+    "deletes from the list or card with explicit history selection (%s)",
+    async (purge) => {
+      const value = detail();
+      const deleteUser = vi.fn(async () => ({ ok: true as const, value: 14 }));
+      const users = vi.fn(async () => {
+        const items = deleteUser.mock.calls.length ? [] : [value.user];
+        return {
+          ok: true as const,
+          value: { items, total: items.length, nextCursor: null },
+        };
+      });
+      renderConsole(
+        adminApi({
+          users,
+          deleteUser,
+          user: async () => ({ ok: true, value }),
+        }),
+        purge ? "/qa/admin/users/u1" : "/qa/admin/users",
+      );
+      const open = await screen.findByRole("button", {
+        name: /Удалить аккаунт/u,
+      });
+      fireEvent.click(open);
+      let dialog = within(screen.getByRole("dialog"));
+      fireEvent.click(dialog.getByRole("checkbox"));
+      fireEvent.click(dialog.getByRole("button", { name: "Отмена" }));
+      expect(deleteUser).not.toHaveBeenCalled();
+      fireEvent.click(open);
+      dialog = within(screen.getByRole("dialog"));
+      const checkbox = dialog.getByRole("checkbox") as HTMLInputElement;
+      expect(checkbox.checked).toBe(false);
+      if (purge) fireEvent.click(checkbox);
+      fireEvent.click(
+        dialog.getByRole("button", {
+          name: purge ? "Удалить аккаунт и 14 разговоров" : "Удалить аккаунт",
+        }),
+      );
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      expect(deleteUser.mock.calls).toEqual([["token", "u1", purge, 14]]);
+      expect(window.location.pathname).toBe("/qa/admin/users");
+      expect(await screen.findByText(/Аккаунт «alice» удалён/u)).toBeTruthy();
+      expect(await screen.findByText("Никого не нашлось.")).toBeTruthy();
+    },
+  );
   it.each(["role", "slots", "model"] as const)(
     "preserves independent model grants and queue overrides when editing %s",
     async (field) => {

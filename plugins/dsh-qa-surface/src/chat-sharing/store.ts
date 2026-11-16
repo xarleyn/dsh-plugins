@@ -245,6 +245,17 @@ export class QaChatSharingStore {
     });
   }
 
+  dropUser(id: string): void {
+    this.storage.transaction(() => {
+      this.storage.db
+        .prepare("DELETE FROM grants WHERE owner_id=? OR user_id=?")
+        .run(id, id);
+      this.storage.db
+        .prepare("UPDATE authors SET display_name=? WHERE user_id=?")
+        .run("Удалённый пользователь", id);
+    });
+  }
+
   dropSession(id: string): void {
     this.storage.transaction(() => {
       this.storage.db.prepare("DELETE FROM grants WHERE session_id=?").run(id);

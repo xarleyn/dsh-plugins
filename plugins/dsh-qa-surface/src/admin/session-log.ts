@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, rmSync } from "node:fs";
 import path from "node:path";
+import { QaAccountsError } from "../accounts/errors.js";
 import type { Context } from "@deepseek-ai/cordis";
 import type { SessionId } from "@deepseek-ai/dsh-session";
 import type { QaTranscriptUnavailableReason } from "../types.js";
@@ -161,7 +162,10 @@ export interface QaSessionEraseOutcome {
  * home. Implementations report what they could not do instead of guessing.
  */
 export interface QaStoredSessionEraser {
-  erase(sessionIds: readonly string[]): Promise<QaSessionEraseOutcome>;
+  erase(
+    sessionIds: readonly string[],
+    required?: ReadonlySet<string>,
+  ): Promise<QaSessionEraseOutcome>;
 }
 
 /**
@@ -462,7 +466,10 @@ export function createSessionEraser(home?: string): QaStoredSessionEraser {
     );
 
   return {
-    async erase(sessionIds: readonly string[]): Promise<QaSessionEraseOutcome> {
+    async erase(
+      sessionIds: readonly string[],
+      required?: ReadonlySet<string>,
+    ): Promise<QaSessionEraseOutcome> {
       const removed: string[] = [];
       const absent: string[] = [];
       const rootPath = root();
@@ -471,6 +478,7 @@ export function createSessionEraser(home?: string): QaStoredSessionEraser {
             .filter((entry) => entry.isDirectory())
             .map((entry) => path.join(rootPath, entry.name))
         : [];
+      const directories = new Map<string, string>();
       for (const sessionId of sessionIds) {
         // An id is a harness-minted token and the directory it names is its
         // last path segment. Requiring exactly that — and a location inside
@@ -485,9 +493,17 @@ export function createSessionEraser(home?: string): QaStoredSessionEraser {
           )
           .find((candidate) => existsSync(candidate));
         if (directory === undefined) {
+          if (required?.has(sessionId))
+            throw new QaAccountsError(
+              "conversation-not-removable",
+              "listed session has no removable directory",
+            );
           absent.push(sessionId);
           continue;
         }
+        directories.set(sessionId, directory);
+      }
+      for (const [sessionId, directory] of directories) {
         rmSync(directory, { recursive: true, force: true });
         removed.push(sessionId);
       }

@@ -901,7 +901,7 @@ export class QaAccounts {
       .map(([sessionId, owner]) => ({
         sessionId,
         userId: owner.userId,
-        displayName: names.get(owner.userId) ?? owner.userId,
+        displayName: names.get(owner.userId) ?? "Удалённый пользователь",
         claimedAt: owner.claimedAt,
       }))
       .sort((left, right) => left.claimedAt.localeCompare(right.claimedAt));
@@ -1166,6 +1166,20 @@ export class QaAccounts {
       },
     };
     return skillActivations;
+  }
+
+  deleteAccount(
+    userId: string,
+    requireEmptyHistory: boolean,
+    beforeCommit?: (retained: number) => void,
+  ): number {
+    const retained = this.database.deleteAccount(
+      userId,
+      requireEmptyHistory,
+      beforeCommit,
+    );
+    this.file = this.database.loadAll();
+    return retained;
   }
 
   /** Create an account outside the self-registration gate. */

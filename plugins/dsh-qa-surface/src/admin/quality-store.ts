@@ -88,6 +88,7 @@ const AUDIT_ACTIONS: readonly QaAdminAuditAction[] = [
   "user.enabled",
   "user.disabled",
   "user.password-reset",
+  "user.deleted",
   "authorization.changed",
   "subrole.assignment.changed",
   "subrole.created",

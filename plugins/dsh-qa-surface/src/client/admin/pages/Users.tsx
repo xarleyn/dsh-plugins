@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   QaAccountRole,
   QaAdminUserRow,
@@ -226,6 +226,8 @@ export function AdminUsers(props: {
   readonly api: QaAdminApi;
   readonly token: string;
   readonly onOpenUser: (userId: string) => void;
+  readonly deletion: { notice: string } | undefined;
+  readonly onDelete: ((user: QaAdminUserRow) => void) | undefined;
 }) {
   const [search, setSearch] = useState("");
   const [role, setRole] = useState<QaAccountRole | "">("");
@@ -235,12 +237,14 @@ export function AdminUsers(props: {
   const [total, setTotal] = useState(0);
   const [error, setError] = useState<string>();
   const [loading, setLoading] = useState(true);
+  const generation = useRef(0);
 
   // One loader owns the page: the filter state rebuilds the callback, which
   // restarts paging from the first page, and "show more" continues from the
   // cursor the Host returned.
   const load = useCallback(
     async (next: string | null, append: boolean) => {
+      const current = ++generation.current;
       setLoading(true);
       const result = await props.api.users(
         props.token,
@@ -252,6 +256,7 @@ export function AdminUsers(props: {
         next,
         PAGE_SIZE,
       );
+      if (generation.current !== current) return;
       setLoading(false);
       if (!result.ok) {
         setError(adminErrorMessage(result.error));
@@ -269,7 +274,10 @@ export function AdminUsers(props: {
 
   useEffect(() => {
     void load(null, false);
-  }, [load]);
+    return () => {
+      generation.current++;
+    };
+  }, [load, props.deletion]);
 
   return (
     <section
@@ -282,11 +290,19 @@ export function AdminUsers(props: {
           <h1>Пользователи</h1>
           <p>
             Административная роль и профили агента настраиваются независимо.
-            Удаления нет: историю разговоров сохраняет отключение.
           </p>
         </div>
       </div>
-      <PasswordResetQueue api={props.api} token={props.token} />
+      {props.deletion && (
+        <p className="dsh-qa-admin__notice" role="status">
+          {props.deletion.notice}
+        </p>
+      )}
+      <PasswordResetQueue
+        key={props.deletion?.notice}
+        api={props.api}
+        token={props.token}
+      />
       <div
         className="dsh-qa-admin__filters"
         data-testid="qa-admin-users-filters"
@@ -389,6 +405,16 @@ export function AdminUsers(props: {
                   >
                     Открыть
                   </button>
+                  {props.onDelete && (
+                    <button
+                      type="button"
+                      className="dsh-qa-admin__danger"
+                      aria-label={`Удалить аккаунт «${row.fullName || row.displayName}»`}
+                      onClick={() => props.onDelete?.(row)}
+                    >
+                      Удалить…
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
@@ -414,6 +440,7 @@ export function AdminUserDetail(props: {
   readonly token: string;
   readonly userId: string;
   readonly onBack: () => void;
+  readonly onDelete: ((user: QaAdminUserRow) => void) | undefined;
   readonly onOpenAudit: () => void;
   readonly onOpenConversations: (userId: string) => void;
 }) {
@@ -532,6 +559,15 @@ export function AdminUserDetail(props: {
             вход {formatStamp(detail.user.lastLoginAt ?? undefined)}
           </p>
         </div>
+        {props.onDelete && (
+          <button
+            type="button"
+            className="dsh-qa-admin__danger"
+            onClick={() => props.onDelete?.(detail.user)}
+          >
+            Удалить аккаунт…
+          </button>
+        )}
       </div>
       {error === undefined ? null : (
         <p

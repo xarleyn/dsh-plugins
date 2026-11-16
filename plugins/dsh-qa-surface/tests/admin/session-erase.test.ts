@@ -77,6 +77,19 @@ describe("stored-session removal", () => {
     expect(existsSync(path.join(home, "sessions"))).toBe(true);
   });
 
+  it("checks the whole batch for unavailable stored sessions before removing any directory", async () => {
+    const home = fixture();
+    await expect(
+      createSessionEraser(home).erase(
+        ["session-a", "missing"],
+        new Set(["missing"]),
+      ),
+    ).rejects.toMatchObject({ reason: "conversation-not-removable" });
+    expect(
+      existsSync(path.join(home, "sessions", "--e-work--", "session-a")),
+    ).toBe(true);
+  });
+
   it("answers an absent home without failing", async () => {
     const home = mkdtempSync(path.join(tmpdir(), "qa-sessions-empty-"));
     roots.push(home);

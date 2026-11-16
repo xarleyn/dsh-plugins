@@ -196,6 +196,7 @@ export function adminApi(overrides: Partial<QaAdminApi> = {}): QaAdminApi {
       error: new Error("unused"),
     })),
     updateUser: vi.fn(),
+    deleteUser: vi.fn(),
     conversations: vi.fn(async () => page([SUMMARY])),
     conversation: vi.fn(async () => ({
       ok: true as const,

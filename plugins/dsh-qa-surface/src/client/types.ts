@@ -222,6 +222,12 @@ export interface QaAdminApi {
     userId: string,
     update: QaAdminUserUpdate,
   ): Promise<RemoteResult<QaAdminUserDetail>>;
+  deleteUser(
+    token: string,
+    userId: string,
+    deleteConversations: boolean,
+    expectedConversations: number,
+  ): Promise<RemoteResult<number>>;
   /**
    * Accounts that asked for a password reset from the sign-in screen, newest
    * first. Reading takes `users.read`; answering one takes `users.manage`.

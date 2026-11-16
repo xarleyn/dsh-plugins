@@ -176,6 +176,12 @@ interface QaAdminRemote {
     userId: string,
     update: QaAdminUserUpdate,
   ): Promise<RemoteResult<QaAdminUserDetail>>;
+  adminDeleteUser(
+    token: string,
+    userId: string,
+    deleteConversations: boolean,
+    expectedConversations: number,
+  ): Promise<RemoteResult<number>>;
   adminPasswordResetRequests(
     token: string,
   ): Promise<RemoteResult<readonly QaPasswordResetRequest[]>>;
@@ -754,6 +760,18 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
         user: (token, userId) => policyRemote.adminUser(token, userId),
         updateUser: (token, userId, update) =>
           policyRemote.adminUpdateUser(token, userId, update),
+        deleteUser: (
+          token,
+          userId,
+          deleteConversations,
+          expectedConversations,
+        ) =>
+          policyRemote.adminDeleteUser(
+            token,
+            userId,
+            deleteConversations,
+            expectedConversations,
+          ),
         passwordResetRequests: (token) =>
           policyRemote.adminPasswordResetRequests(token),
         resetPassword: (token, userId, password) =>

@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { QaAccountsError } from "./errors.js";
 import type { QaHistoryFolderTarget } from "../types/accounts.js";
 import { readFileSync, renameSync } from "node:fs";
 import {
@@ -603,6 +604,51 @@ export class QaAccountsDatabase {
     });
   }
 
+  /** Remove the identity and its credentials. Retained chats keep their immutable owner ID. */
+  deleteAccount(
+    userId: string,
+    requireEmptyHistory: boolean,
+    beforeCommit?: (retained: number) => void,
+  ): number {
+    return this.storage.transaction(() => {
+      const db = this.storage.db;
+      const otherAdmin = db
+        .prepare(
+          "SELECT 1 FROM qa_accounts WHERE role = 'admin' AND disabled = 0 AND id <> ? LIMIT 1",
+        )
+        .get(userId);
+      if (!otherAdmin)
+        throw new QaAccountsError(
+          "last-admin",
+          "cannot delete the last enabled administrator",
+        );
+      const { count } = db
+        .prepare("SELECT COUNT(*) AS count FROM qa_ownership WHERE user_id = ?")
+        .get(userId) as { count: number };
+      if (requireEmptyHistory && count !== 0)
+        throw new QaAccountsError(
+          "account-changed",
+          "conversation ownership changed during removal",
+        );
+      for (const table of [
+        "qa_oidc_sessions",
+        "qa_oidc_identities",
+        "qa_service_tokens",
+        "qa_password_resets",
+        "qa_integration_session_folders",
+      ]) {
+        db.prepare(`DELETE FROM ${table} WHERE user_id = ?`).run(userId);
+      }
+      if (
+        !db.prepare("DELETE FROM qa_accounts WHERE id = ?").run(userId).changes
+      )
+        throw new QaAccountsError("account-unknown", "no such account");
+      // A failed sharing or audit write must leave a valid account to retry.
+      beforeCommit?.(count);
+      return count;
+    });
+  }
+
   /** Forget chats: a rolled-back reservation, or a chat the Harness lost. */
   deleteOwnership(sessionIds: readonly string[]): void {
     if (sessionIds.length === 0) return;
@@ -612,6 +658,11 @@ export class QaAccountsDatabase {
       );
       for (const sessionId of sessionIds) {
         remove.run(sessionId);
+        this.storage.db
+          .prepare(
+            "DELETE FROM qa_integration_request_policies WHERE session_id = ?",
+          )
+          .run(sessionId);
         this.storage.db
           .prepare(
             "DELETE FROM qa_integration_session_folders WHERE session_id = ?",

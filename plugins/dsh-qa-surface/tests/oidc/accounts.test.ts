@@ -146,6 +146,20 @@ describe("OIDC account storage and access boundaries", () => {
     expect(user.user.role).toBe("user");
   });
 
+  it("drops OIDC bindings and sessions when an account is removed through another connection", () => {
+    const f = fixture();
+    f.store.addUser("operator@example.org", "operator-password", {
+      role: "admin",
+    });
+    const reader = f.store.loginOidc(identity());
+    f.open().deleteAccount(reader.user.id, false);
+    expect(f.store.verifyToken(reader.token)).toBeNull();
+    expect(() =>
+      f.store.loginOidc({ ...identity(), autoProvision: false }),
+    ).toThrow();
+    expect(f.store.loginOidc(identity()).user.id).not.toBe(reader.user.id);
+  });
+
   it("requires linking when provisioning is disabled", () => {
     const f = fixture();
     expect(() =>

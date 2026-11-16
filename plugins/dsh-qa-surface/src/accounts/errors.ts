@@ -11,6 +11,10 @@ export type QaAccountsErrorReason =
   /** The signed-in user typed a current password that does not match. */
   | "invalid-current-password"
   | "account-disabled"
+  | "account-unknown"
+  | "account-changed"
+  | "last-admin"
+  | "conversation-list-incomplete"
   | "email-taken"
   | "invalid-email"
   | "invalid-display-name"
