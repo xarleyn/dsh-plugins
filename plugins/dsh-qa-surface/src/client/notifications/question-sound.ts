@@ -57,11 +57,16 @@ export function useQuestionSounds(questions: readonly QaPendingQuestion[]) {
       let next = Infinity;
       const due: [string, number][] = [];
       for (const { id, createdAt, expiresAt } of questions) {
-        if (!Number.isFinite(expiresAt) || now >= expiresAt) continue;
+        if (
+          expiresAt !== null &&
+          (!Number.isFinite(expiresAt) || now >= expiresAt)
+        )
+          continue;
         const slot = Math.max(0, Math.floor((now - createdAt) / REMINDER_MS));
         if ((sounded.current.get(id) ?? -1) < slot) due.push([id, slot]);
         const following = createdAt + (slot + 1) * REMINDER_MS;
-        if (following < expiresAt) next = Math.min(next, following);
+        if (expiresAt === null || following < expiresAt)
+          next = Math.min(next, following);
       }
       if (due.length) {
         const audio = getAudio();

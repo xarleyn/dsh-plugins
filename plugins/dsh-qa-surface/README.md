@@ -329,8 +329,8 @@ config:
     # answerable form, which owns the composer until it is answered or the
     # turn ends.
     questions: unsupported
-    # Whole minutes to answer each new interactive request. The Host enforces
-    # this even with the chat closed; an open form chimes every five minutes.
+    # Whole minutes to answer a browser-turn question, even with the chat closed.
+    # Allowed API clarifications have no deadline. Open forms chime every five minutes.
     questionTimeoutMinutes: 30
   # Root-page entry behavior (optional; see "Serving the QA rig over the LAN").
   entry:

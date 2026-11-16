@@ -814,17 +814,17 @@ export class QaAccountsDatabase {
       .run(sessionId, requestId, allowed ? 1 : 0);
   }
 
-  integrationClarificationsAllowed(
+  integrationRequestPolicy(
     sessionId: string,
     requestId: string,
-  ): boolean {
+  ): boolean | undefined {
     const row = this.storage.db
       .prepare(
         "SELECT allow_clarifications FROM qa_integration_request_policies WHERE session_id=? AND request_id=?",
       )
       .get(sessionId, requestId) as
       { allow_clarifications: number } | undefined;
-    return row?.allow_clarifications !== 0;
+    return row === undefined ? undefined : row.allow_clarifications !== 0;
   }
 
   setServiceTokenClarifications(

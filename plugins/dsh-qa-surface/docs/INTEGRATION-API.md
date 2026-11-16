@@ -481,8 +481,12 @@ is distinct from the enforced tool boundary. Approval requirements remain intact
 
 The preference is captured before inbox admission, so updating a token affects
 subsequent requests, including requests that continue an existing chat. A later
-browser turn or a request with clarifications enabled follows the deployment's
-normal question policy. Existing tokens and API callers that omit the field keep
+browser turn uses the configured QA question timeout. When the token allows
+clarifications and the deployment enables interactive questions, a clarification
+from the API turn or its delegated agents has no QA response deadline. It stays
+open until answered, cancelled, or the turn ends. The HTTP response wait for
+`POST /qa/api/ask` is still bounded by `integration.requestTimeoutMs`.
+Existing tokens and API callers that omit the field keep
 clarifications enabled. A token that lacks `ask` still receives HTTP 403.
 
 Token creation input example:

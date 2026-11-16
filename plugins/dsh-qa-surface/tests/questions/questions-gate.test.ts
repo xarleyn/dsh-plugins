@@ -14,7 +14,7 @@ describe("QA question gate", () => {
       );
       vi.advanceTimersByTime(30 * 60_000 - 1);
       const [request] = gate.list("s1");
-      expect(request!.expiresAt - request!.createdAt).toBe(30 * 60_000);
+      expect(request!.expiresAt).toBe(request!.createdAt + 30 * 60_000);
       vi.advanceTimersByTime(1);
       await result;
       expect(gate.list("s1")).toEqual([]);
@@ -41,11 +41,11 @@ describe("QA question gate", () => {
       const [first] = gate.list("s1");
       minutes = 10;
       const answered = ask(request);
-      vi.setSystemTime(first!.expiresAt);
+      vi.setSystemTime(first!.createdAt + 2 * 60_000);
       expect(gate.answer("s1", first!.id, [])).toBe(false);
       await expired;
       const [second] = gate.list("s1");
-      expect(second!.expiresAt - second!.createdAt).toBe(10 * 60_000);
+      expect(second!.expiresAt).toBe(second!.createdAt + 10 * 60_000);
       expect(
         gate.answer("s1", second!.id, [{ id: "target", selected: ["В чат"] }]),
       ).toBe(true);
@@ -58,11 +58,11 @@ describe("QA question gate", () => {
       vi.useRealTimers();
     }
   });
-  it("never parks an integration clarification even when the deployment is interactive", async () => {
+  it("never parks a blocked integration clarification even when the deployment is interactive", async () => {
     const { gate, ask } = gateFor({
       interactive: true,
       attested: ["s1"],
-      questionsAllowed: () => false,
+      questionMode: () => "blocked",
     });
     await expect(
       ask({ questions: QUESTIONS, agent: sessionAgent("s1") }),

@@ -121,6 +121,17 @@ describe("integration token clarification settings", () => {
       expect(
         again.integrationClarificationsAllowed("other-chat", "demo-request"),
       ).toBe(true);
+      expect(
+        again.integrationRequestPolicy("other-chat", "demo-request"),
+      ).toBeUndefined();
+      again.recordIntegrationRequestPolicy(
+        "demo-chat",
+        "allowed-request",
+        true,
+      );
+      expect(
+        again.integrationRequestPolicy("demo-chat", "allowed-request"),
+      ).toBe(true);
     },
   );
 });

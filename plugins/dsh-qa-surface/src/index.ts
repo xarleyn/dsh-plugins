@@ -733,10 +733,11 @@ export class QaSurface extends TypertRemoteService {
       ownership,
       this.logger,
       (agent) =>
-        integrationQuestionPolicy.allowed(agent) &&
-        !this.formGate?.hasSession(
+        this.formGate?.hasSession(
           ownership.rootOf(String(agent.session.id)) ?? "",
-        ),
+        )
+          ? "blocked"
+          : integrationQuestionPolicy.mode(agent),
       {
         prepare: (request) => this.answerModes.prepareQuestion(request),
         answered: (request, answer) =>
@@ -754,7 +755,7 @@ export class QaSurface extends TypertRemoteService {
       (exec) =>
         this.getConfig().forms.enabled &&
         exec.agent !== undefined &&
-        integrationQuestionPolicy.allowed(exec.agent) &&
+        integrationQuestionPolicy.mode(exec.agent) !== "blocked" &&
         this.admission.knowsSession(String(exec.agent.session.id)),
       () =>
         this.getConfig().accounts.enabled &&

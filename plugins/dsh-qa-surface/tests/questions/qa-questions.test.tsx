@@ -65,6 +65,13 @@ function mount(pending: QaPendingQuestion) {
 }
 
 describe("QA question form", () => {
+  it("shows an open-ended clarification without a deadline", () => {
+    const { container } = mount({ ...SINGLE, expiresAt: null });
+    expect(screen.getByTestId("qa-question-state").textContent).toBe(
+      "Требуется ответ",
+    );
+    expect(container.querySelector("time")).toBeNull();
+  });
   it("renders the question, its options and its detail", () => {
     mount(SINGLE);
     expect(screen.getByTestId("qa-question-state").textContent).toBe(
