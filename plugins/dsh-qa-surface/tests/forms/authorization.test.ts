@@ -30,6 +30,15 @@ function setup() {
   return { auth, f, r, surface, notify };
 }
 describe("form remote authorization", () => {
+  it("does not treat the root chat owner as the owner of a child form session", async () => {
+    const t = setup();
+    const list = vi.spyOn(t.f.service.store, "list");
+    expect(
+      await t.surface.listForms(t.auth.owner.token, "child-a"),
+    ).toMatchObject({ ok: false, error: { code: "ACCESS_DENIED" } });
+    expect(list).not.toHaveBeenCalled();
+  });
+
   it.each(["reader", "collaborator", "outsider"] as const)(
     "does not expose schema, draft, files or mutations to %s",
     async (actor) => {

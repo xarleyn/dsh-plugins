@@ -53,7 +53,9 @@ const discoverySettingsOnly = process.argv.includes(
   "--tool-discovery-settings",
 );
 const modelSelectionOnly = process.argv.includes("--model-selection");
-const subagentModelsOnly = process.argv.includes("--subagent-models");
+const subagentFormsOnly = process.argv.includes("--subagent-forms");
+const subagentModelsOnly =
+  process.argv.includes("--subagent-models") || subagentFormsOnly;
 const answerModesOnly = process.argv.includes("--answer-modes");
 const questionSoundsOnly = process.argv.includes("--question-sounds");
 if (modelSelectionOnly && !withBrowser)
@@ -1354,6 +1356,7 @@ try {
     await stopProcess(host);
     host = undefined;
     await runSubagentModelsPass({
+      formBrowser: subagentFormsOnly,
       dshBin,
       dshEnv,
       root: temporaryRoot,

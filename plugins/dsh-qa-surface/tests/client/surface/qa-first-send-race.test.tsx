@@ -8,6 +8,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { SessionId } from "@deepseek-ai/dsh-client-connection/client";
 import type { QaAccountUserPublic } from "../../../src/types.js";
 import { resolveConfig } from "../../../src/resolve-config.js";
 import type {
@@ -23,6 +24,7 @@ import {
 import { QA_WELCOME_NOTICE_VERSION } from "../../../src/client/components/QaWelcomeNotice.js";
 import { QaSurfacePanelRegistry } from "../../../src/client/panels/registry.js";
 import type { QaAccessApi } from "../../../src/client/types.js";
+import type { QaFormApi } from "../../../src/client/forms.js";
 import { qaStorageNamespace } from "../../../src/shared/session-key.js";
 import { harness, landDurableUserRow } from "../../helpers/session-fakes.js";
 
@@ -138,12 +140,14 @@ afterEach(() => {
 async function mountSurface(
   world: ReturnType<typeof harness>,
   access = accessApi(),
+  formApi?: QaFormApi,
 ) {
   window.history.replaceState(null, "", "/qa");
   const config = resolveConfig({
     accounts: { enabled: true },
     ui: { showReset: true },
     lockdown: { allowSessionReset: true },
+    forms: { enabled: formApi !== undefined },
   });
   window.localStorage.setItem(
     `${qaStorageNamespace(config)}:welcome-notice`,
@@ -170,6 +174,7 @@ async function mountSurface(
         },
         accounts: accounts.controller,
         accessApi: access,
+        formApi,
         sessions: world.sessions,
         api: world.api,
         conversation: world.conversation,
@@ -197,6 +202,64 @@ async function mountSurface(
 }
 
 describe("first send from a new QA chat", () => {
+  it("polls forms only for the parent across actual subagent navigation", async () => {
+    const childId = "child-a" as SessionId;
+    const world = harness([SAVED_SESSION, childId]);
+    const initial = world.list.getSnapshot();
+    world.list.set({
+      ...initial,
+      byId: {
+        ...initial.byId,
+        [childId]: {
+          ...initial.byId[childId]!,
+          parentId: SAVED_SESSION,
+          origin: "subagent",
+          blank: false,
+          displayTitle: "Demo child",
+        },
+      },
+    });
+    const list = vi.fn<QaFormApi["list"]>(async (_token, id) => ({
+      ok: true,
+      value:
+        id === SAVED_SESSION
+          ? { ok: true, value: [] }
+          : {
+              ok: false,
+              error: { code: "ACCESS_DENIED", message: "Unavailable" },
+            },
+    }));
+    await mountSurface(world, accessApi(), { list } as unknown as QaFormApi);
+    await waitFor(() =>
+      expect(list).toHaveBeenCalledWith("token", SAVED_SESSION),
+    );
+    fireEvent.click(screen.getByTestId("qa-surface-header-agents"));
+    fireEvent.click(await screen.findByTestId("qa-surface-agents-item"));
+    const back = await screen.findByRole("button", { name: "← В чат" });
+    await waitFor(() =>
+      expect(world.retain).toHaveBeenCalledWith("child-a", {
+        source: "qaSurface",
+      }),
+    );
+    await act(async () => {
+      fireEvent.focus(window);
+      fireEvent(document, new Event("visibilitychange"));
+    });
+    expect(list.mock.calls.every(([, id]) => id === SAVED_SESSION)).toBe(true);
+    expect(
+      screen.queryByText(/Не удалось загрузить пошаговые формы/u),
+    ).toBeNull();
+    const beforeReturn = list.mock.calls.length;
+    fireEvent.click(back);
+    await waitFor(() =>
+      expect(list.mock.calls.length).toBeGreaterThan(beforeReturn),
+    );
+    expect(list).toHaveBeenLastCalledWith("token", SAVED_SESSION);
+    expect(
+      screen.queryByText(/Не удалось загрузить пошаговые формы/u),
+    ).toBeNull();
+  });
+
   it("keeps one model picker and one composer when a new chat replaces a restored chat", async () => {
     const world = harness([SAVED_SESSION]);
     const access = accessApi();

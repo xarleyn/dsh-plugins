@@ -22,6 +22,18 @@ export interface QaChangelogEntry {
 
 export const QA_CHANGELOG: readonly QaChangelogEntry[] = [
   {
+    version: "0.23.1",
+    date: "2026-11-17",
+    sections: [
+      {
+        title: "Просмотр субагентов",
+        items: [
+          "При открытии переписки субагента больше не появляется ошибочное сообщение о загрузке пошаговых форм. При возвращении в основной чат формы загружаются заново.",
+        ],
+      },
+    ],
+  },
+  {
     version: "0.23.0",
     date: "2026-11-16",
     sections: [
