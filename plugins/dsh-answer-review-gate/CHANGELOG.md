@@ -1,3 +1,14 @@
+## 0.3.2 (2026-11-16)
+
+### 🩹 Fixes
+
+- Generate document review comparison examples from the actual evidence pairs and ([47c8f8b7](https://github.com/xarleyn/dsh-plugins/commit/47c8f8b7))
+  clarify how to review a deliverable when no source file was attached.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.3.1 (2026-11-16)
 
 ### 🩹 Fixes
