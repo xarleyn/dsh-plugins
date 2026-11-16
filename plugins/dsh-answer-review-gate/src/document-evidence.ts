@@ -120,7 +120,7 @@ export function documentTargets(
       "u",
     ).test(answer.normalize("NFC").toLowerCase());
   };
-  return [...files.values()].filter((file) => {
+  const selected = [...files.values()].filter((file) => {
     if (!file.previousSources) return true;
     const name = path.basename(file.path);
     if (file.path !== name && mentions(file.path)) return true;
@@ -130,6 +130,23 @@ export function documentTargets(
       ).length === 1 && mentions(name)
     );
   });
+  // An ambiguous bare name must not turn a document delivery into an ordinary
+  // text-only PASS. Fail evidence preparation until a full path identifies it.
+  if (
+    historical.some((file) => {
+      const name = path.basename(file.path);
+      const sameName = historical.filter(
+        (item) => label(path.basename(item.path)) === label(name),
+      );
+      return (
+        sameName.length > 1 &&
+        mentions(name) &&
+        !sameName.some((item) => item.path !== name && mentions(item.path))
+      );
+    })
+  )
+    selected.push({ path: "", digestPrefix: "" });
+  return selected;
 }
 
 async function insideFile(root: string, file: string): Promise<string> {

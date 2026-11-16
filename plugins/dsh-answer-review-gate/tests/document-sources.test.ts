@@ -115,7 +115,9 @@ it("matches explicit historical paths and only unique basenames", () => {
   expect(targets("Here is b/report.docx")).toMatchObject([
     { path: "b/report.docx", previousSources: [file] },
   ]);
-  expect(targets("Here is report.docx")).toEqual([]);
+  expect(targets("Here is report.docx")).toEqual([
+    { path: "", digestPrefix: "" },
+  ]);
   expect(targets("Here is unique.docx").map((t) => t.path)).toEqual([
     "c/unique.docx",
   ]);
