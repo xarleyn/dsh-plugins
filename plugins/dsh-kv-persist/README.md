@@ -33,7 +33,7 @@ falls back to normal inference. The model never knows this plugin exists.
 
 ## Requirements
 
-- DeepSeek Harness >= 0.1.7-rc.2 < 0.2.0
+- DeepSeek Harness `>=0.1.7-rc.2 <0.3.0-0 || 0.2.1-rc.3 || 0.2.2-rc.3`
 - A llama.cpp `llama-server` started with `--slots --slot-save-path <dir>`
   and `--parallel 1` for the single-slot mode (see the [design doc](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-kv-persist/docs/specs/design.md) §6).
   The server flag does not replace the plugin's local lease, which also
