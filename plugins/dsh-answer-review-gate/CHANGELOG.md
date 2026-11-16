@@ -1,3 +1,13 @@
+## 0.3.3 (2026-11-16)
+
+### 🩹 Fixes
+
+- Recognize verified Markdown table quotations and inline comparison notes in document reviews. ([cea55139](https://github.com/xarleyn/dsh-plugins/commit/cea55139))
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.3.2 (2026-11-16)
 
 ### 🩹 Fixes
