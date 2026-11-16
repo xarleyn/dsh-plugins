@@ -135,6 +135,7 @@ export interface QaAccountRemotes {
 
 /** Build the account-remotes context for one `QaSurface` service instance. */
 export function createQaAccountRemotes(options: {
+  onRemovalRecoveryError?: (error: unknown) => void;
   onOpen?: (accounts: QaAccounts) => void;
   getConfig: () => ResolvedQaSurfaceConfig;
   logger: PluginLogger;
@@ -158,6 +159,9 @@ export function createQaAccountRemotes(options: {
     ]);
     if (accounts === undefined || accountsOptions !== memoKey) {
       accounts = new QaAccounts(defaultAccountsFilePath(), {
+        ...(options.onRemovalRecoveryError
+          ? { onRemovalRecoveryError: options.onRemovalRecoveryError }
+          : {}),
         sessionTtlDays: config.accounts.sessionTtlDays,
         localLogin: config.accounts.localLogin,
         oidcEnabled: config.accounts.oidc.enabled,

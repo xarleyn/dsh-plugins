@@ -231,6 +231,21 @@ function deleteConversationRows(
   return removed;
 }
 
+/** The replay uses the original audit id, timestamp and confirmed scope. */
+export function writeRemovalQuality(
+  db: DatabaseSync,
+  record: QaAdminAuditEvent,
+  sessions: readonly string[],
+): void {
+  db.prepare(
+    ROW_PLACEMENT_SQL.replaceAll("quality_rows", "qa_quality.quality_rows"),
+  ).run("audit", record.id, "audit", JSON.stringify(record));
+  db.prepare(
+    OVERFLOW_CUT_SQL.replaceAll("quality_rows", "qa_quality.quality_rows"),
+  ).run("audit", "audit", MAX_AUDIT - 1);
+  deleteConversationRows(db, "qa_quality.quality_rows", new Set(sessions));
+}
+
 const MIGRATIONS: readonly SqliteMigration[] = [
   {
     version: 1,
@@ -736,22 +751,7 @@ export class QaQualityStore {
         : { after: this.snapshot(input.after) }),
     });
     if (attached) {
-      attached
-        .prepare(
-          ROW_PLACEMENT_SQL.replaceAll(
-            "quality_rows",
-            "qa_quality.quality_rows",
-          ),
-        )
-        .run("audit", record.id, "audit", JSON.stringify(record));
-      attached
-        .prepare(
-          OVERFLOW_CUT_SQL.replaceAll(
-            "quality_rows",
-            "qa_quality.quality_rows",
-          ),
-        )
-        .run("audit", "audit", MAX_AUDIT - 1);
+      writeRemovalQuality(attached, record, []);
       return record;
     }
     this.reload();

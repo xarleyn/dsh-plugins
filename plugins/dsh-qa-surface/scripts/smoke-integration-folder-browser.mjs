@@ -299,19 +299,21 @@ ${
           history.items.map((item) => [item.conversationId, item.displayName]),
           erase ? [] : [[chat, "Удалённый пользователь"]],
         );
-        if (!erase) {
-          await adminPage.getByTestId("qa-admin-nav-conversations").click();
-          await adminPage
-            .getByTestId("qa-admin-conversations-row")
-            .filter({ hasText: chat })
-            .getByTestId("qa-admin-conversations-open")
-            .click();
-          await adminPage
-            .getByTestId("qa-admin-conversation-transcript")
-            .waitFor();
-          await adminPage.getByText(/Удалённый пользователь ·/u).waitFor();
-          await adminPage.getByTestId("qa-admin-nav-users").click();
-        }
+      }
+      for (const { chat } of removalExamples.filter(
+        ({ name }) => name === "keep-history",
+      )) {
+        await adminPage.getByTestId("qa-admin-nav-conversations").click();
+        await adminPage
+          .getByTestId("qa-admin-conversations-row")
+          .filter({ hasText: chat })
+          .getByTestId("qa-admin-conversations-open")
+          .click();
+        await adminPage
+          .getByTestId("qa-admin-conversation-transcript")
+          .waitFor();
+        await adminPage.getByText(/Удалённый пользователь ·/u).waitFor();
+        await adminPage.getByTestId("qa-admin-nav-users").click();
       }
       await adminPage.getByTestId("qa-admin-back-to-chat").click();
       console.log(

@@ -15,6 +15,35 @@ import { staticSessionLogReader } from "../../src/admin/session-log.js";
 import type { QaStoredSessionHeader } from "../../src/admin/session-log.js";
 
 describe("admin account removal", () => {
+  it("keeps a committed purge pending while the audit store refuses writes and retries it once", async () => {
+    const f = harness({ sessionFiles: fakeEraser(["session-alice"]) });
+    const db = new DatabaseSync(f.quality.filePath);
+    const replay = f.accounts.recoverAccountRemovals.bind(f.accounts);
+    vi.spyOn(f.accounts, "recoverAccountRemovals").mockImplementationOnce(
+      (userId) => {
+        db.exec(
+          "CREATE TRIGGER fixture_audit_refusal BEFORE INSERT ON quality_rows WHEN NEW.kind='audit' BEGIN SELECT RAISE(ABORT,'fixture audit unavailable'); END",
+        );
+        replay(userId);
+      },
+    );
+    try {
+      await expect(
+        f.service.deleteUser(f.admin.token, f.alice.user.id, true),
+      ).rejects.toMatchObject({ reason: "account-removal-pending" });
+      expect(f.accounts.whoami(f.alice.token).authenticated).toBe(false);
+      expect(() =>
+        f.accounts.reserveSession(f.bob.token, "session-alice"),
+      ).toThrow(expect.objectContaining({ reason: "account-changed" }));
+      expect(f.quality.auditEvents()).toHaveLength(0);
+      db.exec("DROP TRIGGER fixture_audit_refusal");
+      replay();
+      replay();
+      expect(f.quality.auditEvents()).toHaveLength(1);
+    } finally {
+      db.close();
+    }
+  });
   it("restores conversations, quality records and shared access when the final SQLite commit fails", async () => {
     const home = mkdtempSync(path.join(tmpdir(), "qa-removal-commit-"));
     const purge = createSessionPurge(vi.fn(), vi.fn(), home);

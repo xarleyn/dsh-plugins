@@ -2,6 +2,13 @@ import { randomBytes } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import { QaAccountsError } from "./errors.js";
 import { dropAttachedUserSharing } from "../chat-sharing/store.js";
+import {
+  journalAccountRemoval,
+  recoverAccountRemovals,
+  removalJournalMigration,
+  withRemovalStores,
+} from "./removal-journal.js";
+import type { QaAdminAuditEvent } from "../types.js";
 import type { QaHistoryFolderTarget } from "../types/accounts.js";
 import { readFileSync, renameSync } from "node:fs";
 import {
@@ -31,10 +38,13 @@ export interface QaAccountRemoval {
     readonly roots: readonly string[];
     readonly sessions: readonly string[];
   };
-  readonly sharingPath?: string;
-  readonly qualityPath?: string;
+  readonly metadata?: {
+    readonly sharingPath?: string;
+    readonly qualityPath: string;
+    readonly audit: (retained: number, db: DatabaseSync) => QaAdminAuditEvent;
+  };
   readonly beforeRemoval?: () => void;
-  readonly beforeCommit?: (retained: number, db: DatabaseSync) => void;
+  readonly beforeCommit?: () => void;
 }
 
 /**
@@ -177,6 +187,7 @@ const MIGRATIONS: readonly SqliteMigration[] = [
       CREATE INDEX qa_integration_session_folders_user ON qa_integration_session_folders(user_id);
     `,
   },
+  removalJournalMigration,
 ];
 
 interface AccountRow {
@@ -654,17 +665,8 @@ export class QaAccountsDatabase {
   /** Hold the SQLite writer from the ownership check through synchronous erasure and commit. */
   deleteAccount(userId: string, options: QaAccountRemoval): number {
     const db = this.storage.db;
-    const attached: string[] = [];
-    try {
-      for (const [schema, file] of [
-        ["qa_sharing", options.sharingPath],
-        ["qa_quality", options.qualityPath],
-      ] as const) {
-        if (file === undefined) continue;
-        db.prepare(`ATTACH DATABASE ? AS ${schema}`).run(file);
-        attached.push(schema);
-      }
-      return this.storage.transaction(() => {
+    const remove = () =>
+      this.storage.transaction(() => {
         this.requireExistingOwner(userId);
         options.beforeRemoval?.();
         const otherAdmin = db
@@ -718,15 +720,27 @@ export class QaAccountsDatabase {
         )
           throw new QaAccountsError("account-unknown", "no such account");
         const retained = options.purge ? 0 : owned.length;
-        if (options.sharingPath !== undefined)
-          dropAttachedUserSharing(db, userId, options.purge?.sessions ?? []);
-        options.beforeCommit?.(retained, db);
+        if (options.metadata) {
+          const sessions = options.purge?.sessions ?? [];
+          // Check destination writes before moving files. Their speculative changes
+          // are rolled back, so only the accounts file contains a committed decision.
+          db.exec("SAVEPOINT removal_preflight");
+          if (options.metadata.sharingPath)
+            dropAttachedUserSharing(db, userId, sessions);
+          const audit = options.metadata.audit(retained, db);
+          db.exec("ROLLBACK TO removal_preflight; RELEASE removal_preflight");
+          journalAccountRemoval(db, userId, options.metadata, audit, sessions);
+        }
+        options.beforeCommit?.();
         return retained;
       });
-    } finally {
-      for (const schema of attached.reverse())
-        db.exec(`DETACH DATABASE ${schema}`);
-    }
+    return options.metadata
+      ? withRemovalStores(db, options.metadata, remove)
+      : remove();
+  }
+
+  recoverAccountRemovals(userId?: string): void {
+    recoverAccountRemovals(this.storage, userId);
   }
 
   /** Forget chats: a rolled-back reservation, or a chat the Harness lost. */
@@ -1130,6 +1144,15 @@ export class QaAccountsDatabase {
   }
 
   private writeOwnership(sessionId: string, owner: StoredOwnership): void {
+    if (
+      this.storage.db
+        .prepare("SELECT 1 FROM qa_pending_session_removals WHERE session_id=?")
+        .get(sessionId)
+    )
+      throw new QaAccountsError(
+        "account-changed",
+        "session removal is in progress",
+      );
     const snapshotHash =
       owner.capabilitySnapshot === undefined
         ? null

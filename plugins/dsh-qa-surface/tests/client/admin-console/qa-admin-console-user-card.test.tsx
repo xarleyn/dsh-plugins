@@ -51,6 +51,31 @@ function checkbox(): HTMLInputElement {
 }
 
 describe("admin user detail card", () => {
+  it("closes the removed account and reports pending server cleanup", async () => {
+    renderConsole(
+      adminApi({
+        user: async () => ({ ok: true, value: detail() }),
+        deleteUser: async () => ({
+          ok: false,
+          error: new Error("reason: account-removal-pending"),
+        }),
+      }),
+      "/qa/admin/users/u1",
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Удалить аккаунт…" }),
+    );
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Удалить аккаунт",
+      }),
+    );
+    expect(
+      await screen.findByText(/Сервер завершит обработку автоматически/u),
+    ).toBeTruthy();
+    expect(window.location.pathname).toBe("/qa/admin/users");
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
   it("preserves the current page when a dismissed removal finishes", async () => {
     let finish!: () => void;
     const pending = new Promise<void>((resolve) => {

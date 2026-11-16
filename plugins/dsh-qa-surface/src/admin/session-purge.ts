@@ -104,9 +104,11 @@ export function createSessionPurge(
     recover(accounts, userId) {
       const root = journal(accounts);
       if (!existsSync(root)) return false;
+      const names = userId === undefined ? dirs(root) : [key(userId)];
+      if (!names.length) return false;
       let restored = false;
       accounts.reconcileRemoval((exists) => {
-        for (const name of userId === undefined ? dirs(root) : [key(userId)]) {
+        for (const name of names) {
           const id = Buffer.from(name, "hex").toString();
           const folder = path.join(root, name);
           if (!id || key(id) !== name || !existsSync(folder)) continue;

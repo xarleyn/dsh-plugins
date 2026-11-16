@@ -209,6 +209,7 @@ export interface QaAdminServiceOptions {
    */
   readonly sessionFiles?: QaStoredSessionEraser;
   readonly sessionPurge?: QaSessionPurge;
+  readonly onRemovalRecoveryError?: (error: unknown) => void;
   /**
    * The skill store both scopes read and write, resolved lazily so the console
    * never constructs storage before someone opens its skills page.
@@ -998,23 +999,29 @@ export class QaAdminService {
             );
         },
         ...(purge ? { purge: { roots, sessions: targets } } : {}),
-        ...(sharing ? { sharingPath: sharing.storage.filePath } : {}),
-        qualityPath: quality.filePath,
-        beforeCommit: (retained, db) => {
-          quality.appendAudit(
-            {
-              actorId: actor.id,
-              action: "user.deleted",
-              targetType: "user",
-              targetId: userId,
-              after: {
-                deleteConversations: purge,
-                removed: roots.length,
-                retained,
+        metadata: {
+          ...(sharing ? { sharingPath: sharing.storage.filePath } : {}),
+          qualityPath: quality.filePath,
+          audit: (retained, db) => {
+            const event = quality.appendAudit(
+              {
+                actorId: actor.id,
+                action: "user.deleted",
+                targetType: "user",
+                targetId: userId,
+                after: {
+                  deleteConversations: purge,
+                  removed: roots.length,
+                  retained,
+                },
               },
-            },
-            db,
-          );
+              db,
+            );
+            quality.dropConversations(targets, db);
+            return event;
+          },
+        },
+        beforeCommit: () => {
           if (targets.length === 0) return;
           const purgeFiles = this.options.sessionPurge;
           if (!purgeFiles)
@@ -1026,9 +1033,17 @@ export class QaAdminService {
             staging = true;
             return purgeFiles.stage(accounts, userId, ids, required);
           });
-          quality.dropConversations(targets, db);
         },
       });
+      try {
+        accounts.recoverAccountRemovals(userId);
+      } catch (error) {
+        this.options.onRemovalRecoveryError?.(error);
+        throw new QaAccountsError(
+          "account-removal-pending",
+          "account removed; reconciliation is pending",
+        );
+      }
       return purge ? roots.length : kept;
     } finally {
       stopWatching?.();

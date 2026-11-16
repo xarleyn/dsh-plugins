@@ -3,7 +3,7 @@ import type { QaAdminUserRow } from "../../types.js";
 import { QaModal } from "../components/QaModal.js";
 import { pluralRu } from "../settings/format.js";
 import type { QaAdminApi } from "../types.js";
-import { adminErrorMessage } from "./shared.js";
+import { adminErrorMessage, errorMessage } from "./shared.js";
 
 export function DeleteUserDialog(props: {
   readonly api: QaAdminApi;
@@ -47,6 +47,12 @@ export function DeleteUserDialog(props: {
       props.onDeleted(`Аккаунт «${name}» удалён.${scope}`);
     } catch (reason) {
       if (!mounted.current) return;
+      if (errorMessage(reason).includes("reason: account-removal-pending")) {
+        props.onDeleted(
+          `Аккаунт «${name}» удалён. Сервер завершит обработку автоматически.`,
+        );
+        return;
+      }
       setError(adminErrorMessage(reason));
       setBusy(false);
     }

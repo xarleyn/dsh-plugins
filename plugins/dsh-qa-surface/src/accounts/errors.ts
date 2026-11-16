@@ -12,6 +12,7 @@ export type QaAccountsErrorReason =
   | "invalid-current-password"
   | "account-disabled"
   | "account-unknown"
+  | "account-removal-pending"
   | "account-changed"
   | "last-admin"
   | "conversation-list-incomplete"

@@ -466,34 +466,35 @@ export class QaSurface extends TypertRemoteService {
         ctx.get("attachments") as unknown as QaFormHostAttachments | undefined,
       (sessionId, file) => this.admission.grantAttachmentFile(sessionId, file),
     );
-    let purgeCleanupPending = false;
+    const deferRemoval = (error: unknown) => {
+      this.logger.warn("admin.session-purge-cleanup-pending", {
+        message: String(
+          error instanceof Error && error.cause ? error.cause : error,
+        ),
+      });
+    };
     const sessionPurge = createSessionPurge(
       (id) => this.provenance.dropSession(id),
-      (error) => {
-        purgeCleanupPending = true;
-        this.logger.warn("admin.session-purge-cleanup-pending", {
-          message: String(error),
-        });
-      },
+      deferRemoval,
     );
     this.accountRemotes = createQaAccountRemotes({
       onOpen: (accounts) => sessionPurge.recover(accounts),
+      onRemovalRecoveryError: deferRemoval,
       getConfig: () => this.getConfig(),
       logger: this.logger,
     });
     ctx.effect(() => {
       const timer = setInterval(() => {
-        if (!purgeCleanupPending) return;
         try {
           const accounts = this.accountRemotes.resolve(this.getConfig());
           if (!accounts) return;
-          purgeCleanupPending = false;
-          sessionPurge.recover(accounts);
+          try {
+            accounts.recoverAccountRemovals();
+          } finally {
+            sessionPurge.recover(accounts);
+          }
         } catch (error) {
-          purgeCleanupPending = true;
-          this.logger.warn("admin.session-purge-retry-failed", {
-            message: String(error),
-          });
+          deferRemoval(error);
         }
       }, 60_000);
       timer.unref();
@@ -532,6 +533,7 @@ export class QaSurface extends TypertRemoteService {
       // per-browser row, and only an administrator removes the chat itself.
       sessionFiles: createSessionEraser(),
       sessionPurge,
+      onRemovalRecoveryError: deferRemoval,
       dropSources: (sessionId) => this.provenance.dropSession(sessionId),
       sharing: () => this.sharing(),
       // The console writes skills through the same service the owner's editor
