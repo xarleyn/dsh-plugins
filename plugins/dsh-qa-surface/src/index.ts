@@ -9,6 +9,8 @@ import { QaChatTransport } from "./chat-sharing/transport.js";
 import { QaChatTurnGuard } from "./chat-sharing/turn-guard.js";
 import { installQaNativeFence } from "./chat-sharing/native-fence.js";
 import { QaIntegrationQuestionPolicy } from "./integration/question-policy.js";
+import { QaAnswerModes } from "./answer-modes.js";
+import type { QaAnswerMode } from "./shared/answer-modes.js";
 import {
   qaChatPublishedFile,
   qaChatAttachmentPath,
@@ -340,6 +342,7 @@ export class QaSurface extends TypertRemoteService {
   }
   private readonly provenance: QaProvenanceHost;
   private readonly notes: QaPromptNotes;
+  private readonly answerModes: QaAnswerModes;
   /** Assigned after the admission gate; that gate only reads it per execution. */
   private readonly tools!: QaTools;
   /** Account-remote bodies; the wire signatures stay on this class. */
@@ -667,6 +670,11 @@ export class QaSurface extends TypertRemoteService {
       this.admission.knowsSession(sessionId),
     );
     ownership.install(ctx);
+    this.answerModes = new QaAnswerModes(ctx, ownership);
+    ctx.effect(
+      () => () => this.answerModes.dispose(),
+      "qa-surface: answer modes",
+    );
     new QaLlmIdentity(ctx, {
       rootOf: (sessionId) => ownership.rootOf(sessionId),
       accounts: () => this.accountRemotes.resolve(this.getConfig()),
@@ -696,6 +704,12 @@ export class QaSurface extends TypertRemoteService {
         !this.formGate?.hasSession(
           ownership.rootOf(String(agent.session.id)) ?? "",
         ),
+      {
+        prepare: (request) => this.answerModes.prepareQuestion(request),
+        answered: (request, answer) =>
+          this.answerModes.answered(request, answer),
+        cancelled: (request) => this.answerModes.cancelled(request),
+      },
     );
     this.formGate = new QaFormGate(
       () => this.forms(),
@@ -854,6 +868,7 @@ export class QaSurface extends TypertRemoteService {
     ctx.effect(
       () =>
         listenVolatile("loader/volatile-update", () => {
+          this.admission.refreshDiscoveryMode();
           this.tools.refreshForms();
           if (!this.getConfig().forms.enabled) this.formGate.cancelAll();
         }),
@@ -2954,13 +2969,42 @@ export class QaSurface extends TypertRemoteService {
    * the transcript row is read from.
    */
   @Remote("slashExecute")
-  slashExecute(
+  async slashExecute(
     token: string,
     sessionId: string,
     line: string,
     attachments: readonly QaSlashSubmitAttachment[],
+    modes?: readonly QaAnswerMode[],
   ): Promise<QaSlashExecution> {
-    return this.slashRemotes.execute(token, sessionId, line, attachments);
+    const execute = () =>
+      this.slashRemotes.execute(token, sessionId, line, attachments);
+    if (modes === undefined) return execute();
+    const proof = await this.secureSession(token, sessionId);
+    if (
+      proof.chatAccess !== undefined &&
+      proof.chatAccess.mode !== "owner" &&
+      proof.chatAccess.mode !== "collaborate"
+    )
+      throw new Error("Read-only chat access cannot change answer modes.");
+    return this.answerModes.withCommand(sessionId, modes, execute);
+  }
+
+  @Remote("prepareAnswerModes")
+  async prepareAnswerModes(
+    token: string,
+    sessionId: string,
+    requestId: string,
+    modes: readonly QaAnswerMode[],
+  ): Promise<boolean> {
+    const proof = await this.secureSession(token, sessionId);
+    if (
+      proof.chatAccess !== undefined &&
+      proof.chatAccess.mode !== "owner" &&
+      proof.chatAccess.mode !== "collaborate"
+    )
+      throw new Error("Read-only chat access cannot change answer modes.");
+    this.answerModes.prepare(sessionId, requestId, modes);
+    return true;
   }
 
   /**

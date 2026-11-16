@@ -18,6 +18,10 @@ import { runFileDropBrowserPass } from "./smoke-file-drop-browser.mjs";
 import { runFileWriteSettingsBrowserPass } from "./smoke-file-writes-browser.mjs";
 import { runSubagentModelsPass } from "./smoke-subagent-models.mjs";
 import {
+  runAnswerModesPass,
+  runAnswerModesBrowserPass,
+} from "./smoke-answer-modes.mjs";
+import {
   freePort,
   requestWithAuthority,
   rpc,
@@ -41,8 +45,12 @@ const reviewDockOnly = process.argv.includes("--review-dock");
 if (reviewDockOnly && !withBrowser)
   throw new Error("--review-dock requires --browser");
 const fileWriteSettingsOnly = process.argv.includes("--file-write-settings");
+const discoverySettingsOnly = process.argv.includes(
+  "--tool-discovery-settings",
+);
 const modelSelectionOnly = process.argv.includes("--model-selection");
 const subagentModelsOnly = process.argv.includes("--subagent-models");
+const answerModesOnly = process.argv.includes("--answer-modes");
 if (modelSelectionOnly && !withBrowser)
   throw new Error("--model-selection requires --browser");
 if (chatLayoutOnly && !withBrowser)
@@ -614,6 +622,16 @@ async function runBrowserPass({
     if (await page.getByRole("button", { name: "Новый чат" }).count()) {
       throw new Error("locked QA surface exposed session reset");
     }
+    if (answerModesOnly) {
+      await deferModelSetup();
+      await runAnswerModesBrowserPass(
+        page,
+        join(repo, "..", "..", ".private", "qa-answer-mode-evidence"),
+      );
+      if (errors.length)
+        throw new Error(`browser errors:\n${errors.join("\n")}`);
+      return;
+    }
     // Attachments in the real composer: a long paste becomes a file card
     // instead of filling the field, the picker takes a text file, and a card
     // can be removed again. The send itself is deliberately not exercised —
@@ -1052,8 +1070,12 @@ try {
     ...Object.fromEntries(
       Object.entries(process.env).filter(
         ([name]) =>
-          !(modelSelectionOnly || subagentModelsOnly || reviewDockOnly) ||
-          !/_API_KEY$/u.test(name),
+          !(
+            modelSelectionOnly ||
+            subagentModelsOnly ||
+            answerModesOnly ||
+            reviewDockOnly
+          ) || !/_API_KEY$/u.test(name),
       ),
     ),
     DSH_HOME: dshHome,
@@ -1269,25 +1291,32 @@ try {
   }
 
   const fullBrowser =
-    withBrowser && !modelSelectionOnly && !chatLayoutOnly && !reviewDockOnly;
+    withBrowser &&
+    !modelSelectionOnly &&
+    !chatLayoutOnly &&
+    !answerModesOnly &&
+    !reviewDockOnly;
   if (
     !modelSelectionOnly &&
     !subagentModelsOnly &&
     !chatLayoutOnly &&
-    !reviewDockOnly
+    !reviewDockOnly &&
+    !answerModesOnly &&
+    !discoverySettingsOnly
   )
     await runLanPass({ dshBin, dshEnv, repo, hostLog });
-  if (fileWriteSettingsOnly || fullBrowser)
+  if (discoverySettingsOnly || fileWriteSettingsOnly || fullBrowser)
     await runFileWriteSettingsBrowserPass({
       origin,
       authenticatedUrl: `${origin}/?token=${encodeURIComponent(token)}`,
       cookie,
+      discoveryOnly: discoverySettingsOnly,
       evidenceDirectory:
         process.env.DSH_QA_FILE_WRITE_EVIDENCE ??
         join(temporaryRoot, "file-write-evidence"),
     });
   if (withBrowser) {
-    if (fullBrowser)
+    if (fullBrowser || answerModesOnly)
       await runBrowserPass({
         origin,
         authenticatedUrl: `${origin}/?token=${encodeURIComponent(token)}`,
@@ -1311,11 +1340,26 @@ try {
         { cwd: workspacePath, env: dshEnv },
       );
     }
-    await runIntegrationFolderBrowserPass({
-      modelSelection: modelSelectionOnly,
-      chatLayoutOnly,
-      reviewDockOnly,
+    if (!answerModesOnly)
+      await runIntegrationFolderBrowserPass({
+        modelSelection: modelSelectionOnly,
+        chatLayoutOnly,
+        reviewDockOnly,
+        dshBin,
+        dshEnv,
+        root: temporaryRoot,
+        workspacePath,
+        launchToken,
+        authenticateBrowser,
+        hostLog,
+      });
+  }
+  if (answerModesOnly) {
+    await stopProcess(host);
+    host = undefined;
+    await runAnswerModesPass({
       dshBin,
+      dshVersion,
       dshEnv,
       root: temporaryRoot,
       workspacePath,
@@ -1339,7 +1383,7 @@ try {
   }
   completed = true;
   console.log(
-    `packed DSH ${dshVersion} QA smoke passed${withBrowser || fileWriteSettingsOnly ? " with browser E2E" : ""}${chatLayoutOnly ? " (chat layout)" : ""}`,
+    `packed DSH ${dshVersion} QA smoke passed${withBrowser || fileWriteSettingsOnly || discoverySettingsOnly ? " with browser E2E" : ""}${chatLayoutOnly ? " (chat layout)" : ""}`,
   );
 } finally {
   await stopProcess(host);

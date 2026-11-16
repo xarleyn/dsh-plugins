@@ -9,6 +9,7 @@ export async function runFileWriteSettingsBrowserPass({
   authenticatedUrl,
   cookie,
   evidenceDirectory,
+  discoveryOnly = false,
 }) {
   const { chromium } = await import("playwright");
   const browser = await chromium.launch({ headless: true });
@@ -66,16 +67,36 @@ export async function runFileWriteSettingsBrowserPass({
     await section.screenshot({ path: join(evidenceDirectory, `${name}.png`) });
   }
   try {
-    await page.goto(authenticatedUrl);
-    const notice = page.getByText("Internal Testing Notice", { exact: true });
-    if (
-      await notice
-        .waitFor({ state: "visible", timeout: 3000 })
-        .then(() => true)
-        .catch(() => false)
-    )
+    const notice = page.getByText(/^(?:Internal Testing|Preview) Notice$/u);
+    await page.addLocatorHandler(notice, async () => {
       await page.getByRole("button", { name: "Continue", exact: true }).click();
+    });
+    await page.goto(authenticatedUrl);
     await openCard();
+    const discovery = page.getByTestId("qa-settings-discovery-mode");
+    assert.equal(await discovery.inputValue(), "off");
+    for (const mode of ["observe", "search", "off"]) {
+      await discovery.selectOption(mode);
+      await waitFor(
+        async () => (await describe()).tools.discoveryMode === mode,
+        "integration tool discovery setting",
+      );
+      if (mode === "search" && discoveryOnly) {
+        await page.getByTestId("qa-settings-discovery").screenshot({
+          path: join(evidenceDirectory, "discovery-search.png"),
+        });
+        await page.reload();
+        await openCard();
+        assert.equal(await discovery.inputValue(), "search");
+      }
+    }
+    if (discoveryOnly) {
+      assert.deepEqual(errors, []);
+      console.log(
+        "packed QA discovery settings: off/observe/search/off, Host readback and reload passed",
+      );
+      return;
+    }
     assert.equal(await extensions.inputValue(), ".py\n.pyw");
     const defaultMessage = await message.inputValue();
     assert.ok(defaultMessage.includes("Не создавайте"));
@@ -134,6 +155,7 @@ export async function runFileWriteSettingsBrowserPass({
         {
           result: "PASS",
           checks: [
+            "integration-tool-discovery-modes",
             "defaults",
             "save",
             "normalization",
@@ -152,7 +174,7 @@ export async function runFileWriteSettingsBrowserPass({
       )}\n`,
     );
     console.log(
-      "packed QA file write settings: defaults, save/reload, empty list, schema refusal, reset, light/dark and 390/1440 geometry passed",
+      "packed QA settings: discovery off/observe/search readback; file write defaults, save/reload, empty list, schema refusal, reset, light/dark and 390/1440 geometry passed",
     );
   } catch (error) {
     await page

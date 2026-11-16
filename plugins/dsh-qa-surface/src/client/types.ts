@@ -489,7 +489,17 @@ export interface QaSlashApi {
     sessionId: string,
     line: string,
     attachments: readonly QaSlashSubmitAttachment[],
+    modes?: readonly import("../shared/answer-modes.js").QaAnswerMode[],
   ): Promise<RemoteResult<QaSlashExecution>>;
+}
+
+export interface QaAnswerModesApi {
+  prepare(
+    token: string,
+    sessionId: string,
+    requestId: string,
+    modes: readonly import("../shared/answer-modes.js").QaAnswerMode[],
+  ): Promise<RemoteResult<boolean>>;
 }
 
 /** A source API with the account token already bound at the call site. */

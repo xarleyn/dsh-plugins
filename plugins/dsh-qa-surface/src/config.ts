@@ -519,6 +519,9 @@ const configSchema = z.object({
           blockedExtensions: [...D.tools.fileWritePolicy.blockedExtensions],
         }),
       dynamicActivation: z.boolean().default(D.tools.dynamicActivation),
+      discoveryMode: z
+        .union(["off", "observe", "search"] as const)
+        .default(D.tools.discoveryMode),
       activationSkill: z.string().default(D.tools.activationSkill),
       activationMode: z.union(["all"] as const).default(D.tools.activationMode),
       activationPresets: z

@@ -1,4 +1,8 @@
 import type { QaSpreadsheetPreviewSelection } from "../types.js";
+import {
+  QA_DEFAULT_ANSWER_MODES,
+  type QaAnswerMode,
+} from "../shared/answer-modes.js";
 import { EMPTY_CODE_SOURCES } from "@yadsh/dsh-plugin-kit/code-sources";
 import {
   useCallback,
@@ -56,6 +60,7 @@ import type {
   QaQuestionApi,
   QaSkillApi,
   QaSlashApi,
+  QaAnswerModesApi,
   QaSourceApi,
 } from "./types.js";
 import { QA_SESSION_IDLE_STATE } from "./types.js";
@@ -199,6 +204,7 @@ export interface QaSurfaceFace {
    * untouched.
    */
   readonly slashApi?: QaSlashApi;
+  readonly answerModesApi?: QaAnswerModesApi;
   /**
    * The Host's live read of the request ceiling. Absent on a Host build that
    * predates it: a deployment with no ceiling never asks, so nothing changes.
@@ -558,6 +564,9 @@ export function QaSurface(props: QaSurfaceProps) {
         : { questionApi: props.questionApi }),
       ...(props.formApi === undefined ? {} : { formApi: props.formApi }),
       ...(props.slashApi === undefined ? {} : { slashApi: props.slashApi }),
+      ...(props.answerModesApi === undefined
+        ? {}
+        : { answerModesApi: props.answerModesApi }),
       ...(props.queueStatus === undefined
         ? {}
         : { queueStatus: props.queueStatus, requestStatus: props.queueStatus }),
@@ -589,6 +598,8 @@ export function QaSurface(props: QaSurfaceProps) {
     props.approvalApi,
     props.questionApi,
     props.formApi,
+    props.answerModesApi,
+    props.slashApi,
     props.queueStatus,
     props.secureSession,
     props.sourceApi,
@@ -824,7 +835,9 @@ export function QaSurface(props: QaSurfaceProps) {
   // One identity per configuration: the composer is memoized on shallow
   // comparison, so a fresh limits object would re-render it every frame.
   const limits = useMemo(() => attachmentLimits(config), [config]);
-  const [fastMode, setFastMode] = useState(false);
+  const [answerModes, setAnswerModes] = useState<readonly QaAnswerMode[]>(
+    QA_DEFAULT_ANSWER_MODES,
+  );
   const codeSource = useChatCodeSource({
     api: props.codeSourceApi,
     token: accounts?.token() ?? "",
@@ -834,11 +847,11 @@ export function QaSurface(props: QaSurfaceProps) {
   });
   prepareCodeSource.current = codeSource.prepareSession;
   useEffect(() => {
-    setFastMode(false);
+    setAnswerModes(QA_DEFAULT_ANSWER_MODES);
   }, [state.chatKey]);
   const handleRegenerate = useCallback(() => {
-    void controller?.regenerate(fastMode);
-  }, [controller, fastMode]);
+    void controller?.regenerate(answerModes);
+  }, [controller, answerModes]);
   const handleFork = useCallback(
     (answerSeq: number) => {
       return controller?.forkFromAnswer(answerSeq) ?? Promise.resolve();
@@ -913,9 +926,9 @@ export function QaSurface(props: QaSurfaceProps) {
       attachments: readonly QaAttachmentDraft[],
       pick: string | null,
     ) =>
-      controller?.send(text, attachments, pick, fastMode) ??
+      controller?.send(text, attachments, pick, answerModes) ??
       Promise.resolve(false),
-    [controller, fastMode],
+    [controller, answerModes],
   );
   // Closing the queue notice only uncovers the composer: the question the stand
   // had no room for is still the text in there, and asking it again is a
@@ -1124,14 +1137,14 @@ export function QaSurface(props: QaSurfaceProps) {
         `Согласую редакцию ${workflow.revision} документа «${artifact.name}». Сформируй DOCX из согласованной редакции через процесс подготовки документа.`,
         [],
         null,
-        fastMode,
+        answerModes,
       );
       if (!sent)
         throw new Error(
           "Approval was saved but the export request was not sent",
         );
     },
-    [state.sessionId, props.sourceApi, accounts, controller, fastMode],
+    [state.sessionId, props.sourceApi, accounts, controller, answerModes],
   );
 
   const view = useTranscriptView(state.messages, variantOffsets);
@@ -2266,8 +2279,8 @@ export function QaSurface(props: QaSurfaceProps) {
                           }
                         />
                       }
-                      fastMode={fastMode}
-                      onFastModeChange={setFastMode}
+                      answerModes={answerModes}
+                      onAnswerModesChange={setAnswerModes}
                       placeholder={config.branding.placeholder}
                       quickQuestions={empty ? quickQuestions : NO_QUESTIONS}
                       canSend={state.canSend && !codeSource.blocked}
