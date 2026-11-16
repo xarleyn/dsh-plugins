@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import type { LightRagAnswer } from "../src/client.js";
+import type { LightRagAnswer } from "../src/http-client.js";
 import { LightRagError } from "../src/errors.js";
 import {
   createLightRagQueryTool,

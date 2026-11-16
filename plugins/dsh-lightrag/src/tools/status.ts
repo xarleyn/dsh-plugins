@@ -6,7 +6,7 @@
 
 import { defineTool } from "@deepseek-ai/dsh-tools";
 
-import type { LightRagStatusCount } from "../client.js";
+import type { LightRagStatusCount } from "../http-client.js";
 import {
   logCall,
   SERVICE_NOTE,

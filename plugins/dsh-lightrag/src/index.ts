@@ -19,7 +19,7 @@ import {
   type PluginLoggerLike,
 } from "@yadsh/dsh-plugin-log";
 
-import { createLightRagClient, type LightRagClient } from "./client.js";
+import { createLightRagClient, type LightRagClient } from "./http-client.js";
 import {
   LightRagConfigSchema,
   resolveLightRagConfig,
@@ -55,7 +55,7 @@ export {
   type LightRagQueryRequest,
   type LightRagReference,
   type LightRagStatusCount,
-} from "./client.js";
+} from "./http-client.js";
 export {
   LIGHTRAG_DEFAULTS,
   LightRagConfigSchema,

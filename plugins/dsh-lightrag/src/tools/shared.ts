@@ -7,7 +7,7 @@
 
 import type { PluginLoggerLike } from "@yadsh/dsh-plugin-log";
 
-import type { LightRagClient } from "../client.js";
+import type { LightRagClient } from "../http-client.js";
 import type { ResolvedLightRagConfig } from "../config.js";
 import { LightRagError } from "../errors.js";
 

@@ -10,7 +10,7 @@ import {
   createLightRagClient,
   type LightRagClient,
   type LightRagClientOptions,
-} from "../../src/client.js";
+} from "../../src/http-client.js";
 import {
   resolveLightRagConfig,
   type LightRagConfig,
