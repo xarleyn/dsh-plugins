@@ -522,6 +522,7 @@ export class QaAnswerModes {
 
   dispose(): void {
     for (const stop of this.stops) stop();
+    this.command.disable();
     this.pending.clear();
     this.recovery.clear();
     this.seenSessions.clear();
