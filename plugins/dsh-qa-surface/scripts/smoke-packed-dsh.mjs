@@ -38,6 +38,9 @@ const dshVersion =
 const withBrowser = process.argv.includes("--browser");
 const chatLayoutOnly = process.argv.includes("--chat-layout");
 const fileWriteSettingsOnly = process.argv.includes("--file-write-settings");
+const discoverySettingsOnly = process.argv.includes(
+  "--tool-discovery-settings",
+);
 const modelSelectionOnly = process.argv.includes("--model-selection");
 const subagentModelsOnly = process.argv.includes("--subagent-models");
 if (modelSelectionOnly && !withBrowser)
@@ -1266,13 +1269,19 @@ try {
   }
 
   const fullBrowser = withBrowser && !modelSelectionOnly && !chatLayoutOnly;
-  if (!modelSelectionOnly && !subagentModelsOnly && !chatLayoutOnly)
+  if (
+    !modelSelectionOnly &&
+    !subagentModelsOnly &&
+    !chatLayoutOnly &&
+    !discoverySettingsOnly
+  )
     await runLanPass({ dshBin, dshEnv, repo, hostLog });
-  if (fileWriteSettingsOnly || fullBrowser)
+  if (discoverySettingsOnly || fileWriteSettingsOnly || fullBrowser)
     await runFileWriteSettingsBrowserPass({
       origin,
       authenticatedUrl: `${origin}/?token=${encodeURIComponent(token)}`,
       cookie,
+      discoveryOnly: discoverySettingsOnly,
       evidenceDirectory:
         process.env.DSH_QA_FILE_WRITE_EVIDENCE ??
         join(temporaryRoot, "file-write-evidence"),
@@ -1316,7 +1325,7 @@ try {
   }
   completed = true;
   console.log(
-    `packed DSH ${dshVersion} QA smoke passed${withBrowser || fileWriteSettingsOnly ? " with browser E2E" : ""}${chatLayoutOnly ? " (chat layout)" : ""}`,
+    `packed DSH ${dshVersion} QA smoke passed${withBrowser || fileWriteSettingsOnly || discoverySettingsOnly ? " with browser E2E" : ""}${chatLayoutOnly ? " (chat layout)" : ""}`,
   );
 } finally {
   await stopProcess(host);

@@ -22,9 +22,15 @@ export interface QaChangelogEntry {
 
 export const QA_CHANGELOG: readonly QaChangelogEntry[] = [
   {
-    version: "0.22.1",
+    version: "0.23.0",
     date: "2026-11-16",
     sections: [
+      {
+        title: "Инструменты интеграций",
+        items: [
+          "В новых QA-чатах агент может находить инструменты пяти интеграций по мере необходимости. Администратор выбирает подгрузку, наблюдение или прежний режим; по умолчанию ничего не меняется.",
+        ],
+      },
       {
         title: "Окно чата",
         items: [
