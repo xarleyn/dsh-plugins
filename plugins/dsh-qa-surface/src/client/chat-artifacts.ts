@@ -33,7 +33,7 @@ const PRODUCED_FORMATS: Readonly<Record<string, readonly string[]>> =
   });
 
 /** One reported file: `<format>: <path>` with an optional `(<size>, …)`. */
-const FILE_LINE = /^([a-z][a-z0-9]*):\s+(\S+)(?:\s+\(([^)]*)\))?$/u;
+const FILE_LINE = /^([a-z][a-z0-9]*):\s+(.+?)(?:\s+\(([^()]*)\))?$/u;
 
 /** A path spelled from the filesystem root, which the fence would refuse. */
 function isAbsolutePath(value: string): boolean {

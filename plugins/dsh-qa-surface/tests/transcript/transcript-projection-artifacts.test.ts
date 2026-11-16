@@ -76,6 +76,75 @@ function answerOf(messages: readonly QaMessage[]) {
 }
 
 describe("transcript artifacts", () => {
+  it.each([
+    "пришли файл ещё раз",
+    "Дай мне этот документ",
+    "Пришлите, пожалуйста, report.docx",
+  ])("reuses the original producer receipt on %s", (request) => {
+    const original = created("Отчёт готов.", CREATED);
+    const messages = projectTranscript(
+      snapshot(
+        legacy({
+          nodes: [
+            ...original,
+            {
+              kind: "user",
+              seq: 5,
+              time: 50,
+              source: {},
+              content: [{ type: "text", text: request }],
+            },
+            {
+              kind: "assistant",
+              seq: 6,
+              time: 60,
+              turn: 2,
+              step: 1,
+              blocks: [{ kind: "text", text: "Вот файл." }],
+            },
+          ] as ConversationNode[],
+        }),
+      ),
+    );
+    const replies = messages.filter((m) => m.role === "assistant");
+    expect(replies[1]?.artifacts).toEqual([
+      { ...replies[0]?.artifacts?.[0], sha256Prefix: "9f2c1d0a4b5e6f70" },
+    ]);
+  });
+
+  it.each([
+    ["не присылай файл ещё раз", CREATED],
+    ["исправь и пришли файл ещё раз", CREATED],
+    ["пришли other.docx", CREATED],
+    [
+      "пришли файл ещё раз",
+      CREATED + "\n" + CREATED.replaceAll("report.docx", "other.docx"),
+    ],
+  ])("does not guess a document for %s", (request, result) => {
+    const nodes = [
+      ...created("Готово", result),
+      {
+        kind: "user",
+        seq: 5,
+        time: 50,
+        source: {},
+        content: [{ type: "text", text: request }],
+      },
+      {
+        kind: "assistant",
+        seq: 6,
+        time: 60,
+        turn: 2,
+        step: 1,
+        blocks: [{ kind: "text", text: "Ответ про report.docx." }],
+      },
+    ] as ConversationNode[];
+    expect(
+      projectTranscript(snapshot(legacy({ nodes })))
+        .filter((m) => m.role === "assistant")
+        .at(-1)?.artifacts,
+    ).toBeUndefined();
+  });
   it("keeps edit history reachable and never combines unrelated or explicitly named outputs", () => {
     const nodes = [...created("Done", CREATED)];
     const edits = [

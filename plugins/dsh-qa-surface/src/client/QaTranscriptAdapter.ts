@@ -15,6 +15,12 @@ import type {
   QaWorkItem,
 } from "../types.js";
 import { artifactsOfToolResult } from "./chat-artifacts.js";
+import {
+  deliveredDocuments,
+  requestedDocument,
+  selectDocument,
+  type QaDocumentDelivery,
+} from "../shared/document-redelivery.js";
 import { answerReviewsOf } from "./answer-review.js";
 import { chatLegacyOf } from "./turn-sources.js";
 import { toWorkspaceRelativeText } from "./workspace-paths.js";
@@ -72,6 +78,7 @@ interface TurnBuffer {
   readonly work: OrderedWorkItem[];
   /** Files this turn's tools produced, in the order they were reported. */
   readonly artifacts: QaArtifactView[];
+  redelivery?: QaDocumentDelivery;
   /**
    * Position of the prefix the Host froze when a person stopped this turn, or
    * undefined when nothing stopped it. A stopped turn is a separate outcome:
@@ -324,18 +331,41 @@ function collectTurnArtifacts(
   let nearestTurn: number | undefined;
   const editGroups = new Map<string, number>();
   const outputGroups = new Map<string, number>();
+  const produced = new Map<string, QaDocumentDelivery>();
+  let pending: QaDocumentDelivery | undefined;
   for (const node of nodes) {
-    if (node.kind === "assistant") nearestTurn = node.turn;
+    if (node.kind === "user" || node.kind === "steering") {
+      pending = undefined;
+      const requested = requestedDocument(visibleContentText(node.content));
+      if (
+        requested !== undefined &&
+        node.content.every((part) => part.type === "text")
+      ) {
+        const source = node.source as {
+          qaDocumentDelivery?: QaDocumentDelivery | null;
+        };
+        pending =
+          "qaDocumentDelivery" in source
+            ? (source.qaDocumentDelivery ?? undefined)
+            : selectDocument(produced.values(), requested);
+      }
+    }
+    if (node.kind === "assistant") {
+      nearestTurn = node.turn;
+      if (pending) getTurn(turns, node.turn).redelivery = pending;
+      pending = undefined;
+    }
     if (node.kind !== "tool-result" || node.isError) continue;
     const head = toolHeads.get(node.callId);
     const name = head?.name ?? node.call?.name;
     const turnNumber = head?.turn ?? nearestTurn;
     if (name === undefined || turnNumber === undefined) continue;
     const buffer = getTurn(turns, turnNumber);
-    for (const artifact of artifactsOfToolResult(
-      name,
-      flattenToolOutput(node),
-    )) {
+    const output = flattenToolOutput(node);
+    if (output)
+      for (const file of deliveredDocuments(name, output))
+        produced.set(file.path, file);
+    for (const artifact of artifactsOfToolResult(name, output)) {
       if (name === "spreadsheet_edit") {
         // The input path stays inside the projection. A basename alone would
         // collapse separate uploads or intentionally named alternative outputs.
@@ -523,6 +553,13 @@ function emitTurn(
   }
 
   if (finalText !== undefined) {
+    const files =
+      turn.redelivery &&
+      finalText.status === "committed" &&
+      stoppedAt === undefined &&
+      erroredCode === undefined
+        ? [turn.redelivery]
+        : turn.artifacts;
     output.push({
       order: finalText.order,
       message: {
@@ -546,7 +583,7 @@ function emitTurn(
         ...(finalText.stats === undefined ? {} : { stats: finalText.stats }),
         // The files this turn produced are handed over under the answer that
         // produced them, whatever the work-view switch hides above.
-        ...(turn.artifacts.length === 0 ? {} : { artifacts: turn.artifacts }),
+        ...(files.length === 0 ? {} : { artifacts: files }),
       },
     });
   }

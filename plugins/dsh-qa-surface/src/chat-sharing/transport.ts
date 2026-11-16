@@ -28,6 +28,8 @@ import type { QaChatSharingStore } from "./store.js";
 import type { QaChatAccess } from "./types.js";
 import type { SessionEventEntry } from "@deepseek-ai/dsh-api-session-controller/types";
 import { searchQaChats } from "./search.js";
+import { originalDocument } from "./document-delivery.js";
+import { requestedDocument } from "../shared/document-redelivery.js";
 
 /** Durable access is checked before and after asynchronous reads and per frame. */
 export class QaChatTransport {
@@ -102,7 +104,9 @@ export class QaChatTransport {
     const current = this.store().revalidate(token, access);
     return {
       ...value,
-      records: value.records.map((record) => this.signRecord(current, record)),
+      records: value.records.map((record) =>
+        this.signRecord(current, record, request.address),
+      ),
     };
   }
 
@@ -166,11 +170,11 @@ export class QaChatTransport {
           ? {
               ...frame,
               records: frame.records.map((record) =>
-                this.signRecord(current, record),
+                this.signRecord(current, record, request.address),
               ),
             }
           : frame.type === "event"
-            ? this.signRecord(current, frame)
+            ? this.signRecord(current, frame, request.address)
             : frame;
       }
     } finally {
@@ -418,10 +422,12 @@ export class QaChatTransport {
   private signRecord(
     access: QaChatAccess,
     record: SessionEventEntry,
+    address: SessionAddress,
   ): SessionEventEntry {
     if (record.event.type !== "user/message") return record;
     const data = record.event.data as unknown as {
-      source?: { rpcId?: string };
+      source?: { kind?: string; rpcId?: string; qaDocumentDelivery?: unknown };
+      content?: readonly { type: string; text?: string }[];
     };
     const source = data.source;
     if (source === undefined) return record;
@@ -430,6 +436,22 @@ export class QaChatTransport {
         ? undefined
         : this.store().requestActor(access.sessionId, source.rpcId);
     const byOwner = author === undefined || author.userId === access.ownerId;
+    const { qaDocumentDelivery: _untrusted, ...signedSource } = source;
+    const target =
+      source.kind === "user" &&
+      data.content?.every((part) => part.type === "text")
+        ? requestedDocument(data.content.map((part) => part.text).join(" "))
+        : undefined;
+    const session =
+      target !== undefined &&
+      address.kind === "session" &&
+      String(address.sessionId) === access.sessionId
+        ? this.ctx.sessions?.get(address.sessionId)
+        : undefined;
+    const delivery =
+      session && target !== undefined
+        ? originalDocument(session, record.event.seq, target)
+        : undefined;
     return {
       ...record,
       event: {
@@ -437,7 +459,8 @@ export class QaChatTransport {
         data: {
           ...data,
           source: {
-            ...source,
+            ...signedSource,
+            ...(session ? { qaDocumentDelivery: delivery ?? null } : {}),
             qaAuthor: author?.displayName ?? access.ownerName,
             qaOwnerByline: byOwner ? (access.shared ?? true) : null,
           },

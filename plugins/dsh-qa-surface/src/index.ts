@@ -2705,6 +2705,7 @@ export class QaSurface extends TypertRemoteService {
     path: string,
     offset: number,
     version: string | null,
+    sha256Prefix?: string,
   ): Promise<QaWorkspaceFileChunk> {
     const finish = await this.admitChatRead(token, sessionId, path);
     const { config, cwd } = await this.browseContext(sessionId);
@@ -2717,6 +2718,7 @@ export class QaSurface extends TypertRemoteService {
         ...(attachmentRoot === undefined ? {} : { attachmentRoot }),
         offset,
         version,
+        ...(sha256Prefix === undefined ? {} : { sha256Prefix }),
       });
       finish();
       return value;

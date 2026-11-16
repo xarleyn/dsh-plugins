@@ -261,6 +261,7 @@ function sameArtifacts(
       artifact.name === (b[index] as QaArtifactView).name &&
       sameArtifacts(artifact.earlierEdits, b[index]?.earlierEdits) &&
       artifact.format === (b[index] as QaArtifactView).format &&
+      artifact.sha256Prefix === b[index]?.sha256Prefix &&
       artifact.bytes === (b[index] as QaArtifactView).bytes &&
       artifact.workflow?.id === (b[index] as QaArtifactView).workflow?.id &&
       artifact.workflow?.revision ===

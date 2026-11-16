@@ -8,6 +8,8 @@
  * this account's workspace in.
  */
 export interface QaArtifactView {
+  /** Original producer digest (older receipts expose a prefix) for a repeat download. */
+  readonly sha256Prefix?: string;
   /** Other outputs of the same spreadsheet edit in this turn, newest first. */
   readonly earlierEdits?: readonly QaArtifactView[];
   readonly workflow?: {

@@ -670,6 +670,7 @@ export function QaSurface(props: QaSurfaceProps) {
               path: string,
               offset: number,
               version: string | null,
+              sha256Prefix?: string,
             ) =>
               props.sourceApi.readWorkspaceFileChunk!(
                 accounts?.token() ?? "",
@@ -677,6 +678,7 @@ export function QaSurface(props: QaSurfaceProps) {
                 path,
                 offset,
                 version,
+                ...(sha256Prefix ? [sha256Prefix] : []),
               ),
           }),
       readWorkspaceFile: (sessionId: string, path: string) =>
@@ -870,6 +872,7 @@ export function QaSurface(props: QaSurfaceProps) {
   const [auditTarget, setAuditTarget] = useState<string | null>(null);
   const [sharingTarget, setSharingTarget] = useState<QaChatAccess | null>(null);
   const [sharingError, setSharingError] = useState<string | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   const sharingToken = accounts?.token() ?? "";
   useEffect(() => {
     setSharingTarget(null);
@@ -1056,8 +1059,21 @@ export function QaSurface(props: QaSurfaceProps) {
             artifact.path,
             offset,
             version,
+            ...(artifact.sha256Prefix && offset === 0
+              ? [artifact.sha256Prefix]
+              : []),
           ),
-        ).catch(() => handleArtifactOpen(artifact));
+        ).catch(() =>
+          artifact.sha256Prefix
+            ? setDownloadError(
+                "Не удалось скачать исходную версию файла. Проверьте доступ или повторите скачивание.",
+              )
+            : handleArtifactOpen(artifact),
+        );
+        return;
+      }
+      if (artifact.sha256Prefix) {
+        setDownloadError("Сервис скачивания исходной версии файла недоступен.");
         return;
       }
       boundSourceApi.readWorkspaceFile(sessionId, artifact.path).then(
@@ -1960,6 +1976,14 @@ export function QaSurface(props: QaSurfaceProps) {
             <p role="alert">{sharingError}</p>
           </QaModal>
 
+          <QaModal
+            open={downloadError !== null}
+            title="Скачивание файла"
+            closeLabel="Закрыть сообщение"
+            onClose={() => setDownloadError(null)}
+          >
+            <p role="alert">{downloadError}</p>
+          </QaModal>
           <div
             className="dsh-qa-workspace"
             data-testid="qa-surface-workspace-split"
