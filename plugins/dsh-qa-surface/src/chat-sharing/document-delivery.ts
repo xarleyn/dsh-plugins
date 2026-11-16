@@ -1,10 +1,52 @@
 import type { Session } from "@deepseek-ai/dsh-session";
+import { createUserMessage } from "@deepseek-ai/dsh-llm";
 import { SessionSeq } from "@deepseek-ai/dsh-session/types";
 import {
   deliveredDocuments,
   selectDocument,
   type QaDocumentDelivery,
 } from "../shared/document-redelivery.js";
+
+declare module "@deepseek-ai/dsh-llm" {
+  interface MessageSourceMap {
+    "qa-document-redelivery": {
+      readonly kind: "qa-document-redelivery";
+      readonly form: "notice";
+      readonly summary: string;
+      readonly rpcId: string;
+      readonly requestText: string;
+      readonly file: QaDocumentDelivery | null;
+    };
+  }
+}
+
+/** A file transfer is a durable chat action. It neither schedules an agent
+ * turn nor gives a reviewer authority to edit the original. */
+export function recordDocumentDelivery(
+  session: Session,
+  rpcId: string,
+  requestText: string,
+  file: QaDocumentDelivery | null,
+) {
+  const summary = file
+    ? `Повторно прикреплён файл ${file.name}.`
+    : "Уточните название ранее созданного файла DOCX.";
+  session.append(
+    "user/message",
+    createUserMessage({
+      content: [{ type: "text", text: summary }],
+      source: {
+        kind: "qa-document-redelivery",
+        form: "notice",
+        summary,
+        rpcId,
+        requestText,
+        file,
+      },
+    }),
+    { surfaceOp: "append" },
+  );
+}
 
 /** Rebuild the selection at this request, even on a short browser history page. */
 export function originalDocument(

@@ -344,8 +344,9 @@ function collectTurnArtifacts(
         const source = node.source as {
           qaDocumentDelivery?: QaDocumentDelivery | null;
         };
-        pending =
-          "qaDocumentDelivery" in source
+        pending = (source as { qaDeliveryReply?: boolean }).qaDeliveryReply
+          ? undefined
+          : "qaDocumentDelivery" in source
             ? (source.qaDocumentDelivery ?? undefined)
             : selectDocument(produced.values(), requested);
       }
@@ -647,6 +648,8 @@ export function projectTranscript(
       const source = node.source as {
         qaAuthor?: string;
         qaOwnerByline?: boolean | null;
+        qaDeliveryReply?: boolean;
+        qaDocumentDelivery?: QaDocumentDelivery | null;
       };
       // Only an owner's message carries a byline preference. Before admission
       // completes, the signed record already describes how to render it.
@@ -668,6 +671,22 @@ export function projectTranscript(
           ...(files.length === 0 ? {} : { files }),
         },
       });
+      if (source.qaDeliveryReply) {
+        const file = source.qaDocumentDelivery;
+        output.push({
+          order: node.seq + 0.5,
+          message: {
+            id: `document-delivery:${node.seq}`,
+            role: "assistant",
+            text: file
+              ? "Прикрепляю тот же документ."
+              : "Уточните название ранее созданного файла DOCX.",
+            status: "committed",
+            timestamp: node.time,
+            ...(file ? { artifacts: [file] } : {}),
+          },
+        });
+      }
     } else if (node.kind === "assistant") {
       collectAssistant(
         node,

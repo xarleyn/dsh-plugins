@@ -1,4 +1,5 @@
 import type { Context } from "@deepseek-ai/cordis";
+import type { MessageSource } from "@deepseek-ai/dsh-llm";
 import { SessionId } from "@deepseek-ai/dsh-session/types";
 import type {
   SessionControlFrame,
@@ -28,7 +29,10 @@ import type { QaChatSharingStore } from "./store.js";
 import type { QaChatAccess } from "./types.js";
 import type { SessionEventEntry } from "@deepseek-ai/dsh-api-session-controller/types";
 import { searchQaChats } from "./search.js";
-import { originalDocument } from "./document-delivery.js";
+import {
+  originalDocument,
+  recordDocumentDelivery,
+} from "./document-delivery.js";
 import { requestedDocument } from "../shared/document-redelivery.js";
 
 /** Durable access is checked before and after asynchronous reads and per frame. */
@@ -271,7 +275,7 @@ export class QaChatTransport {
       const session = this.ctx.sessions?.get(SessionId(access.sessionId));
       const historicalRequest = session
         ?.snapshotEvents()
-        .some(
+        .find(
           (event) =>
             event.type === "user/message" &&
             "rpcId" in event.data.source &&
@@ -286,6 +290,12 @@ export class QaChatTransport {
           "rpcId" in message.source &&
           String(message.source.rpcId) === String(request.requestId),
       );
+      if (
+        historicalRequest?.type === "user/message" &&
+        historicalRequest.data.source.kind === "qa-document-redelivery" &&
+        (prior !== undefined || access.mode === "owner")
+      )
+        return { accepted: true };
       if (prior === undefined && (historicalRequest || pendingRequest)) {
         if (access.mode !== "owner")
           throw new Error("Prompt identity belongs to the original author.");
@@ -293,6 +303,25 @@ export class QaChatTransport {
       }
       if (prior === undefined)
         this.store().recordAuthor(token, access, String(request.requestId));
+      if (
+        session &&
+        !historicalRequest &&
+        !pendingRequest &&
+        request.content.every((part) => part.type === "text")
+      ) {
+        const requestText = request.content.map((part) => part.text).join(" ");
+        const target = requestedDocument(requestText);
+        if (target !== undefined) {
+          const file = originalDocument(session, Infinity, target) ?? null;
+          recordDocumentDelivery(
+            session,
+            String(request.requestId),
+            requestText,
+            file,
+          );
+          return { accepted: true };
+        }
+      }
       const value = await this.ctx.sessionController.prompt(request, signal);
       this.store().revalidate(token, access);
       return value;
@@ -426,7 +455,11 @@ export class QaChatTransport {
   ): SessionEventEntry {
     if (record.event.type !== "user/message") return record;
     const data = record.event.data as unknown as {
-      source?: { kind?: string; rpcId?: string; qaDocumentDelivery?: unknown };
+      source?: MessageSource & {
+        rpcId?: string;
+        qaDocumentDelivery?: unknown;
+        qaDeliveryReply?: unknown;
+      };
       content?: readonly { type: string; text?: string }[];
     };
     const source = data.source;
@@ -436,7 +469,13 @@ export class QaChatTransport {
         ? undefined
         : this.store().requestActor(access.sessionId, source.rpcId);
     const byOwner = author === undefined || author.userId === access.ownerId;
-    const { qaDocumentDelivery: _untrusted, ...signedSource } = source;
+    const {
+      qaDocumentDelivery: _untrusted,
+      qaDeliveryReply: _reply,
+      ...signedSource
+    } = source;
+    const receipt =
+      source.kind === "qa-document-redelivery" ? source : undefined;
     const target =
       source.kind === "user" &&
       data.content?.every((part) => part.type === "text")
@@ -458,8 +497,18 @@ export class QaChatTransport {
         ...record.event,
         data: {
           ...data,
+          ...(receipt
+            ? { content: [{ type: "text", text: receipt.requestText }] }
+            : {}),
           source: {
-            ...signedSource,
+            ...(receipt
+              ? {
+                  kind: "user",
+                  rpcId: receipt.rpcId,
+                  qaDeliveryReply: true,
+                  qaDocumentDelivery: receipt.file,
+                }
+              : signedSource),
             ...(session ? { qaDocumentDelivery: delivery ?? null } : {}),
             qaAuthor: author?.displayName ?? access.ownerName,
             qaOwnerByline: byOwner ? (access.shared ?? true) : null,

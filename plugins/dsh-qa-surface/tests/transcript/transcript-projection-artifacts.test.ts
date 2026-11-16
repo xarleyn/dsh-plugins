@@ -76,6 +76,36 @@ function answerOf(messages: readonly QaMessage[]) {
 }
 
 describe("transcript artifacts", () => {
+  it("renders a completed file transfer even without an assistant generation", () => {
+    const file = {
+      format: "docx",
+      name: "report.docx",
+      path: BUNDLE + "/report.docx",
+      sha256Prefix: "9f2c1d0a4b5e6f70",
+    };
+    const rows = projectTranscript(
+      snapshot(
+        legacy({
+          nodes: [
+            {
+              kind: "user",
+              seq: 1,
+              time: 10,
+              source: {
+                kind: "user",
+                qaDeliveryReply: true,
+                qaDocumentDelivery: file,
+              },
+              content: [{ type: "text", text: "пришли файл ещё раз" }],
+            },
+          ] as ConversationNode[],
+        }),
+      ),
+    );
+    expect(rows.map((row) => row.role)).toEqual(["user", "assistant"]);
+    expect(answerOf(rows).artifacts).toEqual([file]);
+    expect(answerOf(rows).review).toBeUndefined();
+  });
   it.each([
     "пришли файл ещё раз",
     "Дай мне этот документ",

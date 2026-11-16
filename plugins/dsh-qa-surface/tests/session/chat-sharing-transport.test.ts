@@ -13,7 +13,7 @@ afterEach(() => {
   for (const dispose of close.splice(0)) dispose();
   vi.useRealTimers();
 });
-function fixture() {
+function fixture(session?: unknown) {
   const f = sharingFixture();
   close.push(() => f.store.storage.close());
   const native = {
@@ -62,6 +62,7 @@ function fixture() {
   const transport = new QaChatTransport(
     {
       sessionController: native,
+      sessions: { get: () => session },
       get: () => ({
         searchSessions: async () => {
           const result = await native.search();
@@ -118,6 +119,53 @@ const request = (id: string): SessionPromptRequest =>
   }) as unknown as SessionPromptRequest;
 const signal = () => new AbortController().signal;
 describe("authenticated QA chat transport", () => {
+  it("settles a resend once without starting a writer or reviewer turn", async () => {
+    const events = [
+      {
+        seq: 1,
+        type: "tool/call",
+        data: { callId: "create", name: "document_create" },
+      },
+      {
+        seq: 2,
+        type: "tool/result",
+        data: {
+          message: {
+            source: { callId: "create" },
+            content: [
+              {
+                type: "text",
+                text: "docx: .qa/report.docx (1 KiB, sha256 abcdef0123456789…)",
+              },
+            ],
+          },
+        },
+      },
+    ] as { seq: number; type: string; data: unknown }[];
+    const session = {
+      surface: { nodes: [2] },
+      snapshotEvents: () => events,
+      eventAt: (seq: number) => events.find((e) => e.seq === seq),
+      append: vi.fn((type: string, data: unknown) =>
+        events.push({ seq: 3, type, data }),
+      ),
+    };
+    const f = fixture(session);
+    const input = {
+      ...request("resend"),
+      content: [{ type: "text" as const, text: "пришли файл ещё раз" }],
+    };
+    await f.transport.prompt(f.owner.token, input, signal());
+    await f.transport.prompt(f.owner.token, input, signal());
+    expect(session.append).toHaveBeenCalledOnce();
+    expect(events[2]?.data).toMatchObject({
+      source: {
+        kind: "qa-document-redelivery",
+        file: { name: "report.docx", sha256Prefix: "abcdef0123456789" },
+      },
+    });
+    expect(f.native.prompt).not.toHaveBeenCalled();
+  });
   it("rechecks current grants as one synchronous batch immediately before a control frame", async () => {
     const f = fixture();
     f.native.list.mockResolvedValue({
