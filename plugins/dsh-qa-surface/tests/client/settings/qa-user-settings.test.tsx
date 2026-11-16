@@ -245,7 +245,7 @@ describe("QA settings dialog", () => {
 });
 
 describe("QA settings general page", () => {
-  it("shows the account facts and names what is managed elsewhere", () => {
+  it("shows the account facts", () => {
     render(
       <QaGeneralSettingsPage
         email="i.ivanov@example.com"
@@ -262,9 +262,6 @@ describe("QA settings general page", () => {
     expect(
       screen.getByTestId("qa-settings-general-fact-chats").textContent,
     ).toContain("7");
-    expect(
-      screen.getByTestId("qa-settings-general-lead").textContent,
-    ).toContain("задаёт администратор");
   });
 });
 

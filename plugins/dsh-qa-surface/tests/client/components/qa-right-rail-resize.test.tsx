@@ -59,7 +59,8 @@ afterEach(() => vi.restoreAllMocks());
 describe("right-panel resize", () => {
   it("keeps room for the conversation and bounds large saved sizes", () => {
     expect(resolveQaRightRailWidth(null, 1136)).toBe(360);
-    expect(resolveQaRightRailWidth(900, 1136)).toBe(720);
+    expect(resolveQaRightRailWidth(900, 1136)).toBe(816);
+    expect(resolveQaRightRailWidth(1400, 2000)).toBe(1400);
     expect(resolveQaRightRailWidth(600, 636)).toBe(316);
     expect(resolveQaRightRailWidth(100, 1136)).toBe(280);
   });
@@ -131,6 +132,6 @@ describe("right-panel resize", () => {
     fireEvent.keyDown(handle, { key: "Home" });
     expect(handle.getAttribute("aria-valuenow")).toBe("280");
     fireEvent.keyDown(handle, { key: "End" });
-    expect(handle.getAttribute("aria-valuenow")).toBe("720");
+    expect(handle.getAttribute("aria-valuenow")).toBe("816");
   });
 });

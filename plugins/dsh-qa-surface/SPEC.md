@@ -1785,8 +1785,8 @@ Optional future config may force a branded theme, but normal DSH semantic
 variables should remain the base.
 
 Amendment (`/qa`): the surface carries the Host's three preferences (light,
-dark, system) in its own header, because the overlay suppresses the settings
-that host the Appearance row. The choice is browser-local — this deployment's
+dark, system) under General in personal settings. Without accounts, the header
+settings button opens appearance directly. The choice is browser-local — this deployment's
 localStorage namespace, never the Host user-settings document — and a browser
 that never picked one makes the surface write nothing at all. What a pick
 writes is the Host's own two fields (`color-scheme` on the root, the dark
@@ -2754,8 +2754,9 @@ package.
 ### 46.2 UX contract
 
 - The rail is a column inside `.dsh-qa-surface`, a flex sibling after
-  `.dsh-qa-body`, 360px wide, with a left border — the same footprint the
-  sources drawer had.
+  `.dsh-qa-body`, initially 360px wide. On desktop its left border can be
+  dragged to use the available space after the sidebar, reserving 320px for
+  the chat where possible. On phones the open panel fills the viewport.
 - The tab strip sits at the top: one chip per tab (`Источники`, `Файлы`) with
   an item count, plus a close button. `role=tablist` / `role=tab` /
   `role=tabpanel` semantics; the close control names the tab it leaves
@@ -2764,10 +2765,8 @@ package.
   closes the rail from anywhere on the page — answered on the window, since the
   focus may still sit in the composer behind the panel — and yields to a dialog
   standing over it.
-- While the rail or the agents drawer is open, the header's «Чат» marker becomes
-  the button that closes it and returns to the conversation; while nothing is
-  open it stays a plain label, because a button that leaves the reader where
-  they already stand is a dead control.
+- While the rail or the agents drawer is open, a back button in the title row
+  closes it. The conversation alone has no secondary tab row.
 - Tabs are mutually exclusive with the agents drawer: opening one side closes
   the other, exactly as the two drawers behaved.
 - Rail state is chat-local: switching or resetting a chat closes the rail and

@@ -35,7 +35,6 @@ function WidthHarness(props: {
 }) {
   const root = useRef<HTMLDivElement | null>(null);
   const published = useQaContentWidth({
-    active: true,
     root,
     storage: props.storage,
     storageKey: "qa:content-width",

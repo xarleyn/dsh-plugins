@@ -8,7 +8,6 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
-  type CSSProperties,
   type KeyboardEvent,
 } from "react";
 import type { ConnectionGenerationState } from "@deepseek-ai/dsh-client-connection/client";
@@ -103,10 +102,7 @@ import {
   scrollToTranscriptAnchor,
   type QaTurnRailItem,
 } from "./components/QaTurnRail.js";
-import {
-  QaWidthHandle,
-  useQaContentWidth,
-} from "./components/QaWidthHandle.js";
+import { QaChatColumn } from "./components/QaChatColumn.js";
 import { VariantSwitcher } from "./components/VariantSwitcher.js";
 import { QaWelcomeNotice } from "./components/QaWelcomeNotice.js";
 import { statusText, titleFromMessages } from "./components/surface-utils.js";
@@ -319,7 +315,6 @@ export function QaSurface(props: QaSurfaceProps) {
   );
   const [formTakeover, setFormTakeover] = useState(false);
   const transcript = useRef<HTMLDivElement>(null);
-  const chat = useRef<HTMLDivElement>(null);
   const nearBottom = useRef(true);
   const surface = useRef<HTMLElement>(null);
   /** The notice stack: after `<main>` in the page, inside the ring with it. */
@@ -471,13 +466,6 @@ export function QaSurface(props: QaSurfaceProps) {
     onSelect: onPreviewRole,
   });
   const previewing = preview !== null;
-  const widthHandlers = useQaContentWidth({
-    active: route.active && !adminRoute,
-    root: chat,
-    storage: window.localStorage,
-    storageKey: `${stateKey}:content-width`,
-    minContentWidth: config.ui.minContentWidth,
-  });
 
   useEffect(() => {
     if (accessPrincipal === null) {
@@ -1702,6 +1690,9 @@ export function QaSurface(props: QaSurfaceProps) {
     );
   }
 
+  const appearance = (
+    <QaThemeSwitcher preference={theme.preference} onSelect={theme.select} />
+  );
   return (
     <>
       {welcomeNotice}
@@ -1715,7 +1706,16 @@ export function QaSurface(props: QaSurfaceProps) {
           ? {}
           : { onEnableDesktop: turnNotices.onEnableDesktop })}
       />
-      {settingsDialog === undefined ? null : (
+      {settingsDialog === undefined ? (
+        <QaModal
+          open={settingsOpen}
+          title="Оформление"
+          closeLabel="Закрыть настройки"
+          onClose={() => setSettingsOpen(false)}
+        >
+          {appearance}
+        </QaModal>
+      ) : (
         <QaUserSettingsDialog
           open={settingsOpen}
           initialSection={
@@ -1734,6 +1734,7 @@ export function QaSurface(props: QaSurfaceProps) {
               : ""
           }
           chatCount={chatRows.length}
+          appearance={appearance}
           onClose={() => setSettingsOpen(false)}
           extensions={props.settingsSections}
           token={accounts?.token() ?? ""}
@@ -1888,12 +1889,6 @@ export function QaSurface(props: QaSurfaceProps) {
                   />
                 )
               }
-              themeSwitcher={
-                <QaThemeSwitcher
-                  preference={theme.preference}
-                  onSelect={theme.select}
-                />
-              }
               administration={
                 accountsSnapshot.stage === "authed" &&
                 accountsSnapshot.user.role === "admin"
@@ -1931,7 +1926,13 @@ export function QaSurface(props: QaSurfaceProps) {
               }
               // The sidebar carries this entry next to the account name, so
               // the header takes it over exactly when there is no sidebar.
-              settings={showSidebar ? undefined : settingsEntry}
+              settings={
+                settingsEntry === undefined
+                  ? { label: "Оформление", onOpen: () => setSettingsOpen(true) }
+                  : showSidebar
+                    ? undefined
+                    : settingsEntry
+              }
               showReset={showResetButton}
               resetDisabled={
                 controller === undefined || state.phase === "creating"
@@ -1963,15 +1964,10 @@ export function QaSurface(props: QaSurfaceProps) {
             className="dsh-qa-workspace"
             data-testid="qa-surface-workspace-split"
           >
-            <div
-              ref={chat}
-              className="dsh-qa-chat"
-              data-testid="qa-surface-chat"
-              style={
-                {
-                  "--dsh-qa-content-width": `${config.ui.minContentWidth}px`,
-                } as CSSProperties
-              }
+            <QaChatColumn
+              resizable={!empty}
+              storageKey={`${stateKey}:content-width`}
+              minContentWidth={config.ui.minContentWidth}
             >
               <div
                 ref={transcript}
@@ -2292,12 +2288,7 @@ export function QaSurface(props: QaSurfaceProps) {
                   )}
                 </div>
               </footer>
-              {!empty
-                ? (["left", "right"] as const).map((side) => (
-                    <QaWidthHandle key={side} side={side} {...widthHandlers} />
-                  ))
-                : null}
-            </div>
+            </QaChatColumn>
             <QaPanelHost
               panels={props.panels}
               sessionId={state.sessionId}

@@ -571,6 +571,8 @@ function emitTurn(
 export function projectTranscript(
   snapshot: ConversationSnapshot | undefined,
   options: {
+    /** Live sharing state can change after the signed transcript arrives. */
+    readonly showOwnerByline?: boolean;
     /** Live turn lifecycle from the bound Session (drives running-row status). */
     readonly running?: boolean;
     readonly showToolActivity?: boolean;
@@ -605,15 +607,24 @@ export function projectTranscript(
       const files = visibleContentFiles(node.content);
       if (text === QA_REGENERATE_MARKER) continue;
       if (text === "" && images.length === 0 && files.length === 0) continue;
+      const source = node.source as {
+        qaAuthor?: string;
+        qaOwnerByline?: boolean | null;
+      };
+      // Only an owner's message carries a byline preference. Before admission
+      // completes, the signed record already describes how to render it.
+      const showAuthor =
+        typeof source.qaOwnerByline !== "boolean" ||
+        (options.showOwnerByline ?? source.qaOwnerByline);
       output.push({
         order: node.seq,
         message: {
           id: `${node.kind}:${node.seq}`,
           role: "user",
           text,
-          ...((node.source as { qaAuthor?: string }).qaAuthor === undefined
-            ? {}
-            : { author: (node.source as { qaAuthor: string }).qaAuthor }),
+          ...(showAuthor && source.qaAuthor !== undefined
+            ? { author: source.qaAuthor }
+            : {}),
           status: "committed",
           timestamp: node.time,
           ...(images.length === 0 ? {} : { images }),

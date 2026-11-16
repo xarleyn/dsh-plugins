@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { rpc, waitFor } from "./smoke-helpers.mjs";
+import { chooseProfileTheme } from "./smoke-chat-layout.mjs";
 
 /** Seed only while every disposable Host using this home is stopped. */
 export async function seedFormBrowserFixture(home, sessionId, ownerId) {
@@ -266,10 +267,10 @@ export async function runFormBrowserPass({
   );
   await capture("files-desktop-light");
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole("button", { name: "Тёмная тема", exact: true }).click();
+  await chooseProfileTheme(page, "Тёмная тема");
   await capture("files-phone-dark");
   await page.setViewportSize({ width: 1280, height: 900 });
-  await page.getByRole("button", { name: "Светлая тема", exact: true }).click();
+  await chooseProfileTheme(page, "Светлая тема");
   await required
     .getByLabel("Прикрепить файлы: Техническое задание", { exact: true })
     .setInputFiles({
