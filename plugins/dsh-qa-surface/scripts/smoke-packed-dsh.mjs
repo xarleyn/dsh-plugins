@@ -37,6 +37,9 @@ const dshVersion =
   compatibility.deepseekHarness.testedReleases.at(-1);
 const withBrowser = process.argv.includes("--browser");
 const fileWriteSettingsOnly = process.argv.includes("--file-write-settings");
+const discoverySettingsOnly = process.argv.includes(
+  "--tool-discovery-settings",
+);
 const modelSelectionOnly = process.argv.includes("--model-selection");
 const subagentModelsOnly = process.argv.includes("--subagent-models");
 if (modelSelectionOnly && !withBrowser)
@@ -1248,13 +1251,18 @@ try {
     );
   }
 
-  if (!modelSelectionOnly && !subagentModelsOnly)
+  if (!modelSelectionOnly && !subagentModelsOnly && !discoverySettingsOnly)
     await runLanPass({ dshBin, dshEnv, repo, hostLog });
-  if (fileWriteSettingsOnly || (withBrowser && !modelSelectionOnly))
+  if (
+    discoverySettingsOnly ||
+    fileWriteSettingsOnly ||
+    (withBrowser && !modelSelectionOnly)
+  )
     await runFileWriteSettingsBrowserPass({
       origin,
       authenticatedUrl: `${origin}/?token=${encodeURIComponent(token)}`,
       cookie,
+      discoveryOnly: discoverySettingsOnly,
       evidenceDirectory:
         process.env.DSH_QA_FILE_WRITE_EVIDENCE ??
         join(temporaryRoot, "file-write-evidence"),
@@ -1297,7 +1305,7 @@ try {
   }
   completed = true;
   console.log(
-    `packed DSH ${dshVersion} QA smoke passed${withBrowser || fileWriteSettingsOnly ? " with browser E2E" : ""}`,
+    `packed DSH ${dshVersion} QA smoke passed${withBrowser || fileWriteSettingsOnly || discoverySettingsOnly ? " with browser E2E" : ""}`,
   );
 } finally {
   await stopProcess(host);

@@ -36,6 +36,8 @@ import {
 } from "./access/model-policy.js";
 import { installQaSkillPolicy } from "./enforcement/skill-policy.js";
 import { installInheritableMask } from "./enforcement/tool-mask.js";
+import { QaToolDiscovery, supportsDiscovery } from "./qa-tools/discovery.js";
+import { FIND_TOOLS } from "./qa-tools/find-tools.js";
 import { isDelegatedStructuredResult } from "./enforcement/structured-result.js";
 import { QA_REPORT_SOURCES_TOOL } from "./provenance/host-store.js";
 import { QA_ASK_QUESTION_TOOL } from "./questions.js";
@@ -43,6 +45,7 @@ import type { QaLockdownProof, ResolvedQaSurfaceConfig } from "./types.js";
 import { qaUserWorkspaceDenial } from "./user-workspace.js";
 
 interface AppliedPolicy {
+  readonly effectiveTools: () => ReadonlySet<string>;
   readonly fingerprint: string;
   readonly disposeGuard: () => void;
   /** Owns the scoped restriction; disposed to lift the agent's tool mask. */
@@ -122,6 +125,11 @@ function cwdMatches(headerCwd: string | undefined, pinned: string): boolean {
  * and returns a sanitized proof. Every refusal carries only a coarse reason.
  */
 export class QaPolicyAdmission {
+  private readonly discovery = new Map<Agent, QaToolDiscovery>();
+  private readonly discoverySetup = new WeakMap<
+    QaToolDiscovery,
+    Promise<void>
+  >();
   private readonly appliedPolicies = new Map<Agent, AppliedPolicy>();
   /** Host-trusted principal-scoped plugin tools enabled outside static config. */
   private readonly principalScopedTools = new Set<string>();
@@ -221,6 +229,12 @@ export class QaPolicyAdmission {
       const ceiling = this.ceilings.get(String(session.id));
       if (ceiling === undefined) return undefined;
       if (
+        execution.name === FIND_TOOLS &&
+        execution.agent &&
+        this.discovery.get(execution.agent)?.ownsFinder(execution.agent)
+      )
+        return undefined;
+      if (
         isDelegatedStructuredResult(this.ctx, execution.agent, execution.name)
       ) {
         return undefined;
@@ -252,6 +266,7 @@ export class QaPolicyAdmission {
       { global: true },
     );
     ctx.on("agent/disposed", ({ agent }) => {
+      this.stopDiscovery(agent);
       this.appliedPolicies.delete(agent);
       this.workspaceAccess.delete(String(agent.session.id));
       this.ceilings.delete(String(agent.session.id));
@@ -267,8 +282,10 @@ export class QaPolicyAdmission {
   registerPrincipalScopedTools(names: readonly string[]): () => void {
     const normalized = names.map((name) => name.trim()).filter(Boolean);
     for (const name of normalized) this.principalScopedTools.add(name);
+    this.scheduleDiscoveryRefresh();
     return () => {
       for (const name of normalized) this.principalScopedTools.delete(name);
+      this.scheduleDiscoveryRefresh();
     };
   }
 
@@ -546,6 +563,7 @@ export class QaPolicyAdmission {
     }
     const pins = this.deploymentPins(config);
     if (!lockdown.enabled) {
+      this.stopDiscovery(agent);
       this.attested.add(sessionId);
       return {
         sessionId,
@@ -717,7 +735,8 @@ export class QaPolicyAdmission {
         ...(capability === undefined ? this.principalScopedTools : []),
       ]),
     ];
-    const policy = qaToolPolicyPlan(policyAllow, isMounted);
+    const plan = () => qaToolPolicyPlan(policyAllow, isMounted);
+    const policy = this.discovery.get(agent)?.unmasked(plan) ?? plan();
     if (policy.unknown.length > 0) {
       throw new QaAttestationError(
         "unknown-tools",
@@ -776,6 +795,11 @@ export class QaPolicyAdmission {
             : () => grants.dispose();
         disposeGuard = agent.ctx.tools.guard((execution) => {
           const subject = execution.agent;
+          if (
+            execution.name === FIND_TOOLS &&
+            this.discovery.get(agent)?.ownsFinder(subject)
+          )
+            return undefined;
           // A catalogue tool rides on the agent itself and the mask cannot name
           // it. Account-free deployments keep admitting their active catalogue;
           // a role-bound chat must still carry the tool in its base or activated
@@ -820,11 +844,19 @@ export class QaPolicyAdmission {
             policy: capability.policy,
             discovered: capability.skills,
             grants,
+            onGrant: (names) => {
+              try {
+                this.discovery.get(agent)?.refresh(names);
+              } catch {
+                this.discoveryFallback(agent);
+              }
+            },
             logger: this.logger,
             preview: capability.adminPreview,
           });
         }
         this.appliedPolicies.set(agent, {
+          effectiveTools: () => grants?.effectiveTools() ?? allowed,
           fingerprint,
           disposeGuard,
           disposeTools,
@@ -876,6 +908,12 @@ export class QaPolicyAdmission {
     }
 
     this.attested.add(sessionId);
+    await this.syncDiscovery(
+      agent,
+      config,
+      hasUserHistory,
+      capability?.adminPreview === true,
+    );
     this.logger.debug("lockdown.attested", {
       sessionId,
       permissionPreset: lockdown.permissionPreset,
@@ -979,8 +1017,114 @@ export class QaPolicyAdmission {
     return this.attested.has(sessionId);
   }
 
+  private stopDiscovery(agent: Agent): void {
+    this.discovery.get(agent)?.dispose();
+    this.discovery.delete(agent);
+  }
+
+  /** Disabling search lifts only its additional restrictions. Never restart an
+   * in-flight operation or change the chat's capability/permission policy. */
+  refreshDiscoveryMode(): void {
+    const config = this.config();
+    for (const [agent, state] of this.discovery)
+      if (!config.lockdown.enabled || state.mode !== config.tools.discoveryMode)
+        this.stopDiscovery(agent);
+  }
+
+  private scheduleDiscoveryRefresh(): void {
+    if (!this.discovery.size) return;
+    // The integration owner registers names and definitions in one synchronous batch.
+    queueMicrotask(() => {
+      for (const [agent, state] of this.discovery) {
+        try {
+          state.refresh();
+        } catch {
+          this.discoveryFallback(agent);
+        }
+      }
+    });
+  }
+
+  private discoveryFallback(agent: Agent): void {
+    this.stopDiscovery(agent);
+    this.logger.warn("tool-discovery.unavailable", {
+      fallback: "original-tools",
+    });
+  }
+
+  private async syncDiscovery(
+    agent: Agent,
+    config: ResolvedQaSurfaceConfig,
+    hasHistory: boolean,
+    preview: boolean,
+  ) {
+    const mode = config.tools.discoveryMode;
+    const existing = this.discovery.get(agent);
+    if (existing && existing.mode !== mode) this.stopDiscovery(agent);
+    if (mode === "off" || preview || agent.session.header.isSeeded) {
+      if (this.discovery.has(agent)) this.stopDiscovery(agent);
+      return;
+    }
+    try {
+      if (this.discovery.has(agent)) {
+        const state = this.discovery.get(agent)!;
+        const pending = this.discoverySetup.get(state);
+        if (pending) await pending;
+        else state.refresh();
+        return;
+      }
+      const previous = agent.session.requestHeader()?.tools ?? [];
+      const resume = previous.some((t) => t.name === FIND_TOOLS);
+      if ((hasHistory || previous.length > 0) && !resume) return;
+      if (
+        agent.ctx.tools.get(FIND_TOOLS) ||
+        agent.ctx.tools.get(FIND_TOOLS, qaAgentScope(agent))
+      )
+        return;
+      const state = new QaToolDiscovery(
+        agent,
+        mode,
+        this.principalScopedTools,
+        () => this.appliedPolicies.get(agent)!.effectiveTools(),
+        this.logger,
+        resume ? previous.map((t) => t.name) : [],
+      );
+      this.discovery.set(agent, state);
+      // Verify the executor actually advertises the finder before hiding any
+      // operations. A custom or program-only presentation can ignore it.
+      const pending = supportsDiscovery(agent, this.principalScopedTools, mode)
+        .then((supported) => {
+          if (this.discovery.get(agent) !== state) return;
+          if (
+            !supported ||
+            !this.attested.has(String(agent.session.id)) ||
+            !this.appliedPolicies.has(agent) ||
+            this.config().tools.discoveryMode !== mode
+          ) {
+            this.stopDiscovery(agent);
+          } else state.start();
+        })
+        .catch(() => {
+          if (this.discovery.get(agent) === state)
+            this.discoveryFallback(agent);
+        });
+      this.discoverySetup.set(state, pending);
+      try {
+        await pending;
+      } finally {
+        this.discoverySetup.delete(state);
+      }
+    } catch (error) {
+      this.discoveryFallback(agent);
+      this.logger.debug("tool-discovery.setup-error", {
+        reason: error instanceof Error ? error.message : "unknown",
+      });
+    }
+  }
+
   /** Detach every pinned tool policy; wired as a disposal effect by the entry. */
   dispose(): void {
+    for (const agent of this.discovery.keys()) this.stopDiscovery(agent);
     for (const policy of this.appliedPolicies.values()) {
       policy.disposeSkillPolicy();
       policy.disposeTools();

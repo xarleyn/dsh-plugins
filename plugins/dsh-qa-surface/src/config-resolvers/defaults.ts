@@ -166,6 +166,7 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
       allowOs: true,
     }),
     tools: Object.freeze({
+      discoveryMode: "off" as const,
       fileWritePolicy: DEFAULT_QA_FILE_WRITE_POLICY,
       dynamicActivation: true,
       activationSkill: "qa-surface",
