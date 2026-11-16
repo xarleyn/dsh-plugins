@@ -736,7 +736,13 @@ to a tracker lookup with the right login instead of a question. Because a QA
 preset can declare its persona the complete system prompt (the shipped
 `qa-research` one does, which discards every plugin prompt section), the note
 travels as injected context on the conversation instead of as prompt text. It
-is written once per profile, and subagents of the chat get their own copy.
+is written when the profile changes or its previous note is removed from the
+active history, and subagents of the chat get their own copy. QA notes and the
+filtered skill catalog are restored on the first step after compaction without
+reloading the agent, including compaction during request preparation or an
+overflow retry. Retained text and notes already proposed for the current
+step are not duplicated. Clarification guidance changes when the effective
+policy changes or its note is removed; tool enforcement still follows each turn.
 Values are self-declared and the note says so: the agent names the identifier
 it searched by and asks when the results contradict the request. The feature
 needs no switch beyond accounts, though `accounts.profile.enabled` and

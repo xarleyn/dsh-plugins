@@ -4,6 +4,7 @@ import { agentEvents } from "@deepseek-ai/dsh-agent";
 import type { Agent, PreStepDecision } from "@deepseek-ai/dsh-agent";
 import { createUserMessage } from "@deepseek-ai/dsh-llm";
 import type { UserMessage } from "@deepseek-ai/dsh-llm";
+import { SessionSeq } from "@deepseek-ai/dsh-session";
 import { createScope } from "@deepseek-ai/dsh-scope";
 import SkillRegistry from "@deepseek-ai/dsh-skill";
 import type { SkillSummary } from "@deepseek-ai/dsh-skill";
@@ -138,13 +139,18 @@ async function setup(options: {
       return { ...decision, messages: [...decision.messages, ...injections] };
     });
   }
+  const messages: UserMessage[] = [];
+  const nodes: SessionSeq[] = [];
   const agent = {
     id: "agent-a",
     session: {
       id: "session-a",
       header: { cwd: process.cwd() },
-      surface: { nodes: [] },
-      eventAt: () => undefined,
+      surface: { nodes },
+      eventAt: (seq: number) =>
+        messages[seq] === undefined
+          ? undefined
+          : { type: "user/message", data: messages[seq] },
     },
   } as unknown as Agent;
   await ctx.plugin(
@@ -211,7 +217,13 @@ async function setup(options: {
     logger: logger(),
     record: (entry) => records.push(entry),
   });
-  return { ctx, agent, grants, discovered, records };
+  const commit = (entries: readonly UserMessage[]) => {
+    for (const message of entries) {
+      nodes.push(SessionSeq(messages.length));
+      messages.push(message);
+    }
+  };
+  return { ctx, agent, grants, discovered, records, commit, nodes };
 }
 
 async function load(agent: Agent, name: string): Promise<unknown> {
@@ -322,7 +334,7 @@ describe("QA skill policy consumer", () => {
   });
 
   it("carries the filtered catalog when a complete persona drops other sections", async () => {
-    const { ctx, agent, discovered, grants } = await setup({});
+    const { ctx, agent, discovered, grants, commit } = await setup({});
     ctx.systemPrompt.section({
       name: "complete-persona",
       order: 1,
@@ -347,6 +359,7 @@ describe("QA skill policy consumer", () => {
     expect(text).toContain("<available_skills>");
     expect(text).toContain("allowed-skill");
     expect(text).not.toContain("hidden-skill");
+    commit(first.messages);
     const second = await propose(ctx, agent, []);
     expect(second).toEqual({ kind: "enter", messages: [] });
     dispose();
@@ -366,6 +379,64 @@ describe("QA skill policy consumer", () => {
       messages: [],
     });
     reload();
+  });
+
+  it("restores the catalog on the first step after compaction without reinstalling the policy", async () => {
+    const { ctx, agent, discovered, grants, commit, nodes } = await setup({});
+    const dispose = installQaSkillPolicy({
+      agent,
+      policy,
+      discovered,
+      grants,
+      logger: logger(),
+    });
+    try {
+      const initial = await propose(ctx, agent, []);
+      if (initial.kind !== "enter") throw new Error("expected enter");
+      commit(initial.messages);
+      expect(await propose(ctx, agent, [])).toEqual({
+        kind: "enter",
+        messages: [],
+      });
+      nodes.splice(0);
+      const restored = await propose(ctx, agent, []);
+      if (restored.kind !== "enter") throw new Error("expected enter");
+      expect(restored.messages.map(({ content }) => content)).toEqual(
+        initial.messages.map(({ content }) => content),
+      );
+      commit(restored.messages);
+      expect(await propose(ctx, agent, [])).toEqual({
+        kind: "enter",
+        messages: [],
+      });
+    } finally {
+      dispose();
+    }
+  });
+
+  it("reproposes an uncommitted catalog and recognizes the current step's existing proposal", async () => {
+    const { ctx, agent, discovered, grants } = await setup({});
+    const dispose = installQaSkillPolicy({
+      agent,
+      policy,
+      discovered,
+      grants,
+      logger: logger(),
+    });
+    try {
+      const initial = await propose(ctx, agent, []);
+      if (initial.kind !== "enter") throw new Error("expected enter");
+      const retried = await propose(ctx, agent, []);
+      if (retried.kind !== "enter") throw new Error("expected enter");
+      expect(retried.messages.map(({ content }) => content)).toEqual(
+        initial.messages.map(({ content }) => content),
+      );
+      const combined = await propose(ctx, agent, initial.messages);
+      if (combined.kind !== "enter") throw new Error("expected enter");
+      expect(combined.messages).toEqual(initial.messages);
+    } finally {
+      dispose();
+    }
   });
 
   it("refuses a strict skill and hands over no instructions", async () => {

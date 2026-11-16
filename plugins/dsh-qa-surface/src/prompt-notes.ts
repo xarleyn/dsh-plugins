@@ -4,7 +4,7 @@ import { qaDelegatedHeader } from "./shared/session-lineage.js";
 import { requestedDocument } from "./shared/document-redelivery.js";
 import { originalDocument } from "./chat-sharing/document-delivery.js";
 import type { Context } from "@deepseek-ai/cordis";
-import { createUserMessage } from "@deepseek-ai/dsh-llm";
+import { QaNoteAdmission } from "./shared/retained-qa-notes.js";
 import type { ContextSnapshotSection } from "@deepseek-ai/dsh-llm";
 import type { PluginLogger } from "@yadsh/dsh-plugin-log";
 import type { QaAccounts } from "./accounts/store.js";
@@ -178,16 +178,15 @@ export interface QaPromptNotesOptions {
  * the transcript projection already hides every non-`subagent` context note
  * from the QA audience. Each note is written once per text rather than once
  * per step — the session's own surface is the state, so a resume or a plugin
- * reload never duplicates a note — and written again only when its text
- * actually changes.
+ * reload never duplicates a retained note — and written again when its text
+ * changes or compaction removes it from the active surface.
  *
  * The notes are advisory text, never authority: nothing here is enforced by
  * the model's compliance. The lockdown (allow-list, guards, permission
  * preset) is host-side and holds whatever the conversation says.
  */
 export class QaPromptNotes {
-  /** `${agentId}:${noteName}` → the text the note already carries. */
-  private readonly carried = new Map<string, string>();
+  private readonly admission: QaNoteAdmission;
   private readonly disposePreStep: () => void;
   private disposed = false;
 
@@ -195,6 +194,7 @@ export class QaPromptNotes {
     private readonly ctx: Context,
     private readonly options: QaPromptNotesOptions,
   ) {
+    this.admission = new QaNoteAdmission(ctx);
     this.disposePreStep = ctx.on(
       "agent/pre-step",
       async ({ agent, signal }, next): Promise<PreStepDecision> => {
@@ -220,7 +220,7 @@ export class QaPromptNotes {
     if (this.disposed) return;
     this.disposed = true;
     this.disposePreStep();
-    this.carried.clear();
+    this.admission.dispose();
   }
 
   /** Append every note whose text this step does not already carry. */
@@ -228,7 +228,7 @@ export class QaPromptNotes {
     if (decision.kind === "reject") return decision;
     const config = this.options.config();
     const root = this.rootSessionId(agent);
-    const pending = [
+    return this.admission.propose(agent, decision, [
       ...this.identityNotes(root, config),
       ...this.sourcesNotes(root, config),
       ...this.delegationNotes(root),
@@ -237,25 +237,7 @@ export class QaPromptNotes {
       ...this.sourcePriorityNotes(root),
       ...this.codeSourceNotes(root, config, String(agent.session.id)),
       ...this.branchNotes(root),
-    ].filter((note) => this.carriedText(agent, note.name) !== note.text);
-    if (pending.length === 0) return decision;
-    return {
-      ...decision,
-      messages: [
-        ...decision.messages,
-        ...pending.map((note) => {
-          this.carried.set(this.carriedKey(agent, note.name), note.text);
-          return createUserMessage({
-            content: [{ type: "text", text: note.text }],
-            source: {
-              kind: "qa-notes",
-              form: "snapshot",
-              sections: [{ name: note.name, text: note.text }],
-            },
-          });
-        }),
-      ],
-    };
+    ]);
   }
 
   /** Keep Git and file lookups on the same configured tree, including in children. */
@@ -435,35 +417,6 @@ export class QaPromptNotes {
             : renderTemplate(template, {}).trim(),
       },
     ];
-  }
-
-  private carriedKey(agent: Agent, noteName: string): string {
-    return `${String(agent.id)}:${noteName}`;
-  }
-
-  /**
-   * The text one note already carries in this agent's conversation. Process
-   * memory answers it after the first step; a cold read walks the durable
-   * surface so a resumed session or a reloaded plugin does not write twice.
-   */
-  private carriedText(agent: Agent, noteName: string): string | undefined {
-    const key = this.carriedKey(agent, noteName);
-    const cached = this.carried.get(key);
-    if (cached !== undefined) return cached;
-    for (const seq of [...agent.session.surface.nodes].reverse()) {
-      const event = agent.session.eventAt(seq);
-      if (event?.type !== "user/message") continue;
-      const source = event.data.source;
-      if (source.kind !== "qa-notes") continue;
-      const sections = source.form === "snapshot" ? source.sections : [];
-      if (!sections.some((section) => section.name === noteName)) continue;
-      const text = event.data.content
-        .flatMap((block) => (block.type === "text" ? [block.text] : []))
-        .join("\n\n");
-      this.carried.set(key, text);
-      return text;
-    }
-    return undefined;
   }
 
   /**
