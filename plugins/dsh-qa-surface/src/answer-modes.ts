@@ -56,7 +56,9 @@ function modeNote(state: TurnModes): string {
   return [
     state.modes.includes("rag")
       ? "The user explicitly approved deep search for this request after RAG. You may now follow Deep Thinking while retaining useful RAG evidence. This consent expires with the request."
-      : "Deep Thinking: investigate the owning documentation, verify hypotheses, and use available subagents when useful. Match research depth to the question; tool permissions and approval policy still apply. Earlier RAG-only restrictions do not apply to this request.",
+      : state.modes.includes("deep")
+        ? "Deep Thinking: investigate the owning documentation, verify hypotheses, and use available subagents when useful. Match research depth to the question; tool permissions and approval policy still apply. Earlier RAG-only restrictions do not apply to this request."
+        : "Answer the user's request with the available context. No additional research strategy is selected for this request. Tool permissions and approval policy still apply. Earlier RAG-only restrictions do not apply to this request.",
     review,
   ].join("\n\n");
 }

@@ -92,7 +92,7 @@ function fixture() {
     const value = (await fake.dispatch(
       "agent/pre-step",
       { agent: current, turn },
-      async () => ({ kind: "continue", messages }),
+      async () => ({ kind: "enter", messages }),
     )) as PreStepDecision;
     for (const msg of messages)
       events.push({ type: "user/message", data: msg });
@@ -167,6 +167,28 @@ function fixture() {
 }
 
 describe("answer modes host policy", () => {
+  it.each([
+    { modes: ["fast"] as const, deep: false },
+    { modes: ["fast", "deep"] as const, deep: true },
+  ])(
+    "applies only the selected research strategy: $modes",
+    async ({ modes, deep }) => {
+      const f = fixture();
+      const message = f.message();
+      const decision = await f.policy.withCommand("root", modes, async () => {
+        f.emitInbox([message]);
+        return f.step(1, [message]);
+      });
+      expect(decision.kind).toBe("enter");
+      if (decision.kind !== "enter") throw new Error("Missing mode note.");
+      const note = JSON.stringify(decision.messages.at(-1));
+      expect(note).toContain("Fast selected:");
+      expect(note.includes("Deep Thinking:")).toBe(deep);
+      expect(note.includes("use available subagents")).toBe(deep);
+      expect(f.guard("read")).toBeUndefined();
+      f.dispose();
+    },
+  );
   it("restores a delegated child's RAG restriction from durable lineage after reload", async () => {
     const f = fixture();
     f.policy.prepare("root", "request", ["rag"]);

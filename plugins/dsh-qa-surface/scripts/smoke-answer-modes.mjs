@@ -330,8 +330,14 @@ export async function runAnswerModesPass(options) {
 export async function runAnswerModesBrowserPass(page, evidenceDirectory) {
   await mkdir(evidenceDirectory, { recursive: true });
   const measurements = [];
-  for (const width of [1280, 390, 320]) {
-    await page.setViewportSize({ width, height: 900 });
+  for (const { width, height } of [
+    { width: 1280, height: 900 },
+    { width: 390, height: 900 },
+    { width: 320, height: 900 },
+    { width: 640, height: 240 },
+    { width: 320, height: 240 },
+  ]) {
+    await page.setViewportSize({ width, height });
     const trigger = page.getByTestId("qa-composer-modes");
     await trigger.click();
     await page.getByRole("checkbox", { name: "Fast", exact: true }).check();
@@ -347,17 +353,27 @@ export async function runAnswerModesBrowserPass(page, evidenceDirectory) {
       exact: true,
     });
     const box = await popup.boundingBox();
-    assert.ok(box && box.x >= 0 && box.x + box.width <= width && box.y >= 0);
+    assert.ok(
+      box &&
+        box.x >= 0 &&
+        box.x + box.width <= width &&
+        box.y >= 0 &&
+        box.y + box.height <= height,
+    );
     assert.equal(
       await popup
         .getByText("Если RAG не даст ответа, спросим, нужен ли глубокий поиск.")
         .count(),
       0,
     );
-    await page
-      .getByRole("checkbox", { name: "RAG Priority", exact: true })
-      .hover();
-    const tip = popup.getByRole("tooltip").last();
+    const rag = page.getByRole("checkbox", {
+      name: "RAG Priority",
+      exact: true,
+    });
+    await rag.hover();
+    const tip = page.locator(
+      `[id="${await rag.getAttribute("aria-describedby")}"]`,
+    );
     await tip.waitFor({ state: "visible" });
     await page.waitForFunction(
       (id) =>
@@ -366,16 +382,24 @@ export async function runAnswerModesBrowserPass(page, evidenceDirectory) {
       await tip.getAttribute("id"),
     );
     await page.screenshot({
-      path: join(evidenceDirectory, `mode-menu-${width}.png`),
+      path: join(evidenceDirectory, `mode-menu-${width}x${height}.png`),
     });
     const tooltipBox = await tip.boundingBox();
     assert.ok(
       tooltipBox &&
         tooltipBox.x >= 0 &&
         tooltipBox.x + tooltipBox.width <= width &&
-        tooltipBox.y >= 0,
+        tooltipBox.y >= 0 &&
+        tooltipBox.y + tooltipBox.height <= height,
     );
-    measurements.push({ width, popup: box, tooltip: tooltipBox });
+    measurements.push({ width, height, popup: box, tooltip: tooltipBox });
+    // All three options must remain pointer-reachable after scrolling a short menu.
+    const deep = page.getByRole("checkbox", {
+      name: "Deep Thinking",
+      exact: true,
+    });
+    await deep.uncheck();
+    await deep.check();
     await page.getByRole("checkbox", { name: "Fast", exact: true }).uncheck();
     await page
       .getByRole("checkbox", { name: "RAG Priority", exact: true })
@@ -385,7 +409,7 @@ export async function runAnswerModesBrowserPass(page, evidenceDirectory) {
       .press("Escape");
     await trigger.hover();
     const buttonTip = page.locator(
-      ".dsh-qa-modes>.dsh-qa-modes__tooltip-owner>.dsh-qa-modes__tooltip",
+      `[id="${await trigger.getAttribute("aria-describedby")}"]`,
     );
     await buttonTip.waitFor({ state: "visible" });
     await page.waitForFunction(
@@ -395,12 +419,25 @@ export async function runAnswerModesBrowserPass(page, evidenceDirectory) {
       await buttonTip.getAttribute("id"),
     );
     assert.match(await buttonTip.textContent(), /Документацию|документацию/u);
+    // The first option's tooltip must also escape the scroll container.
+    await trigger.click();
+    const fast = page.getByRole("checkbox", { name: "Fast", exact: true });
+    await fast.hover();
+    const fastTip = page.locator(
+      `[id="${await fast.getAttribute("aria-describedby")}"]`,
+    );
+    await fastTip.waitFor({ state: "visible" });
+    const fastBox = await fastTip.boundingBox();
+    assert.ok(
+      fastBox && fastBox.y >= 0 && fastBox.y + fastBox.height <= height,
+    );
+    await fast.press("Escape");
   }
   await writeFile(
     join(evidenceDirectory, "measurements.json"),
     `${JSON.stringify(measurements, null, 2)}\n`,
   );
   console.log(
-    "packed QA answer mode UI: multi-select, names, Escape and mode/button tooltip bounds passed at 1280/390/320 px",
+    "packed QA answer mode UI: multi-select, names, Escape, scrollable options and mode/button tooltip bounds passed at 1280/390/320 px and 640x240/320x240 px",
   );
 }

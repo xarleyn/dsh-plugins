@@ -11,6 +11,22 @@ function Controlled() {
 }
 
 describe("answer mode dropdown", () => {
+  it("keeps Tab and Shift+Tab inside the open portal and restores focus on Escape", () => {
+    render(<Controlled />);
+    const trigger = screen.getByRole("button");
+    fireEvent.click(trigger);
+    const fast = screen.getByRole("checkbox", { name: "Fast" });
+    const rag = screen.getByRole("checkbox", { name: "RAG Priority" });
+    fireEvent.keyDown(trigger, { key: "Tab" });
+    expect(document.activeElement).toBe(fast);
+    fireEvent.keyDown(fast, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(rag);
+    fireEvent.keyDown(rag, { key: "Tab" });
+    expect(document.activeElement).toBe(fast);
+    fireEvent.keyDown(fast, { key: "Escape" });
+    expect(document.activeElement).toBe(trigger);
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+  });
   it("keeps the dropdown open for multiple choices and names every selected mode", () => {
     render(<Controlled />);
     const trigger = screen.getByRole("button", {
