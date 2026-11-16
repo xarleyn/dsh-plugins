@@ -32,6 +32,7 @@ async function fixture(
   reader = "review-child",
   textFollowup = false,
   withSource = true,
+  deliverable = report,
 ) {
   const cwd = await mkdtemp(path.join(os.tmpdir(), "document-gate-"));
   dirs.push(cwd);
@@ -59,7 +60,7 @@ async function fixture(
   const documents: DocumentsReader = {
     async toMarkdown({ file }) {
       expect(file).toBe(output);
-      await writeFile(markdownPath, report);
+      await writeFile(markdownPath, deliverable);
       await writeFile(
         manifestPath,
         JSON.stringify({
@@ -70,7 +71,7 @@ async function fixture(
               format: "md",
               status: "created",
               path: "document.md",
-              sha256: hash(report),
+              sha256: hash(deliverable),
             },
           ],
         }),
@@ -326,6 +327,72 @@ it("rejects an invented source key even when a source-free reviewer read the del
   expect(await f.stop()).toBe("failure");
   expect(f.receipts.some((receipt) => receipt.status === "pass")).toBe(false);
 });
+
+it.each([
+  ["«", "»"],
+  ["“", "”"],
+  ['"', '"'],
+  ["`", "`"],
+])(
+  "verifies quoted Markdown table pipes with %s%s delimiters",
+  async (open, close) => {
+    const row = "| Pressure requirement | Four bar maximum |";
+    const f = await fixture(
+      `CHECK S1 D1 | «${req}» | ${open}${row}${close} (document.md:3) | The table records the requirement.`,
+      true,
+      "review-child",
+      false,
+      true,
+      `# Report\n\n${row}`,
+    );
+    expect(await f.stop()).toBe("pass");
+  },
+);
+
+it("accepts an inline deliverable comparison with quoted table cells", async () => {
+  const row = "| Pump response | Thirty seconds maximum |";
+  const f = await fixture(
+    `Verified the deliverable. CHECK D1 D1 | «${row}» | «${row}» | Both quotations state the requested cutoff.`,
+    true,
+    "review-child",
+    false,
+    false,
+    row,
+  );
+  expect(await f.stop()).toBe("pass");
+});
+
+it.each([
+  ["“", "”"],
+  ["`", "`"],
+  ["[", "]"],
+])(
+  "rejects a CHECK embedded in a meta example enclosed by %s%s",
+  async (open, close) => {
+    const f = await fixture(
+      `Format example, not a review assertion: ${open}CHECK S1 D1 | «${req}» | «${report}» | Example comparison.${close}`,
+    );
+    expect(await f.stop()).toBe("failure");
+    expect(f.receipts.some((receipt) => receipt.status === "pass")).toBe(false);
+  },
+);
+
+it.each([false, true])(
+  "rejects unwitnessed or fabricated table quotations (read=%s)",
+  async (read) => {
+    const row = "| Pressure requirement | Four bar maximum |";
+    const f = await fixture(
+      `Verified. CHECK S1 D1 | «${req}» | «${read ? row.replace("Four", "Forty") : row}» | Matches the requirement.`,
+      read,
+      "review-child",
+      false,
+      true,
+      row,
+    );
+    expect(await f.stop()).toBe("failure");
+    expect(f.receipts.some((receipt) => receipt.status === "pass")).toBe(false);
+  },
+);
 
 it("credits every evidence key for a shared cached extraction, only to the child that read it", async () => {
   const cwd = await mkdtemp(path.join(os.tmpdir(), "document-cache-"));
