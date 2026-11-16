@@ -5,6 +5,8 @@ export interface QaChatAccess {
   readonly ownerName: string;
   readonly actorId: string;
   readonly mode: QaChatMode | "owner";
+  /** Whether the chat currently has any sharing grants. Absent on older Hosts. */
+  readonly shared?: boolean;
   readonly revision: number;
 }
 export interface QaChatGrant {

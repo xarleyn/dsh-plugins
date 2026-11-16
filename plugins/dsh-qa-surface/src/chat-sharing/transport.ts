@@ -25,6 +25,7 @@ import type {
   SessionSelectModelValue,
 } from "@deepseek-ai/dsh-api-session-controller/types";
 import type { QaChatSharingStore } from "./store.js";
+import type { QaChatAccess } from "./types.js";
 import type { SessionEventEntry } from "@deepseek-ai/dsh-api-session-controller/types";
 import { searchQaChats } from "./search.js";
 
@@ -98,12 +99,10 @@ export class QaChatTransport {
   ): Promise<SessionPage> {
     const access = await this.addressAccess(token, request.address, signal);
     const value = await this.ctx.sessionController.page(request, signal);
-    this.store().revalidate(token, access);
+    const current = this.store().revalidate(token, access);
     return {
       ...value,
-      records: value.records.map((record) =>
-        this.signRecord(token, access.sessionId, record),
-      ),
+      records: value.records.map((record) => this.signRecord(current, record)),
     };
   }
 
@@ -145,7 +144,6 @@ export class QaChatTransport {
     signal: AbortSignal,
   ): AsyncIterable<SessionFollowFrame> {
     const access = await this.addressAccess(token, request.address, signal);
-    const id = access.sessionId;
     const abort = new AbortController();
     const onAbort = () => abort.abort(signal.reason);
     signal.addEventListener("abort", onAbort, { once: true });
@@ -163,16 +161,16 @@ export class QaChatTransport {
         request,
         abort.signal,
       )) {
-        this.store().revalidate(token, access);
+        const current = this.store().revalidate(token, access);
         yield frame.type === "snapshot"
           ? {
               ...frame,
               records: frame.records.map((record) =>
-                this.signRecord(token, id, record),
+                this.signRecord(current, record),
               ),
             }
           : frame.type === "event"
-            ? this.signRecord(token, id, frame)
+            ? this.signRecord(current, frame)
             : frame;
       }
     } finally {
@@ -423,8 +421,7 @@ export class QaChatTransport {
     return access;
   }
   private signRecord(
-    token: string,
-    id: string,
+    access: QaChatAccess,
     record: SessionEventEntry,
   ): SessionEventEntry {
     if (record.event.type !== "user/message") return record;
@@ -432,19 +429,23 @@ export class QaChatTransport {
       source?: { rpcId?: string };
     };
     const source = data.source;
-    const author =
-      this.store()
-        .authors(token, id)
-        .find((item) => item.requestId === source?.rpcId)?.displayName ??
-      this.store().access(token, id).ownerName;
     if (source === undefined) return record;
+    const author =
+      source.rpcId === undefined
+        ? undefined
+        : this.store().requestActor(access.sessionId, source.rpcId);
+    const byOwner = author === undefined || author.userId === access.ownerId;
     return {
       ...record,
       event: {
         ...record.event,
         data: {
           ...data,
-          source: { ...source, qaAuthor: author },
+          source: {
+            ...source,
+            qaAuthor: author?.displayName ?? access.ownerName,
+            qaOwnerByline: byOwner ? (access.shared ?? true) : null,
+          },
         } as unknown as SessionEventEntry["event"]["data"],
       },
     };

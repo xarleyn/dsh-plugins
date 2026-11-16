@@ -36,6 +36,17 @@ afterEach(() => {
 });
 
 describe("durable chat membership", () => {
+  it("marks a chat shared until its last grant is revoked", () => {
+    const f = sharingFixture();
+    const ownerAccess = () => f.store.access(f.owner.token, "chat-a");
+    expect(ownerAccess().shared).toBe(true);
+    expect(f.store.access(f.reader.token, "chat-a").shared).toBe(true);
+    f.store.set(f.owner.token, "chat-a", f.collaborator.user.email, null);
+    expect(ownerAccess().shared).toBe(true);
+    f.store.set(f.owner.token, "chat-a", f.reader.user.email, null);
+    expect(ownerAccess().shared).toBe(false);
+  });
+
   it("resolves one account provider per visibility batch and reads current grants on the next batch", () => {
     const f = sharingFixture();
     for (let i = 0; i < 30; i++)

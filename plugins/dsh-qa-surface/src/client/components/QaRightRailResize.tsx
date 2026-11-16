@@ -9,7 +9,6 @@ import {
 import { readQaStoredWidth, writeQaStoredWidth } from "./QaWidthHandle.js";
 
 const MIN_WIDTH = 280;
-const MAX_WIDTH = 720;
 const DEFAULT_WIDTH = 360;
 const CHAT_MIN_WIDTH = 320;
 
@@ -17,10 +16,7 @@ export function resolveQaRightRailWidth(
   requested: number | null,
   available: number,
 ) {
-  const maximum = Math.min(
-    MAX_WIDTH,
-    Math.max(MIN_WIDTH, available - CHAT_MIN_WIDTH),
-  );
+  const maximum = Math.max(MIN_WIDTH, available - CHAT_MIN_WIDTH);
   return Math.round(
     Math.max(MIN_WIDTH, Math.min(requested ?? DEFAULT_WIDTH, maximum)),
   );
@@ -33,7 +29,7 @@ export function QaRightRailResize(props: {
   storageKey: string;
 }) {
   const [width, setWidth] = useState(DEFAULT_WIDTH);
-  const [maximum, setMaximum] = useState(MAX_WIDTH);
+  const [maximum, setMaximum] = useState(DEFAULT_WIDTH);
   const [dragging, setDragging] = useState(false);
   const liveDrag = useRef(false);
   const origin = useRef(0);
@@ -48,7 +44,9 @@ export function QaRightRailResize(props: {
   const preference = useRef(readQaStoredWidth(props.storage, props.storageKey));
   const available = useCallback(() => {
     const parent = panel()?.parentElement;
-    if (!parent || parent.clientWidth === 0) return MAX_WIDTH + CHAT_MIN_WIDTH;
+    // The parent may not have a layout box yet during a remount. The viewport
+    // is a provisional bound; the observer replaces it when layout settles.
+    if (!parent?.clientWidth) return window.innerWidth;
     const occupied = [...parent.children]
       .filter((el) => el.matches(".dsh-qa-sidebar,.dsh-qa-agents"))
       .reduce((sum, el) => sum + (el as HTMLElement).offsetWidth, 0);
@@ -61,7 +59,7 @@ export function QaRightRailResize(props: {
     panel()?.style.setProperty("--dsh-qa-panel-width", `${resolved}px`);
     setWidth(resolved);
     handle.current?.setAttribute("aria-valuenow", String(resolved));
-    setMaximum(resolveQaRightRailWidth(MAX_WIDTH, space));
+    setMaximum(resolveQaRightRailWidth(space, space));
   }, [available, panel]);
   useLayoutEffect(() => {
     preference.current = readQaStoredWidth(props.storage, props.storageKey);

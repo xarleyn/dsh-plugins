@@ -4,6 +4,10 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { freePort, rpc, stopProcess, waitFor } from "./smoke-helpers.mjs";
 import {
+  runChatLayoutPass,
+  startLayoutProvider,
+} from "./smoke-chat-layout.mjs";
+import {
   seedFormBrowserFixture,
   runFormBrowserPass,
 } from "./smoke-form-browser.mjs";
@@ -24,6 +28,7 @@ export async function runIntegrationFolderBrowserPass(options) {
   const origin = `http://127.0.0.1:${port}`;
   const patch = join(root, "integration-folder.patch.yml");
   const modelPass = modelSelection || process.env.DSH_QA_MODEL_SMOKE === "1";
+  const layoutProvider = modelPass ? undefined : await startLayoutProvider();
   const stableCode = join(workspacePath, "stable-code");
   const previewCode = join(workspacePath, "preview-code");
   if (modelPass)
@@ -76,7 +81,19 @@ ${
           - id: blocked-demo
             name: Unassigned demo
 `
-    : ""
+    : `    session:
+      provider: qa-layout
+      model: layout-demo
+- id: llm-pi-ai
+  config:
+    providers:
+      qa-layout:
+        api: openai-completions
+        apiKeyEnv: QA_LAYOUT_DEMO_KEY
+        baseURL: http://127.0.0.1:${layoutProvider.address().port}/v1
+        models:
+          - id: layout-demo
+            name: Demo`
 }`,
   );
   const log = [];
@@ -88,7 +105,7 @@ ${
       [dshBin, "web", "--patch", patch, "--no-open", "--port", String(port)],
       {
         cwd: workspacePath,
-        env: dshEnv,
+        env: { ...dshEnv, QA_LAYOUT_DEMO_KEY: "local-demo" },
         windowsHide: true,
         stdio: ["ignore", "pipe", "pipe"],
       },
@@ -127,7 +144,7 @@ ${
       [dshBin, "web", "--patch", patch, "--no-open", "--port", String(port)],
       {
         cwd: workspacePath,
-        env: dshEnv,
+        env: { ...dshEnv, QA_LAYOUT_DEMO_KEY: "local-demo" },
         windowsHide: true,
         stdio: ["ignore", "pipe", "pipe"],
       },
@@ -202,6 +219,14 @@ ${
       sessionId: formSession,
       formId: formFixture.id,
     });
+    if (layoutProvider)
+      await runChatLayoutPass(page, {
+        origin,
+        cookie,
+        token: session.token,
+        sessionId: formSession,
+        ownerName: session.user.displayName,
+      });
     await sidebar.getByTestId("qa-history-create-folder").click();
     await page
       .getByLabel("Название каталога", { exact: true })
@@ -530,6 +555,7 @@ ${
     hostLog.push(...log);
     throw error;
   } finally {
+    layoutProvider?.close();
     await browser?.close().catch(() => undefined);
     await stopProcess(host);
   }

@@ -2385,6 +2385,8 @@ export class QaSessionController {
       snapshot.running === true && !this.compatibilityReadOnly,
     );
     const queuedMessages = this.queuedMessages();
+    const chatAccess =
+      this.chatAccess?.sessionId === sessionId ? this.chatAccess : undefined;
     const projectionInput = {
       connected,
       sessionId,
@@ -2398,8 +2400,8 @@ export class QaSessionController {
       workspaceRoot: this.sourceAnchor(sessionId),
       approvals: this.hostApprovals.list(),
       questions: this.hostQuestions.list(),
-      // Ownership is chat-level: every user message of a foreign chat
-      // carries its owner's name when an admin reads it.
+      showOwnerByline: chatAccess?.shared,
+      // Fallback for unsigned messages when an admin reads a foreign chat.
       author: this.accounts?.messageAuthorOf(sessionId),
       operationError: this.operationError,
       requestQueue: this.requestWaitStatus ?? this.requestQueueNotice,
@@ -2446,8 +2448,7 @@ export class QaSessionController {
     }
     this.state = {
       ...projected,
-      chatAccess:
-        this.chatAccess?.sessionId === sessionId ? this.chatAccess : undefined,
+      chatAccess,
       ...(this.chatAccess?.sessionId === sessionId &&
       this.chatAccess.mode !== "owner"
         ? {

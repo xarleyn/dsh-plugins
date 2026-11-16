@@ -77,6 +77,7 @@ export interface QaBoundProjectionInput {
    * admin reads a foreign chat (chat-level, not per-message).
    */
   readonly author?: string;
+  readonly showOwnerByline?: boolean;
 }
 
 /** Matches the Host queue strip, which folds a long row into one line. */
@@ -265,6 +266,7 @@ export function projectBoundSessionState(
     input.sourceBundles.map((bundle) => [bundle.turn, bundle] as const),
   );
   const messages = projectTranscript(input.conversationSnapshot, {
+    showOwnerByline: input.showOwnerByline,
     running: snapshot.running === true && input.compatibilityReadOnly !== true,
     showToolActivity: config.ui.showToolActivity,
     showReasoning: config.ui.showReasoning,

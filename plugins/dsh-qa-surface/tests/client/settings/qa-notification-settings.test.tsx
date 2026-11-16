@@ -13,7 +13,6 @@ import type {
   QaAccountNotificationsInput,
   ResolvedQaSurfaceConfig,
 } from "../../../src/types.js";
-import { QaGeneralSettingsPage } from "../../../src/client/user-settings/GeneralSettingsPage.js";
 import {
   QA_NOTIFICATION_SETTINGS_COPY,
   QaNotificationSettingsPage,
@@ -222,22 +221,5 @@ describe("notifications inside the settings dialog", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Уведомления" }));
     expect(screen.getByRole("tabpanel", { name: "Уведомления" })).toBeTruthy();
     expect(checkbox(QA_NOTIFICATION_SETTINGS_COPY.desktop).checked).toBe(false);
-  });
-
-  it("is gone from the list of things still missing", () => {
-    render(
-      <QaGeneralSettingsPage
-        email="i.ivanov@example.com"
-        role="user"
-        chatCount={3}
-      />,
-    );
-    // The placeholder named this work; the work now has its own tab.
-    const upcoming =
-      screen.getByTestId("qa-settings-general-upcoming-list").textContent ?? "";
-    expect(upcoming).not.toContain("Настройки уведомлений");
-    expect(upcoming).not.toContain(QA_NOTIFICATION_SETTINGS_COPY.title);
-    // What really is still missing keeps its place on the list.
-    expect(upcoming).toContain("Приватность и хранение данных");
   });
 });

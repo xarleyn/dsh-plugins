@@ -277,10 +277,12 @@ describe("authenticated QA chat transport", () => {
       } as SessionPageRequest,
       signal(),
     );
-    expect(
-      (page.records[0]?.event.data as { source: { qaAuthor: string } }).source
-        .qaAuthor,
-    ).toBe(f.collaborator.user.displayName);
+    expect(page.records[0]?.event.data).toMatchObject({
+      source: {
+        qaAuthor: f.collaborator.user.displayName,
+        qaOwnerByline: null,
+      },
+    });
   });
   it("rechecks revocation after async resume and before queue insertion", async () => {
     const f = fixture();
