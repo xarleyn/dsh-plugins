@@ -258,6 +258,23 @@ export async function runAnswerModesPass(options) {
         modes: ["rag"],
       }),
     );
+    await assert.rejects(
+      remote("slashExecute", {
+        token: "",
+        sessionId,
+        line: "/no-review MODE_FAST_DEMO",
+        attachments: [],
+        modes: ["fast", "rag"],
+      }),
+    );
+    const refused = await remote("slashExecute", {
+      token: user.token,
+      sessionId,
+      line: "/qa_unknown_demo",
+      attachments: [],
+      modes: ["fast", "rag"],
+    });
+    assert.equal(refused.kind, "refused");
     for (const scenario of ["ALLOW", "AFTER", "DENY", "SKIP", "DEEP"]) {
       const requestId = randomUUID();
       await remote("prepareAnswerModes", {
@@ -370,6 +387,8 @@ export async function runAnswerModesBrowserPass(page, evidenceDirectory) {
       name: "RAG Priority",
       exact: true,
     });
+    // A click dismisses its tooltip; deliberately leave before hovering again.
+    await page.mouse.move(0, 0);
     await rag.hover();
     const tip = page.locator(
       `[id="${await rag.getAttribute("aria-describedby")}"]`,
@@ -393,6 +412,49 @@ export async function runAnswerModesBrowserPass(page, evidenceDirectory) {
         tooltipBox.y + tooltipBox.height <= height,
     );
     measurements.push({ width, height, popup: box, tooltip: tooltipBox });
+    await rag.press("Escape");
+    await trigger.hover();
+    const combined = page.locator(
+      `[id="${await trigger.getAttribute("aria-describedby")}"]`,
+    );
+    await combined.waitFor({ state: "visible" });
+    await page.waitForFunction(
+      (id) =>
+        globalThis.getComputedStyle(globalThis.document.getElementById(id))
+          .opacity === "1",
+      await combined.getAttribute("id"),
+    );
+    const combinedBox = await combined.boundingBox();
+    assert.ok(
+      combinedBox &&
+        combinedBox.y >= 0 &&
+        combinedBox.y + combinedBox.height <= height,
+    );
+    const overflow = await combined.evaluate((element) => ({
+      scrollable: element.scrollHeight > element.clientHeight,
+      overflowY: globalThis.getComputedStyle(element).overflowY,
+      pointerEvents: globalThis.getComputedStyle(element).pointerEvents,
+    }));
+    assert.equal(overflow.overflowY, "auto");
+    if (overflow.scrollable) {
+      assert.equal(overflow.pointerEvents, "auto");
+      await combined.hover();
+      await page.mouse.wheel(0, 1000);
+      await page.waitForFunction(
+        (id) => {
+          const element = globalThis.document.getElementById(id);
+          return (
+            element.scrollTop > 0 &&
+            element.scrollTop + element.clientHeight >= element.scrollHeight - 1
+          );
+        },
+        await combined.getAttribute("id"),
+      );
+      await page.screenshot({
+        path: join(evidenceDirectory, `mode-tooltip-${width}x${height}.png`),
+      });
+    }
+    await trigger.click();
     // All three options must remain pointer-reachable after scrolling a short menu.
     const deep = page.getByRole("checkbox", {
       name: "Deep Thinking",

@@ -29,17 +29,36 @@ function ModeTooltip(props: {
 }) {
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
+  const [suppressed, setSuppressed] = useState(false);
   const [position, setPosition] = useState({ left: 8, top: 8 });
   const anchor = useRef<HTMLSpanElement>(null);
   const tip = useRef<HTMLSpanElement>(null);
-  const active = !props.disabled && (hovered || focused);
+  const leaveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
+  const enter = () => {
+    clearTimeout(leaveTimer.current);
+    setHovered(true);
+    setSuppressed(false);
+  };
+  const leave = () => {
+    clearTimeout(leaveTimer.current);
+    leaveTimer.current = setTimeout(() => setHovered(false), 150);
+  };
+  const active = !props.disabled && !suppressed && (hovered || focused);
+  useEffect(() => () => clearTimeout(leaveTimer.current), []);
   useLayoutEffect(() => {
     if (!active) return;
     const place = () => {
       const target = anchor.current?.getBoundingClientRect();
-      const box = tip.current?.getBoundingClientRect();
-      if (!target || !box) return;
-      const above = target.top - box.height - 8;
+      const element = tip.current;
+      if (!target || !element) return;
+      const above = Math.max(0, target.top - 16);
+      const below = Math.max(0, window.innerHeight - target.bottom - 16);
+      element.style.maxHeight = `${Math.max(above, below)}px`;
+      const box = element.getBoundingClientRect();
+      element.style.pointerEvents =
+        element.scrollHeight > element.clientHeight ? "auto" : "none";
       setPosition({
         left: Math.max(
           8,
@@ -48,7 +67,9 @@ function ModeTooltip(props: {
         top: Math.max(
           8,
           Math.min(
-            above >= 8 ? above : target.bottom + 8,
+            above >= box.height || above >= below
+              ? target.top - box.height - 8
+              : target.bottom + 8,
             window.innerHeight - box.height - 8,
           ),
         ),
@@ -72,10 +93,14 @@ function ModeTooltip(props: {
     <span
       ref={anchor}
       className="dsh-qa-modes__tooltip-owner"
-      onPointerEnter={() => setHovered(true)}
-      onPointerLeave={() => setHovered(false)}
-      onFocus={() => setFocused(true)}
+      onPointerEnter={enter}
+      onPointerLeave={leave}
+      onFocus={() => {
+        setFocused(true);
+        setSuppressed(false);
+      }}
       onBlur={() => setFocused(false)}
+      onClickCapture={() => setSuppressed(true)}
     >
       {props.children}
       {createPortal(
@@ -86,6 +111,8 @@ function ModeTooltip(props: {
           role="tooltip"
           data-active={active}
           style={position}
+          onPointerEnter={enter}
+          onPointerLeave={leave}
         >
           {props.text}
         </span>,
@@ -332,7 +359,7 @@ export const QA_ANSWER_MODES_STYLES = `
 .dsh-qa-modes__name{font-size:14px;font-weight:600;line-height:20px}
 .dsh-qa-modes__description{color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px}
 .dsh-qa-modes__option input{flex:none;width:16px;height:16px;margin:2px 0 0;accent-color:var(--dsh-qa-accent)}
-.dsh-qa-modes__tooltip{position:fixed;z-index:2147483006;display:block;box-sizing:border-box;width:max-content;max-width:min(330px,calc(100vw - 64px));max-height:calc(100dvh - 16px);padding:10px 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-primary);box-shadow:var(--dsw-shadow-lv2);font-size:12px;font-weight:400;line-height:18px;white-space:pre-line;pointer-events:none;visibility:hidden;opacity:0;transition:opacity .2s cubic-bezier(.22,1,.36,1)}
+.dsh-qa-modes__tooltip{position:fixed;z-index:2147483006;display:block;box-sizing:border-box;width:max-content;max-width:min(330px,calc(100vw - 64px));max-height:calc(100dvh - 16px);overflow-y:auto;overscroll-behavior:contain;padding:10px 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-primary);box-shadow:var(--dsw-shadow-lv2);font-size:12px;font-weight:400;line-height:18px;white-space:pre-line;pointer-events:auto;visibility:hidden;opacity:0;transition:opacity .2s cubic-bezier(.22,1,.36,1)}
 .dsh-qa-modes__tooltip[data-active=true]{visibility:visible;opacity:1;transition-delay:.45s}
 @media(pointer:coarse){.dsh-qa-modes__trigger{min-height:44px}.dsh-qa-modes__option{min-height:52px}.dsh-qa-modes__tooltip{display:none}}
 @media(prefers-reduced-motion:reduce){.dsh-qa-modes__tooltip{transition:none}}

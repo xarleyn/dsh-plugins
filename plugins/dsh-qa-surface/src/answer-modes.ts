@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { randomUUID } from "node:crypto";
 import type { Context } from "@deepseek-ai/cordis";
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import { createUserMessage, type UserMessage } from "@deepseek-ai/dsh-llm";
@@ -35,6 +36,11 @@ declare module "@deepseek-ai/dsh-session" {
   interface SessionEventMap {
     "qa/answer-modes": RequestModes;
     "qa/answer-mode-turn": TurnModes;
+    "qa/answer-mode-command": {
+      readonly id: string;
+      readonly modes: readonly QaAnswerMode[];
+    };
+    "qa/answer-mode-command-done": { readonly id: string };
   }
 }
 
@@ -235,7 +241,7 @@ export class QaAnswerModes {
     session.append("qa/answer-modes", { requestId, by: "rpc", modes });
   }
 
-  /** The command runtime still owns authorization and the exact Fast waiver. */
+  /** Caller authenticates write access; the runtime still owns the exact Fast waiver. */
   async withCommand<T>(
     sessionId: string,
     value: unknown,
@@ -243,17 +249,28 @@ export class QaAnswerModes {
   ): Promise<T> {
     const modes = qaAnswerModes(value);
     const captured = new Map<string, RequestModes>();
+    const session = this.ctx.sessions.get(SessionId(sessionId));
+    if (session === undefined) throw new Error("No such QA session.");
+    const id = randomUUID();
+    // A recovered log prefix must contain the strategy before any queued
+    // insertion. Pending ALS state alone cannot survive an interrupted command.
+    session.append("qa/answer-mode-command", { id, modes });
     try {
       return await this.command.run({ sessionId, modes, captured }, run);
     } finally {
-      const session = this.ctx.sessions.get(SessionId(sessionId));
       // Appending from session/event would reenter publication. Persist only
-      // after the runtime returns; the synchronous capture covers an early step.
-      if (session !== undefined)
-        for (const request of captured.values()) {
-          session.append("qa/answer-modes", request);
+      // after the runtime returns; publish exact bindings and closure together.
+      const current = this.ctx.sessions.get(SessionId(sessionId));
+      if (current !== undefined) {
+        current.append([
+          ...[...captured.values()].map(
+            (data) => ["qa/answer-modes", data] as const,
+          ),
+          ["qa/answer-mode-command-done", { id }],
+        ]);
+        for (const request of captured.values())
           this.pending.delete(`${sessionId}:${request.requestId}`);
-        }
+      }
     }
   }
 
@@ -394,7 +411,8 @@ export class QaAnswerModes {
     if (pending !== undefined) return pending.modes;
     const rpcId =
       "rpcId" in message.source ? String(message.source.rpcId) : undefined;
-    const event = [...session.snapshotEvents()]
+    const events = session.snapshotEvents();
+    const event = [...events]
       .reverse()
       .find(
         (event) =>
@@ -403,9 +421,26 @@ export class QaAnswerModes {
             ? event.data.requestId === String(message.id)
             : event.data.requestId === rpcId),
       );
-    return event?.type === "qa/answer-modes"
-      ? event.data.modes
-      : QA_DEFAULT_ANSWER_MODES;
+    if (event?.type === "qa/answer-modes") return event.data.modes;
+    // Only a matching queued insertion inside an unfinished command interval
+    // may use its durable intent. Concurrent intents combine conservatively;
+    // an explicitly bound later request takes precedence above.
+    const commands = new Map<string, readonly QaAnswerMode[]>();
+    for (const entry of events) {
+      if (entry.type === "qa/answer-mode-command")
+        commands.set(entry.data.id, entry.data.modes);
+      else if (entry.type === "qa/answer-mode-command-done")
+        commands.delete(entry.data.id);
+      else if (
+        entry.type === "agent/inbox/spliced" &&
+        entry.data.inserted.some(
+          (item) => String(item.id) === String(message.id),
+        ) &&
+        commands.size > 0
+      )
+        return qaAnswerModes([...new Set([...commands.values()].flat())]);
+    }
+    return QA_DEFAULT_ANSWER_MODES;
   }
 
   dispose(): void {

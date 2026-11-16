@@ -21,8 +21,15 @@ function fixture() {
     id: "root",
     header: {},
     snapshotEvents: () => events,
-    append: (type: string, data: unknown) => {
-      events.push({ type, data });
+    append: (
+      type: string | readonly (readonly [string, unknown])[],
+      data: unknown,
+    ) => {
+      events.push(
+        ...(typeof type === "string"
+          ? [{ type, data }]
+          : type.map(([type, data]) => ({ type, data }))),
+      );
     },
   };
   // Cordis may hand the Agent and SessionStore different scoped proxies.
@@ -167,6 +174,34 @@ function fixture() {
 }
 
 describe("answer modes host policy", () => {
+  it("keeps queued Fast+RAG work restricted after interruption before the command returns", async () => {
+    const f = fixture();
+    const message = f.message();
+    try {
+      await f.policy.withCommand("root", ["fast", "rag"], async () => {
+        f.emitInbox([message]);
+        // Reconstruct only from the durable prefix, losing pending ALS state.
+        f.reload();
+        await f.step(1, [message]);
+        expect(f.guard("read")).toBe(QA_RAG_BLOCKED);
+        f.policy.prepare("root", "later", ["deep"]);
+        await f.step(2, [f.message("later")]);
+        expect(f.guard("read")).toBeUndefined();
+      });
+    } finally {
+      f.dispose();
+    }
+  });
+  it("does not apply a completed command's strategy to an unrelated insertion", async () => {
+    const f = fixture();
+    await f.policy.withCommand("root", ["rag"], async () => undefined);
+    const message = f.message();
+    f.emitInbox([message]);
+    f.reload();
+    await f.step(1, [message]);
+    expect(f.guard("read")).toBeUndefined();
+    f.dispose();
+  });
   it.each([
     { modes: ["fast"] as const, deep: false },
     { modes: ["fast", "deep"] as const, deep: true },

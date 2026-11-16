@@ -2968,7 +2968,7 @@ export class QaSurface extends TypertRemoteService {
    * the transcript row is read from.
    */
   @Remote("slashExecute")
-  slashExecute(
+  async slashExecute(
     token: string,
     sessionId: string,
     line: string,
@@ -2977,9 +2977,15 @@ export class QaSurface extends TypertRemoteService {
   ): Promise<QaSlashExecution> {
     const execute = () =>
       this.slashRemotes.execute(token, sessionId, line, attachments);
-    return modes === undefined
-      ? execute()
-      : this.answerModes.withCommand(sessionId, modes, execute);
+    if (modes === undefined) return execute();
+    const proof = await this.secureSession(token, sessionId);
+    if (
+      proof.chatAccess !== undefined &&
+      proof.chatAccess.mode !== "owner" &&
+      proof.chatAccess.mode !== "collaborate"
+    )
+      throw new Error("Read-only chat access cannot change answer modes.");
+    return this.answerModes.withCommand(sessionId, modes, execute);
   }
 
   @Remote("prepareAnswerModes")
