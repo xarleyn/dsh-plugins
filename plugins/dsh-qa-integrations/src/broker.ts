@@ -1135,9 +1135,8 @@ export class IntegrationBroker {
     resolved: ResolvedServiceCredential,
   ): Promise<ServiceCredentialHealth | undefined> {
     const provider = this.providers.get(resolved.profile.provider);
-    const probe = provider.validateServiceCredential;
-    if (probe === undefined) return undefined;
-    return await probe({
+    if (provider.validateServiceCredential === undefined) return undefined;
+    return await provider.validateServiceCredential({
       credential: this.buildServiceCredential(
         resolved.profile.provider,
         resolved,
