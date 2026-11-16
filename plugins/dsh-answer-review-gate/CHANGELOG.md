@@ -1,3 +1,15 @@
+## 0.3.1 (2026-11-16)
+
+### 🩹 Fixes
+
+- Verify delivered DOCX files against their retained source attachments, preserve ([4f1339f4](https://github.com/xarleyn/dsh-plugins/commit/4f1339f4))
+  document identity across named follow-up deliveries, and require complete product
+  identifiers in witnessed line comparisons.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.3.0 (2026-11-16)
 
 ### 🚀 Features

@@ -1,3 +1,18 @@
+## 0.11.3 (2026-11-16)
+
+### 🩹 Fixes
+
+- Fix service connection checks reporting healthy providers as unavailable by ([82b3e269](https://github.com/xarleyn/dsh-plugins/commit/82b3e269))
+  preserving the provider instance when probing managed credentials.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-qa-surface to 0.23.0
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.11.2 (2026-11-16)
 
 ### 🩹 Fixes

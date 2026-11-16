@@ -1,3 +1,40 @@
+## 0.23.0 (2026-11-16)
+
+### 🚀 Features
+
+- Allow administrators to permanently remove a QA account and optionally erase its conversations. ([66241114](https://github.com/xarleyn/dsh-plugins/commit/66241114))
+- Replace the Fast toggle with a multi-select answer mode menu. Keep Fast ([51949edd](https://github.com/xarleyn/dsh-plugins/commit/51949edd))
+  independent of Deep Thinking and RAG Priority, bind modes to each submitted
+  request, and require explicit user consent before RAG can use deep research
+  tools or delegation. Explain modes with accessible hover and focus tooltips.
+
+- Add optional discovery of selected integration tools in new QA chats, with an observation mode and unchanged defaults. ([e48924fd](https://github.com/xarleyn/dsh-plugins/commit/e48924fd))
+- Give interactive assistant questions in browser turns a configurable 30-minute response window. ([1cc05e13](https://github.com/xarleyn/dsh-plugins/commit/1cc05e13))
+  Keep permitted integration API clarifications open without a deadline.
+  Sound a reminder when the question appears and every five minutes while it is pending.
+
+
+### 🩹 Fixes
+
+- Restore the reading width when the chat opens, allow wider document panels, ([ee315a0e](https://github.com/xarleyn/dsh-plugins/commit/ee315a0e))
+  move appearance controls into personal settings, and hide the owner's byline
+  in private chats.
+
+  Show answer preparation and review progress above the composer and ask for
+  confirmation before stopping the current answer.
+
+- Restore QA guidance and the filtered skill catalog immediately after history ([fdf3e4f7](https://github.com/xarleyn/dsh-plugins/commit/fdf3e4f7))
+  compaction, including request preparation and overflow retries, and avoid
+  repeating unchanged clarification guidance across turns while preserving
+  turn-specific tool enforcement.
+
+  Keep document resend requests separate from editing or compound instructions,
+  preserve complete filenames, and select the updated artifact after mid-turn edits.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.22.0 (2026-11-16)
 
 ### 🚀 Features
