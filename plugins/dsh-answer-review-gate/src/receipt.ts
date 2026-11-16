@@ -1,4 +1,5 @@
 import { createUserMessage } from "@deepseek-ai/dsh-llm";
+import type { DocumentSubject } from "./document-evidence.js";
 
 export type ReviewStatus =
   | "reviewing"
@@ -11,6 +12,7 @@ export type ReviewStatus =
 
 /** Metadata about one immutable answer version, never a copy of its content. */
 export interface ReviewReceipt {
+  readonly documents?: readonly DocumentSubject[];
   readonly version: 1;
   readonly candidateSeq: number;
   readonly candidateHash: string;
@@ -37,7 +39,12 @@ declare module "@deepseek-ai/dsh-llm" {
 export function reviewStatusNotice(receipt: ReviewReceipt) {
   return createUserMessage({
     content: [
-      { type: "text", text: `Independent answer review: ${receipt.status}.` },
+      {
+        type: "text",
+        text: receipt.documents?.length
+          ? `Independent document review: ${receipt.status}. ${receipt.documents.map((d) => `${d.name} (SHA-256 ${d.sha256})`).join(", ")}`
+          : `Independent answer review: ${receipt.status}.`,
+      },
     ],
     source: {
       kind: REVIEW_STATUS_SOURCE,

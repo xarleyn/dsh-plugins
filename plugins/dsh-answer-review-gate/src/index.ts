@@ -30,6 +30,7 @@ import {
 import { AnswerReviewGate, type GateAgent, type GateLogSink } from "./gate.js";
 import type { DomainExpertsFace, SubagentsFace } from "./types.js";
 import { reviewStatusNotice } from "./receipt.js";
+import type { DocumentsReader, FileReference } from "./document-evidence.js";
 import {
   registerReviewWaiverCommand,
   type ReviewWaiverCommandRegistry,
@@ -144,6 +145,22 @@ export function apply(
 
   const audit = new ReviewAudit(config.audit.maxEntries);
   const gate = new AnswerReviewGate({
+    documents: () => ctx.get("documents") as DocumentsReader | undefined,
+    fileReadPath: (ref) => {
+      try {
+        const store = ctx.get("attachments") as
+          { fileHostPath(ref: FileReference): string | undefined } | undefined;
+        const fs = ctx.get("fs") as
+          | { processPathFromHostPath(path: string): string | undefined }
+          | undefined;
+        const host = store?.fileHostPath(ref);
+        return host === undefined
+          ? undefined
+          : fs?.processPathFromHostPath(host);
+      } catch {
+        return undefined;
+      }
+    },
     publishStatus: (agent, receipt) => {
       try {
         agent.session.append?.("user/message", reviewStatusNotice(receipt), {
@@ -224,7 +241,13 @@ export function apply(
     ((
       exec: {
         readonly name: string;
-        readonly agent?: { readonly id: unknown };
+        readonly agent?: {
+          readonly id: unknown;
+          readonly session?: {
+            readonly header: { readonly parentSession?: string };
+          };
+        };
+        readonly arguments?: { readonly file_path?: string };
       },
       result: unknown,
     ) => {
@@ -232,6 +255,23 @@ export function apply(
       // Current activations have a paired lifecycle. Re-registering a fast
       // child from its later tool result could leave it pending forever.
       const outcome = result as { isError: boolean; value?: { kind?: string } };
+      const parent = exec.agent.session?.header.parentSession;
+      if (
+        exec.name === "read" &&
+        parent &&
+        outcome.isError === false &&
+        typeof exec.arguments?.file_path === "string"
+      ) {
+        const read = outcome.value as
+          { lines?: { text: string }[] } | undefined;
+        if (Array.isArray(read?.lines))
+          gate.observeReviewerRead(
+            parent,
+            String(exec.agent.id),
+            exec.arguments.file_path,
+            read.lines.map((line) => line.text),
+          );
+      }
       if (outcome.value?.kind === "activation") return;
       gate.delegation.observeToolResult(
         {

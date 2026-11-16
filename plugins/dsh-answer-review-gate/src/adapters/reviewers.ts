@@ -167,7 +167,10 @@ export function createDomainExpertBackend(deps: {
           input.onRecovery?.();
           continue;
         }
-        return deriveVerdictFromExpertResult(outcome.result);
+        const verdict = deriveVerdictFromExpertResult(outcome.result);
+        return input.documentReview && outcome.result.childSessionId
+          ? { ...verdict, reviewerSessionId: outcome.result.childSessionId }
+          : verdict;
       }
       throw new ReviewerFailure("expert-output-not-captured");
     },
@@ -324,6 +327,9 @@ export function createSubagentBackend(deps: {
                 requestText: input.requestText,
                 requestAttachments: input.requestAttachments,
                 candidateText: input.candidateText,
+                ...(input.documentReview
+                  ? { documentReview: input.documentReview }
+                  : {}),
               }),
           },
           ...(input.requestImages ?? []),
@@ -390,7 +396,10 @@ export function createSubagentBackend(deps: {
             );
           }
           if (result.structured !== undefined) {
-            return validateReviewerVerdict(result.structured);
+            const verdict = validateReviewerVerdict(result.structured);
+            return input.documentReview
+              ? { ...verdict, reviewerSessionId: activation.childId }
+              : verdict;
           }
           throw new ReviewerFailure("reviewer-output-not-captured");
         } finally {

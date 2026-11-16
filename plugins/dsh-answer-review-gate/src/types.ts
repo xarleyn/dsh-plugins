@@ -71,6 +71,8 @@ export interface ReviewIssue {
 
 /** Result of one completed review pass. */
 export interface ReviewVerdict {
+  /** Set by the backend from its native activation, never from model output. */
+  readonly reviewerSessionId?: string;
   readonly verdict: "pass" | "revise";
   /** Reviewer's one-paragraph diagnosis. */
   readonly summary: string;
@@ -171,6 +173,7 @@ export interface ReviewAuditEntry {
 
 /** The material the reviewer receives (`SPEC.md`, "Reviewer isolation"). */
 export interface ReviewInput {
+  readonly documentReview?: string;
   /** One bounded recovery attempt is starting for the same candidate. */
   readonly onRecovery?: () => void;
   readonly conversationContext?: string;
@@ -255,6 +258,7 @@ export interface ExpertRunOutcome {
 
 /** The part of a domain-expert run result the verdict derivation reads. */
 export interface ExpertRunResult {
+  readonly childSessionId?: string;
   readonly status: string;
   /** False explicitly means the requested native result was not captured. */
   readonly structured?: boolean;

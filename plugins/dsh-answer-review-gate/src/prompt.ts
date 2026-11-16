@@ -163,6 +163,7 @@ function reviewContext(input: {
  * required corrections, never a rewritten answer.
  */
 export function renderSubagentReviewerTask(input: {
+  readonly documentReview?: string;
   readonly conversationContext?: string;
   readonly primaryTools?: readonly string[];
   readonly requestText: string | null;
@@ -185,6 +186,7 @@ export function renderSubagentReviewerTask(input: {
       "valid finding: a claim you cannot support counts as unsupported even when you cannot prove it false.",
     "",
     ATTACHMENT_PROTOCOL,
+    ...(input.documentReview ? [input.documentReview] : []),
     reviewContext(input),
     "",
     "Check at least: factual correctness; alignment with documentation and source code; unsupported claims; lost " +
@@ -233,6 +235,7 @@ export function renderSubagentReviewerTask(input: {
 
 /** Review task for the `domain-expert` backend: the expert speaks its own protocol. */
 export function renderExpertReviewTask(input: {
+  readonly documentReview?: string;
   readonly conversationContext?: string;
   readonly primaryTools?: readonly string[];
   readonly requestText: string | null;
@@ -252,6 +255,7 @@ export function renderExpertReviewTask(input: {
       "Lack of evidence is a valid finding.",
     "",
     ATTACHMENT_PROTOCOL,
+    ...(input.documentReview ? [input.documentReview] : []),
     reviewContext(input),
     "",
     REVIEW_TOOL_BOUNDARY,

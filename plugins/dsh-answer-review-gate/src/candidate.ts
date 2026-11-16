@@ -12,6 +12,8 @@
 import { createHash } from "node:crypto";
 
 import { fileHandleText, type ContentBlock } from "@deepseek-ai/dsh-llm";
+import type { FileReference } from "./document-evidence.js";
+import { activeHistoryNodes } from "./context.js";
 
 import {
   collectReviewWaiver,
@@ -42,6 +44,7 @@ export interface CollectedCandidate {
    * image policy. File handles retain their explicit access limitation.
    */
   readonly requestAttachments: readonly string[];
+  readonly requestFiles?: readonly FileReference[];
   readonly requestImages: readonly Extract<ContentBlock, { type: "image" }>[];
   /**
    * Surface seq of that user request — the identity of the user turn this
@@ -78,11 +81,12 @@ export function textOfBlocks(blocks: readonly ContentBlock[]): string {
  */
 export function attachmentHandleTexts(
   blocks: readonly ContentBlock[],
+  pathFor?: (file: FileReference) => string | undefined,
 ): readonly string[] {
   const lines: string[] = [];
   for (const block of blocks) {
     if (block.type === "file") {
-      lines.push(fileHandleText(block.attachment, undefined));
+      lines.push(fileHandleText(block.attachment, pathFor?.(block.attachment)));
     } else if (block.type === "image") {
       const ref = block.attachment;
       lines.push(
@@ -101,6 +105,7 @@ export function attachmentHandleTexts(
  */
 export function collectCandidate(
   session: CandidateSession,
+  pathFor?: (file: FileReference) => string | undefined,
 ): CollectedCandidate | null {
   const nodes = session.surface.nodes;
   for (let i = nodes.length - 1; i >= 0; i -= 1) {
@@ -115,12 +120,13 @@ export function collectCandidate(
     const text = textOfBlocks(data.message.content);
     if (text === "") return null;
     const candidateSeq = nodes[i]!;
-    const request = collectUserRequest(session, candidateSeq);
+    const request = collectUserRequest(session, candidateSeq, pathFor);
     return {
       candidateSeq,
       text,
       requestText: request?.text ?? null,
       requestAttachments: request?.attachments ?? [],
+      ...(request?.files.length ? { requestFiles: request.files } : {}),
       requestImages: request?.images ?? [],
       requestSeq: request?.seq ?? null,
       reviewWaiver:
@@ -138,19 +144,19 @@ export function collectCandidate(
 }
 
 /** Latest real user message at or before `beforeSeq` (every other producer source excluded). */
-function collectUserRequest(
+export function collectUserRequest(
   session: CandidateSession,
   beforeSeq: number,
+  pathFor?: (file: FileReference) => string | undefined,
 ): {
   readonly text: string;
   readonly seq: number;
   readonly messageId: string | null;
   readonly attachments: readonly string[];
+  readonly files: readonly FileReference[];
   readonly images: readonly Extract<ContentBlock, { type: "image" }>[];
 } | null {
-  const nodes = session.surface.nodes;
-  for (let i = nodes.length - 1; i >= 0; i -= 1) {
-    const seq = nodes[i]!;
+  for (const seq of [...activeHistoryNodes(session)].sort((a, b) => b - a)) {
     if (seq > beforeSeq) continue;
     const event = session.eventAt(seq);
     if (event === undefined || event.type !== "user/message") continue;
@@ -170,7 +176,10 @@ function collectUserRequest(
         text,
         seq,
         messageId: typeof data.id === "string" ? data.id : null,
-        attachments: attachmentHandleTexts(content),
+        attachments: attachmentHandleTexts(content, pathFor),
+        files: content.flatMap((b) =>
+          b.type === "file" ? [b.attachment] : [],
+        ),
         images: content.filter(
           (block): block is Extract<ContentBlock, { type: "image" }> =>
             block.type === "image",
