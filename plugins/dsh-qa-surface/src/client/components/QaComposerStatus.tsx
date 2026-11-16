@@ -54,21 +54,32 @@ export function QaComposerStatus({
 export function QaStopConfirmation({
   id,
   reviewing,
+  onUnmount,
   onContinue,
   onConfirm,
 }: {
   id: string;
   reviewing: boolean;
+  onUnmount: (hadFocus: boolean) => void;
   onContinue: () => void;
   onConfirm: () => void;
 }) {
   const keep = useRef<HTMLButtonElement>(null);
+  const group = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
+    const element = group.current;
     keep.current?.focus();
-  }, []);
+    return () => {
+      // Removing a focused button resets activeElement to the document body.
+      onUnmount(
+        element?.contains(element.ownerDocument.activeElement) ?? false,
+      );
+    };
+  }, [onUnmount]);
   return (
     <div
       id={id}
+      ref={group}
       className="dsh-qa-stop-confirmation"
       data-testid="qa-composer-stop-confirmation"
       role="group"

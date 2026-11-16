@@ -37,7 +37,7 @@ export async function runIntegrationFolderBrowserPass(options) {
     !chatLayoutOnly &&
     !reviewDockOnly &&
     (modelSelection || process.env.DSH_QA_MODEL_SMOKE === "1");
-  const reviewControl = { holdWriting: true };
+  const reviewControl = { answerReady: null, reviewRequested: false };
   const layoutProvider = reviewDockOnly
     ? await startReviewProvider(reviewControl)
     : modelPass

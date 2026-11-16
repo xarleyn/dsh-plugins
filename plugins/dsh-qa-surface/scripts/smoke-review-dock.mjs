@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { waitFor } from "./smoke-helpers.mjs";
 
 const writingPrompt = "Подготовь подробный план встречи.";
 const answer =
@@ -19,7 +20,12 @@ export async function startReviewProvider(control) {
     const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
     res.writeHead(200, { "Content-Type": "text/event-stream" });
     res.flushHeaders();
-    if (control.holdWriting || body.model === "review-demo") return;
+    if (body.model === "review-demo") {
+      control.reviewRequested = true;
+      return;
+    }
+    if (!control.answerReady) return;
+    await control.answerReady;
     for (const choice of [
       {
         index: 0,
@@ -55,12 +61,27 @@ export async function runReviewDockPass(page, control) {
     [writingPrompt, "writing", "stopped"],
     ["Как провести короткую рабочую встречу?", "reviewing", "cancelled"],
   ]) {
-    control.holdWriting = phase === "writing";
+    const answerGate = phase === "reviewing" ? Promise.withResolvers() : null;
+    control.answerReady = answerGate?.promise ?? null;
+    control.reviewRequested = false;
     await send(prompt);
-    await state(phase).waitFor();
-    if (phase === "reviewing") {
+    await state("writing").waitFor();
+    if (answerGate) {
+      await stop.click();
+      assert(
+        await keep.evaluate((el) => el === el.ownerDocument.activeElement),
+      );
+      answerGate.resolve();
+      await state("reviewing").waitFor();
+      assert(
+        await stop.evaluate((el) => el === el.ownerDocument.activeElement),
+      );
       await page.reload();
       await state(phase).waitFor();
+      await waitFor(
+        () => control.reviewRequested,
+        "independent review request",
+      );
       await page.getByText(answer, { exact: true }).first().waitFor();
       if (evidence)
         await page.screenshot({ path: join(evidence, "review.png") });

@@ -1,5 +1,6 @@
 import {
   memo,
+  useCallback,
   useEffect,
   useId,
   useLayoutEffect,
@@ -127,6 +128,10 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
   const stopButton = useRef<HTMLButtonElement>(null);
+  const returnStopFocus = useRef(false);
+  const rememberStopFocus = useCallback((hadFocus: boolean) => {
+    returnStopFocus.current = hadFocus;
+  }, []);
   const confirmationId = useId();
   const reviewing = isReviewInProgress(props.activity);
   const [stopRequest, setStopRequest] = useState<{
@@ -144,6 +149,23 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
     setStopRequest(null);
   }
   const confirming = stopRequest?.pending === false;
+  useLayoutEffect(() => {
+    if (!returnStopFocus.current) return;
+    returnStopFocus.current = false;
+    if (confirming || isQaModalOpen()) return;
+    const document = textarea.current?.ownerDocument;
+    if (!document) return;
+    const active = document.activeElement;
+    if (
+      active &&
+      active !== document.body &&
+      active !== document.documentElement
+    )
+      return;
+    const stop = stopButton.current;
+    const target = stop && !stop.disabled ? stop : textarea.current;
+    if (target && !target.disabled) target.focus();
+  }, [confirming]);
   const dismissStop = () => {
     setStopRequest(null);
     stopButton.current?.focus();
@@ -322,6 +344,7 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
           <QaStopConfirmation
             id={confirmationId}
             reviewing={reviewing}
+            onUnmount={rememberStopFocus}
             onContinue={dismissStop}
             onConfirm={() => void confirmStop()}
           />

@@ -73,15 +73,47 @@ describe("confirming a composer stop", () => {
     fireEvent.click(screen.getByTestId("qa-composer-stop-continue"));
     expect(onStop).not.toHaveBeenCalled();
     fireEvent.click(stop);
-    fireEvent.click(screen.getByTestId("qa-composer-stop-confirm"));
+    const confirm = screen.getByTestId("qa-composer-stop-confirm");
+    confirm.focus();
+    fireEvent.click(confirm);
     expect(onStop).toHaveBeenCalledTimes(1);
     expect((stop as HTMLButtonElement).disabled).toBe(true);
+    expect(document.activeElement).toBe(field());
     expect(field().value).toBe("Следующий вопрос");
     expect(
       screen.getByRole("button", { name: "Отправить в очередь" }),
     ).toBeTruthy();
     await settle(finish);
   });
+
+  it("returns focus from the confirmation to Stop when review starts", () => {
+    const composer = props({ running: true, turn: 1, activity: "writing" });
+    const view = render(<QaComposer {...composer} />);
+    const stop = screen.getByTestId("qa-composer-stop");
+    fireEvent.click(stop);
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Продолжить ответ" }),
+    );
+    view.rerender(<QaComposer {...composer} activity="reviewing" />);
+    expect(document.activeElement).toBe(stop);
+    expect(composer.onStop).not.toHaveBeenCalled();
+  });
+
+  it.each(["external field", "page body"])(
+    "preserves focus on the %s when review closes the confirmation",
+    (destination) => {
+      const composer = props({ running: true, turn: 1, activity: "writing" });
+      const view = render(page(composer));
+      fireEvent.click(screen.getByTestId("qa-composer-stop"));
+      const external = screen.getByLabelText("Shared title");
+      external.focus();
+      if (destination === "page body") external.blur();
+      const focused = document.activeElement;
+      view.rerender(page({ ...composer, activity: "reviewing" }));
+      expect(screen.queryByTestId("qa-composer-stop-confirmation")).toBeNull();
+      expect(document.activeElement).toBe(focused);
+    },
+  );
 
   it("discards confirmation when the turn, stage or ability to stop changes", () => {
     const composer = props({ running: true, turn: 1, activity: "writing" });
