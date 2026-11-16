@@ -142,7 +142,7 @@ export class QaQuestionGate {
     );
     this.disposers.push(
       this.ctx.on("agent/disposed", ({ agent }) => {
-        this.settleOwner(String(agent.session.id), "disposed");
+        this.settleAgent(String(agent.session.id), "disposed");
       }),
     );
     // A turn that ended cannot be answered into any more, whatever the request
@@ -386,21 +386,13 @@ export class QaQuestionGate {
     });
   }
 
-  /** Fail the questions one session's agent owns; a disposed agent cannot ask. */
-  private settleOwner(
-    ownerSessionId: string,
-    reason: QaQuestionCancelReason,
-  ): void {
+  /** End this agent's waits. Disposing the owner chat also ends its children's waits. */
+  private settleAgent(agentId: string, reason: "idle" | "disposed"): void {
     for (const entry of [...this.pending.values()]) {
-      if (entry.ownerSessionId === ownerSessionId)
-        entry.settle({ kind: "cancelled", reason });
-    }
-  }
-
-  /** Fail the questions one agent parked; an idle agent cannot receive them. */
-  private settleAgent(agentId: string, reason: QaQuestionCancelReason): void {
-    for (const entry of [...this.pending.values()]) {
-      if (entry.agentId === agentId)
+      if (
+        entry.agentId === agentId ||
+        (reason === "disposed" && entry.ownerSessionId === agentId)
+      )
         entry.settle({ kind: "cancelled", reason });
     }
   }
