@@ -16,8 +16,15 @@ await runVerifyPackage({
   packageName: "@yadsh/dsh-lightrag",
   license: "MIT",
   enginesNodeMatchesCompatibility: true,
-  exports: [".", "./package.json"],
-  client: "none",
+  exports: [".", "./client", "./locale/en.json", "./package.json"],
+  exportsBuilt: true,
+  client: {
+    platform: "web",
+    injectIncludes: [
+      "@deepseek-ai/dsh-client-ui-plugin-manager",
+      "@deepseek-ai/dsh-client-ui-settings",
+    ],
+  },
   files: [
     "lib",
     "cordis.patch.yml",
@@ -25,14 +32,33 @@ await runVerifyPackage({
     "README.md",
     "LICENSE",
   ],
-  requiredFiles: ["lib/index.js", "lib/index.d.ts", "README.md", "LICENSE"],
+  requiredFiles: [
+    "lib/index.js",
+    "lib/index.d.ts",
+    "lib/client.js",
+    "lib/client/index.d.ts",
+    "locale/en.json",
+    "README.md",
+    "LICENSE",
+  ],
   patch: { headerComment: true, id: "dsh-lightrag" },
   compatibility: {
     range: true,
     testedReleases: true,
     hostFeatures: ["tools/register"],
+    clientFeatures: ["plugins.row.config"],
+  },
+  clientBundle: {
+    moduleLoaderId: true,
+    includes: ["plugins.row.config", "@yadsh/dsh-lightrag#dsh-lightrag"],
+    notMatches: [/require\("node:/u, /"settings\.plugins\.tab"/u],
+    cardContract: {},
   },
   extra: async ({ readFile }) => {
+    // Import the compiled host entry as well as checking browser registration:
+    // the HTTP client and browser bundle must coexist in the published package.
+    const host = await import("../lib/index.js");
+    assert.equal(typeof host.createLightRagClient, "function");
     // A deployment builds its `lockdown.toolPolicy.allow` / preset toolFilter
     // from the README's tool list, so a tool the README never names cannot be
     // granted — and one it names but never registers fails attestation. Both
