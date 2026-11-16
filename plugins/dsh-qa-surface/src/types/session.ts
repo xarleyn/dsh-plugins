@@ -268,6 +268,10 @@ export type QaAttachmentDraft = QaImageDraft | QaFileDraft;
 
 /** A durable image attached to a sent message. */
 export interface QaImageView {
+  /** Stored reference from the event, verified by the Host when reading image bytes. */
+  readonly reference?: Parameters<
+    import("@deepseek-ai/dsh-api-session-controller/client").SessionFace["readAttachment"]
+  >[0];
   readonly attachmentId: string;
   readonly mediaType: QaImageMediaType;
   /** Browser-local thumbnail URL, present only on an optimistic message. */

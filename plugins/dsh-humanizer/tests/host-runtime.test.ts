@@ -1,3 +1,4 @@
+import * as NativeExecutor from "@deepseek-ai/dsh-tool-executor-native";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -24,20 +25,30 @@ it("loads through Cordis and executes canonical output in the Host 0.2.0 tool ru
   // dispatch, argument/output schema checks and disposal use the real runtime.
   ctx.provide("systemPrompt", { tools: () => () => {} });
   const runtime = await ctx.plugin(ToolRuntime);
+  await ctx.plugin(NativeExecutor);
   const fiber = await ctx.plugin(plugin, { endpoint: remote.endpoint });
   try {
     expect(ctx.tools.schemas().map((tool) => tool.name)).toEqual([
       "dsh_humanize_text",
       "dsh_humanizer_status",
     ]);
-    const result = await ctx.tools.execute({
-      callId: "demo-humanize-call" as Parameters<
-        typeof ctx.tools.execute
-      >[0]["callId"],
-      name: "dsh_humanize_text",
-      arguments: { text: "Original draft with 12 units." },
-      signal: new AbortController().signal,
-    });
+    const result = await ctx.tools
+      .execute({
+        calls: [
+          {
+            type: "tool-call",
+            id: "demo-humanize-call" as Parameters<
+              typeof ctx.tools.execute
+            >[0]["calls"][number]["id"],
+            name: "dsh_humanize_text",
+            arguments: JSON.stringify({
+              text: "Original draft with 12 units.",
+            }),
+          },
+        ],
+        signal: new AbortController().signal,
+      })
+      .then((batch) => batch.results[0]!.result);
     expect(result.isError).toBe(false);
     if (result.isError) throw new Error(JSON.stringify(result));
     expect(result.value).toMatchObject({

@@ -1,3 +1,4 @@
+import * as NativeExecutor from "@deepseek-ai/dsh-tool-executor-native";
 import {
   mkdtemp,
   readFile,
@@ -37,6 +38,7 @@ describe("file write policy through the native tool pipeline", () => {
     ctx = new Context();
     await ctx.plugin(SystemPrompt, {});
     await ctx.plugin(ToolRuntime);
+    await ctx.plugin(NativeExecutor);
     ownership = new QaSessionOwnership((id) => id === "root");
     policy = resolveFileWritePolicy({
       message: "Use spreadsheet tools; no script runtime is available.",
@@ -100,13 +102,22 @@ describe("file write policy through the native tool pipeline", () => {
   });
 
   function call(name: string, args: unknown, agent = root) {
-    return ctx.tools.execute({
-      callId: "file-call" as never,
-      name,
-      arguments: args,
-      agent,
-      signal: new AbortController().signal,
-    });
+    return ctx.tools
+      .execute({
+        calls: [
+          {
+            type: "tool-call",
+            id: "file-call" as Parameters<
+              typeof ctx.tools.execute
+            >[0]["calls"][number]["id"],
+            name,
+            arguments: JSON.stringify(args),
+          },
+        ],
+        agent,
+        signal: new AbortController().signal,
+      })
+      .then((batch) => batch.results[0]!.result);
   }
 
   it.each([

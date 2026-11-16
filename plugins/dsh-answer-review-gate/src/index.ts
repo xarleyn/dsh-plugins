@@ -16,7 +16,6 @@
  */
 
 import { createUserMessage } from "@deepseek-ai/dsh-llm";
-import { carrierKeyOf } from "@deepseek-ai/dsh-scope";
 import { getPluginLogger } from "@yadsh/dsh-plugin-log";
 
 import { ReviewAudit } from "./audit.js";
@@ -204,19 +203,16 @@ export function apply(
   );
 
   // Native activations (including named expert tools and continuations) all
-  // emit this pair on their parent's carrier, regardless of the tool's name.
+  // report their direct creator on the runtime's lifecycle event.
   for (const event of ["subagent/start", "subagent/end"] as const) {
     ctx.on(
       event,
-      function (this: unknown, info: { runId: string; id: string }) {
-        const parent = carrierKeyOf(this);
-        if (!parent || !("id" in parent) || typeof parent.id !== "string")
-          return;
+      (info: { runId: string; id: string; parentSessionId: string }) => {
         gate.delegation.observeRun(
-          parent.id,
+          info.parentSessionId,
           info,
           event === "subagent/start",
-          gate.lastSeenTurnOf(parent.id),
+          gate.lastSeenTurnOf(info.parentSessionId),
         );
       },
       { global: true },

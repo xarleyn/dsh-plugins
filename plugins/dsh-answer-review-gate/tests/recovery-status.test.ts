@@ -215,7 +215,7 @@ describe("capture recovery and durable review status", () => {
         async startActivation(spec) {
           const first = prompts.length === 0;
           lifecycle.push("start");
-          prompts.push(JSON.stringify(spec.request.prompt));
+          prompts.push(JSON.stringify(spec.prompt));
           return {
             childId: "child-session",
             result: Promise.resolve(

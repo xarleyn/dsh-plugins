@@ -74,8 +74,8 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh",
-    "@deepseek-ai/dsh-subagent": "catalog:dsh",
-    "@deepseek-ai/dsh-tools": "catalog:dsh",
+    "@deepseek-ai/dsh-subagent": ">=0.2.2-rc.3 <0.3.0-0",
+    "@deepseek-ai/dsh-tools": ">=0.2.2-rc.3 <0.3.0-0",
     "@deepseek-ai/schemastery": "catalog:dsh"
   },
   "devDependencies": {

@@ -228,7 +228,7 @@ an individual deadline or tool limit; a failed review is never converted into a 
 
 ## Requirements
 
-- DeepSeek Harness >=0.1.7-rc.2 <0.2.0
+- DeepSeek Harness >=0.2.2-rc.3 <0.3.0-0
 - Node.js ^22.19.0 or >=24.0.0
 
 ## Installation
@@ -241,7 +241,7 @@ The `--profile` flag is required.
 
 ## Compatibility
 
-- DeepSeek Harness >=0.1.7-rc.2 <0.2.0 (see `compatibility.json`).
+- DeepSeek Harness >=0.2.2-rc.3 <0.3.0-0 (see `compatibility.json`).
 - Uses the Host's paired `subagent/start` and `subagent/end` events to defer
   review while the parent owns an active native run, including custom-named
   expert tools. Legacy background jobs use tool results and inbox notices.

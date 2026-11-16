@@ -48,9 +48,12 @@ describe("user model grants", () => {
   });
   it("commits through the Host's session-local primitive without saving an operator default", async () => {
     const f = await fixture();
-    const agent = { status: "idle" } as Agent;
-    vi.spyOn(f.ctx.agents, "get").mockReturnValue(agent);
     const commit = vi.fn();
+    const agent = {
+      status: "idle",
+      model: { select: commit },
+    } as unknown as Agent;
+    vi.spyOn(f.ctx.agents, "get").mockReturnValue(agent);
     const nativeSelect = vi.fn();
     const saveDefault = vi.fn();
     const resolveCallConfig = vi.fn(async () => local);
@@ -61,7 +64,6 @@ describe("user model grants", () => {
           _agent: Agent,
           run: () => Promise<unknown>,
         ) => run(),
-        selectForNextRequest: commit,
       },
     });
     Object.assign(f.ctx, {
@@ -72,7 +74,7 @@ describe("user model grants", () => {
     await expect(
       selectUserModel(f.ctx, f.service, f.user.token, request),
     ).resolves.toEqual({ selected: local });
-    expect(commit).toHaveBeenCalledExactlyOnceWith(agent, local);
+    expect(commit).toHaveBeenCalledExactlyOnceWith(local);
     expect(nativeSelect).not.toHaveBeenCalled();
     expect(saveDefault).not.toHaveBeenCalled();
     commit.mockClear();
@@ -172,7 +174,8 @@ describe("user model grants", () => {
     vi.spyOn(f.ctx.agents, "get").mockReturnValue({
       session: { id: "session-user" },
       options: deepseek,
-    } as Agent);
+      model: { current: () => local },
+    } as unknown as Agent);
     const get = f.ctx.get.bind(f.ctx);
     vi.spyOn(f.ctx, "get").mockImplementation(((name: string) =>
       name === "sessionProjections"

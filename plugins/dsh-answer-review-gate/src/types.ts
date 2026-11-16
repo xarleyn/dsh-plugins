@@ -336,13 +336,11 @@ export interface SubagentRequestSpec {
 }
 
 /** One managed child execution request (the `startActivation` argument). */
-export interface SubagentActivationSpec {
+export interface SubagentActivationSpec extends SubagentRequestSpec {
   /** Registered backend to use. */
   readonly provider: string;
   /** Short task label retained in cataloged child membership. */
   readonly label: string;
-  /** Task, parent, and backend-supported execution options. */
-  readonly request: SubagentRequestSpec;
   /** Cancellation before publication; callers own later cancellation through dispose. */
   readonly signal: AbortSignal;
   /** `caller` returns the result to this call alone; `parent` notifies the model. */

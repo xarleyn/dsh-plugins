@@ -65,7 +65,7 @@ await runVerifyPackage({
     hostFeatures: [
       "tools/register",
       "subagents.start",
-      "subagents.listChildren",
+      "subagents.listDescendants",
       "storageDomain.open",
     ],
     clientFeatures: ["plugins.bundle.config"],

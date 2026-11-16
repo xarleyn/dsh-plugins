@@ -163,4 +163,4 @@ not a quality or calibration guarantee.
 
 ## Requirements and license
 
-DeepSeek Harness >=0.1.7-rc.2 <0.2.0; Node.js ^22.19.0 or >=24.0.0. MIT.
+DeepSeek Harness >=0.1.7-rc.2 <0.3.0-0 || 0.2.1-rc.3 || 0.2.2-rc.3; Node.js ^22.19.0 or >=24.0.0. MIT.

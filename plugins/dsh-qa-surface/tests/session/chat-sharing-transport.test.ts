@@ -142,7 +142,7 @@ describe("authenticated QA chat transport", () => {
     await stream.return?.();
   });
 
-  it("polls cold cache hints without replaying histories and still reads live projections", async () => {
+  it("keeps partial cold list hints out of full baselines and reads live projections", async () => {
     const f = fixture();
     f.native.list.mockResolvedValue({
       items: [
@@ -158,7 +158,7 @@ describe("authenticated QA chat transport", () => {
     const stream = coldIterable[Symbol.asyncIterator]();
     expect((await stream.next()).value).toEqual({
       type: "baseline",
-      value: { projections: { "chat-a": { asOfSeq: 2, values: {} } } },
+      value: { projections: {} },
     });
     expect(f.native.projections).not.toHaveBeenCalled();
     controller.abort();

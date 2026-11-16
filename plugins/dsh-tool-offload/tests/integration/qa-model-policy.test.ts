@@ -92,7 +92,7 @@ describe("the worker model under a QA policy", () => {
     });
     await runner.run(request());
     expect(asked).toEqual(["session-parent"]);
-    expect(specs[0]?.request.agentOptions).toEqual({
+    expect(specs[0]?.agentOptions).toEqual({
       provider: "local",
       model: "small",
       maxTokens: 2_500,
@@ -108,7 +108,7 @@ describe("the worker model under a QA policy", () => {
     });
     await runner.run(request({ profile: PINNED_PROFILE }));
     expect(asked).toEqual([]);
-    expect(specs[0]?.request.agentOptions).toEqual({
+    expect(specs[0]?.agentOptions).toEqual({
       provider: "zai",
       model: "glm-4.5-air",
       maxTokens: 4_000,
@@ -119,14 +119,14 @@ describe("the worker model under a QA policy", () => {
     const { subagents, specs } = service();
     const runner = createSubagentRunner(subagents, () => undefined);
     await runner.run(request());
-    expect(specs[0]?.request.agentOptions).toEqual({ maxTokens: 2_500 });
+    expect(specs[0]?.agentOptions).toEqual({ maxTokens: 2_500 });
   });
 
   it("runs unchanged with no policy source at all", async () => {
     const { subagents, specs } = service();
     const runner = createSubagentRunner(subagents);
     await runner.run(request({ profile: PINNED_PROFILE }));
-    expect(specs[0]?.request.agentOptions).toEqual({
+    expect(specs[0]?.agentOptions).toEqual({
       provider: "zai",
       model: "glm-4.5-air",
       maxTokens: 4_000,

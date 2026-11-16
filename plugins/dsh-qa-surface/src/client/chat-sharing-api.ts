@@ -73,7 +73,7 @@ export interface QaChatWire {
     token: string,
     request: Native.SessionPageRequest,
     signal?: AbortSignal,
-  ): Promise<RemoteResult<Native.SessionPage>>;
+  ): Promise<RemoteResult<Native.SessionEventsPage>>;
   chatFollow(
     token: string,
     request: Native.SessionFollowRequest,

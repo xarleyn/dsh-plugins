@@ -268,18 +268,18 @@ describe("subagent backend", () => {
     expect(spec.provider).toBe("spawn");
     expect(spec.label).toBe("answer-review");
     expect(spec.signal).toBe(input.signal);
-    expect(spec.request.parent).toBe("parent-agent");
+    expect(spec.parent).toBe("parent-agent");
     // The 0.2.1 request carries no persona and no tool filter: the persona
     // leads the prompt and tools are scoped by an Agent Preset.
-    expect(spec.request).not.toHaveProperty("persona");
-    expect(spec.request).not.toHaveProperty("toolFilter");
-    expect(spec.request.agentOptions).toEqual({
+    expect(spec).not.toHaveProperty("persona");
+    expect(spec).not.toHaveProperty("toolFilter");
+    expect(spec.agentOptions).toEqual({
       provider: "review-route",
       model: "review-model",
       reasoningEffort: "high",
     });
-    expect(spec.request.outputSchema).toBeDefined();
-    const [persona, task] = spec.request.prompt;
+    expect(spec.outputSchema).toBeDefined();
+    const [persona, task] = spec.prompt;
     expect(persona).toEqual({ type: "text", text: "Be adversarial." });
     expect((task as { text: string }).text).toContain("adversarial reviewer");
     expect((task as { text: string }).text).toContain("file locks");
@@ -306,7 +306,7 @@ describe("subagent backend", () => {
       onDegradation: (code, detail) => degradations.push([code, detail]),
     });
     await backend.review(reviewInput());
-    expect(started[0]!.request).not.toHaveProperty("toolFilter");
+    expect(started[0]!).not.toHaveProperty("toolFilter");
     expect(degradations).toEqual([
       ["TOOL_UNFILTERABLE", expect.stringContaining("Agent Preset")],
     ]);
@@ -548,8 +548,8 @@ describe("subagent backend", () => {
     await expect(inheriting.review(reviewInput())).resolves.toMatchObject({
       verdict: "pass",
     });
-    expect(started[0]!.request.agentOptions).toBeUndefined();
-    expect(started[0]!.request).not.toHaveProperty("agentPreset");
+    expect(started[0]!.agentOptions).toBeUndefined();
+    expect(started[0]!).not.toHaveProperty("agentPreset");
   });
 
   it("sends the configured agent preset and charges it to the capability", async () => {
@@ -566,7 +566,7 @@ describe("subagent backend", () => {
       parent: "p",
     });
     await backend.review(reviewInput());
-    expect(started[0]!.request.agentPreset).toBe("answer-reviewer-readonly");
+    expect(started[0]!.agentPreset).toBe("answer-reviewer-readonly");
     const face: SubagentsFace = {
       getProvider: (name) => providerOf(name, { agentPreset: false }),
       startActivation: async () => {

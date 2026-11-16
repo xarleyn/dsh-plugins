@@ -22,6 +22,18 @@ export interface QaChangelogEntry {
 
 export const QA_CHANGELOG: readonly QaChangelogEntry[] = [
   {
+    version: "0.22.0",
+    date: "2026-11-16",
+    sections: [
+      {
+        title: "Совместимость с DeepSeek Harness",
+        items: [
+          "QA поддерживает Harness 0.2.2-rc.3: выбор модели остаётся в текущем чате, а делегирование, история и изображения используют новый интерфейс Host.",
+        ],
+      },
+    ],
+  },
+  {
     version: "0.21.0",
     date: "2026-11-13",
     sections: [

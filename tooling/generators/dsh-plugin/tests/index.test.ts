@@ -110,8 +110,8 @@ describe("dsh-plugin generator", () => {
     expect(read("LICENSE")).toBe("MIT License\n");
     expect(JSON.parse(read("compatibility.json"))).toMatchObject({
       deepseekHarness: {
-        range: ">=0.1.7-rc.2 <0.2.0",
-        testedReleases: ["0.1.7-rc.2"],
+        range: ">=0.2.2-rc.3 <0.3.0-0",
+        testedReleases: ["0.2.2-rc.3"],
       },
       node: "^22.19.0 || >=24.0.0",
     });

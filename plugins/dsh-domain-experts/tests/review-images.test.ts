@@ -73,7 +73,7 @@ describe("host-only reviewer images", () => {
           return;
         }
         expect(outcome.ok).toBe(true);
-        const request = subagents.started[0]!.request;
+        const request = subagents.started[0]!;
         expect(
           request.prompt.filter((block) => block.type === "image"),
         ).toEqual(images);

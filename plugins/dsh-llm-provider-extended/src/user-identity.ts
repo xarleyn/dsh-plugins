@@ -31,12 +31,16 @@ export function resolveUserIdentity(
   validateUserIdentityProtocol(mode, api);
   const id = options.sessionId === undefined ? undefined : resolve?.(options);
   if (id === undefined)
-    throw new LlmError(
-      "This provider requires an attested QA chat with an active account owner",
-      "MISSING_USER_ID",
-    );
+    throw LlmError.fromFailure({
+      message:
+        "This provider requires an attested QA chat with an active account owner",
+      code: "MISSING_USER_ID",
+    });
   if (!/^[a-zA-Z0-9_-]{1,512}$/u.test(id))
-    throw new LlmError("The QA user identifier is invalid", "INVALID_USER_ID");
+    throw LlmError.fromFailure({
+      message: "The QA user identifier is invalid",
+      code: "INVALID_USER_ID",
+    });
   return id;
 }
 
@@ -48,7 +52,10 @@ export function userIdentityPayload(
 ): unknown {
   if (id === undefined) return payload;
   if (typeof payload !== "object" || payload === null || Array.isArray(payload))
-    throw new LlmError("Provider SDK returned an invalid payload", "PROTOCOL");
+    throw LlmError.fromFailure({
+      message: "Provider SDK returned an invalid payload",
+      code: "PROTOCOL",
+    });
   if (api === "openai-completions") return { ...payload, user_id: id };
   if (api === "openai-responses") return { ...payload, user: id };
   if (api === "anthropic-messages") {
@@ -59,7 +66,10 @@ export function userIdentityPayload(
         metadata === null ||
         Array.isArray(metadata))
     )
-      throw new LlmError("Provider SDK returned invalid metadata", "PROTOCOL");
+      throw LlmError.fromFailure({
+        message: "Provider SDK returned invalid metadata",
+        code: "PROTOCOL",
+      });
     return { ...payload, metadata: { ...metadata, user_id: id } };
   }
   throw new LlmError(

@@ -602,7 +602,7 @@ export class QaPolicyAdmission {
         config.session.cwd !== null &&
         cwdMatches(agent.session.header.cwd, config.session.cwd));
 
-    let options = sessionModelSelection(this.ctx, agent);
+    let options = sessionModelSelection(agent);
     // The pair this chat belongs to is its own policy's, not the deployment's:
     // a role served by another model is admitted on that model, while the
     // switch still refuses a chat that moved outside its policy.
@@ -658,7 +658,7 @@ export class QaPolicyAdmission {
         this.logger,
       ))
     ) {
-      options = sessionModelSelection(this.ctx, agent);
+      options = sessionModelSelection(agent);
       modelMatches = modelPolicySatisfied(modelPolicy, options);
     }
     if (!modelMatches)
