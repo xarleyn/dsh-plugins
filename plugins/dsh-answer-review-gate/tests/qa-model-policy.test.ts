@@ -113,7 +113,7 @@ describe("the reviewer child's model", () => {
       },
     });
     await backend.review(reviewInput());
-    expect(specs[0]?.request.agentOptions).toEqual({
+    expect(specs[0]?.agentOptions).toEqual({
       provider: "local",
       model: "small",
       reasoningEffort: "low",
@@ -131,7 +131,7 @@ describe("the reviewer child's model", () => {
       modelPolicy: { provider: "local", model: "small" },
     });
     await backend.review(reviewInput());
-    expect(specs[0]?.request.agentOptions).toEqual({
+    expect(specs[0]?.agentOptions).toEqual({
       provider: "review-route",
       model: "review-model",
     });
@@ -145,6 +145,6 @@ describe("the reviewer child's model", () => {
       parent: "parent-agent",
     });
     await backend.review(reviewInput());
-    expect(specs[0]?.request.agentOptions).toBeUndefined();
+    expect(specs[0]?.agentOptions).toBeUndefined();
   });
 });

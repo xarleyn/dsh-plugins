@@ -110,7 +110,18 @@ function visibleContentImages(
     const attachmentId = attachment?.attachmentId;
     const mediaType = attachment?.mediaType;
     if (typeof attachmentId !== "string" || attachmentId === "") continue;
+    const reference = attachment as Partial<
+      NonNullable<QaImageView["reference"]>
+    >;
     images.push({
+      ...(typeof reference.bytes === "number" &&
+      typeof reference.width === "number" &&
+      typeof reference.height === "number" &&
+      ["image/png", "image/jpeg", "image/webp", "image/gif"].includes(
+        String(mediaType),
+      )
+        ? { reference: reference as NonNullable<QaImageView["reference"]> }
+        : {}),
       attachmentId,
       mediaType: (typeof mediaType === "string"
         ? mediaType

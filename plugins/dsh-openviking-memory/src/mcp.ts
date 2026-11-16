@@ -56,6 +56,8 @@ export function buildMcpConfig(config: ResolvedConfig): mcpClient.Config {
     args: [PROXY_PATH],
     env,
     cwd: "",
+    closeTimeoutMs: 5_000,
+    expandTemplates: false,
     toolCallTimeoutMs: config.mcpToolCallTimeoutMs,
     failOnStartupError: false,
   };

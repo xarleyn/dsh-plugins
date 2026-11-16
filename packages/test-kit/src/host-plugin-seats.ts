@@ -73,7 +73,7 @@ function escapePattern(value: string): string {
  */
 export function seatCallSites(seats: HostSeatProbe, seat: string): string[] {
   const pattern = new RegExp(
-    `renderSlot\\(\\s*["']${escapePattern(seat)}["']\\s*,\\s*(\\{[\\s\\S]{0,200}?\\})`,
+    `renderSlot\\(\\s*["'\x60]${escapePattern(seat)}["'\x60]\\s*,\\s*(\\{[\\s\\S]{0,200}?\\})`,
     "gu",
   );
   return [...seats.clientBundle.matchAll(pattern)].map(
@@ -87,7 +87,7 @@ export function seatDocblock(
   seat: string,
 ): string | undefined {
   return new RegExp(
-    `/\\*\\*[\\s\\S]{0,600}?["']${escapePattern(seat)}["']:\\s*\\{[^}]*kind:`,
+    `/\\*\\*[\\s\\S]{0,600}?["'\x60]${escapePattern(seat)}["'\x60]:\\s*\\{[^}]*kind:`,
     "u",
   ).exec(seats.slotContract)?.[0];
 }
@@ -119,18 +119,22 @@ export function expectRowSeatContract(seats: HostSeatProbe): void {
 
   const sites = seatCallSites(seats, ROW_CONFIG_SEAT);
   expect(sites).toHaveLength(2);
-  const summary = sites.filter((site) => /view:\s*["']summary["']/u.test(site));
-  const page = sites.filter((site) => /view:\s*["']page["']/u.test(site));
+  const summary = sites.filter((site) =>
+    /view:\s*["'\x60]summary["'\x60]/u.test(site),
+  );
+  const page = sites.filter((site) =>
+    /view:\s*["'\x60]page["'\x60]/u.test(site),
+  );
   expect(summary).toHaveLength(1);
   expect(page).toHaveLength(1);
   expect(summary[0]).not.toMatch(/\bform\b/u);
   expect(page[0]).toMatch(/\bform\b/u);
 
   expect(seats.clientBundle).toMatch(
-    /description\s*\?\?\s*renderSlot\(\s*["']plugins\.row\.config["']\s*,\s*\{\s*view:\s*["']summary["']/u,
+    /description\s*\?\?\s*renderSlot\(\s*["'\x60]plugins\.row\.config["'\x60]\s*,\s*\{\s*view:\s*["'\x60]summary["'\x60]/u,
   );
   expect(seats.clientBundle).toMatch(
-    /children:\s*\[\s*renderSlot\(\s*["']plugins\.row\.config["']\s*,\s*\{\s*view:\s*["']page["']/u,
+    /children:\s*\[\s*renderSlot\(\s*["'\x60]plugins\.row\.config["'\x60]\s*,\s*\{\s*view:\s*["'\x60]page["'\x60]/u,
   );
 }
 
@@ -162,10 +166,10 @@ export function expectBundleSeatContract(seats: HostSeatProbe): void {
 
   const sites = seatCallSites(seats, BUNDLE_CONFIG_SEAT);
   expect(sites).toHaveLength(1);
-  expect(sites[0]).toMatch(/view:\s*["']page["']/u);
+  expect(sites[0]).toMatch(/view:\s*["'\x60]page["'\x60]/u);
   expect(sites[0]).not.toMatch(/\bform\b/u);
   expect(seats.clientBundle).toMatch(
-    /renderSlot\(\s*["']plugins\.bundle\.config["']\s*,\s*\{\s*view:\s*["']page["']\s*\}\s*,\s*\{\s*entryKey:\s*\w+\.name\s*\}/u,
+    /renderSlot\(\s*["'\x60]plugins\.bundle\.config["'\x60]\s*,\s*\{\s*view:\s*["'\x60]page["'\x60]\s*\}\s*,\s*\{\s*entryKey:\s*\w+\.name\s*\}/u,
   );
 }
 
@@ -183,14 +187,14 @@ export function expectBundleSeatContract(seats: HostSeatProbe): void {
  */
 export function expectBundleSectionUntitled(seats: HostSeatProbe): void {
   const site = seats.clientBundle.search(
-    /renderSlot\(\s*["']plugins\.bundle\.config["']/u,
+    /renderSlot\(\s*["'\x60]plugins\.bundle\.config["'\x60]/u,
   );
   expect(site).toBeGreaterThan(-1);
   const section = seats.clientBundle.slice(site - 320, site);
   expect(section).toContain('"data-plugin-config"');
-  expect(section).not.toMatch(/\)\s*"h[1-6]"/u);
+  expect(section).not.toMatch(/\)\s*["'\x60]h[1-6]["'\x60]/u);
   // The sibling section does title itself, and that is the level to match.
   expect(seats.clientBundle).toMatch(
-    /"data-plugin-rows"[\s\S]{0,400}\("h4",\s*\{\s*className:\s*\w+\.sectionTitle/u,
+    /"data-plugin-rows"[\s\S]{0,400}\(["'\x60]h4["'\x60],\s*\{\s*className:\s*\w+\.sectionTitle/u,
   );
 }

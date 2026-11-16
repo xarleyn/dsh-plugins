@@ -141,7 +141,7 @@ async function run(
 
 /** The `text` payload of one block of the child's first message. */
 function textBlockOf(spec: SubagentActivationSpec, index: number): string {
-  const block = spec.request.prompt[index];
+  const block = spec.prompt[index];
   return block !== undefined && block.type === "text" ? block.text : "";
 }
 
@@ -159,7 +159,7 @@ describe("execution: composition handed to the runtime", () => {
       structured: result,
     });
     const outcome = await run(harness, PAYMENTS, { structuredOutput: true });
-    const request = harness.subagents.started[0]!.request;
+    const request = harness.subagents.started[0]!;
     expect(request.outputSchema).toMatchObject({
       type: "object",
       required: [
@@ -224,9 +224,9 @@ describe("execution: composition handed to the runtime", () => {
     expect(task).not.toContain("## Answer format");
     // The Host scopes no child's tools per run; nothing of the filter and no
     // persona field travels with the request.
-    expect("toolFilter" in spec.request).toBe(false);
-    expect("persona" in spec.request).toBe(false);
-    expect(spec.request.maxDepth).toBe(3);
+    expect("toolFilter" in spec).toBe(false);
+    expect("persona" in spec).toBe(false);
+    expect(spec.maxDepth).toBe(3);
     // A foreground run answers through this tool result, so the parent model
     // must not be notified.
     expect(spec.delivery).toBe("caller");
@@ -235,7 +235,7 @@ describe("execution: composition handed to the runtime", () => {
   it("does not send model options when the domain inherits", async () => {
     const harness = harnessOf();
     await run(harness);
-    expect(harness.subagents.started[0]?.request.agentOptions).toBeUndefined();
+    expect(harness.subagents.started[0]?.agentOptions).toBeUndefined();
   });
 
   // A domain that inherits its model used to inherit the model the visitor left
@@ -256,7 +256,7 @@ describe("execution: composition handed to the runtime", () => {
       },
     );
     await run(harness);
-    expect(harness.subagents.started[0]?.request.agentOptions).toEqual({
+    expect(harness.subagents.started[0]?.agentOptions).toEqual({
       provider: "local",
       model: "small",
       reasoningEffort: "low",
@@ -295,7 +295,7 @@ describe("execution: composition handed to the runtime", () => {
     });
     const harness = harnessOf(pinned);
     await run(harness, pinned);
-    expect(harness.subagents.started[0]?.request.agentOptions).toEqual({
+    expect(harness.subagents.started[0]?.agentOptions).toEqual({
       provider: "deepseek",
       model: "chat",
       reasoningEffort: "high",
@@ -399,7 +399,7 @@ describe("execution: background runs", () => {
     expect(harness.subagents.started).toHaveLength(1);
     // A background run hands the completion notice to the parent's model.
     expect(harness.subagents.started[0]?.delivery).toBe("parent");
-    expect(harness.subagents.started[0]?.request.maxDepth).toBe(3);
+    expect(harness.subagents.started[0]?.maxDepth).toBe(3);
     // Settlement releases capacity, but a durable child stays attributable.
     expect(harness.tracker.find("child-bg")?.background).toBe(true);
   });
@@ -411,7 +411,7 @@ describe("execution: background runs", () => {
     const [foreground, background] = harness.subagents.started;
     expect(foreground?.delivery).toBe("caller");
     expect(background?.delivery).toBe("parent");
-    expect(background?.request).toEqual(foreground?.request);
+    expect(background?.prompt).toEqual(foreground?.prompt);
     expect(background?.label).toBe(foreground?.label);
     expect(background?.provider).toBe(foreground?.provider);
   });
@@ -528,7 +528,7 @@ describe("execution: the tool policy the runtime no longer scopes", () => {
     // The start request carries no filter at all: the Host scopes no child's
     // tools per run.
     expect(harness.subagents.started).toHaveLength(1);
-    expect("toolFilter" in harness.subagents.started[0]!.request).toBe(false);
+    expect("toolFilter" in harness.subagents.started[0]!).toBe(false);
     expect(result.status).toBe("completed");
     expect(harness.audits.recent()[0]?.degraded).toContain("TOOL_UNFILTERABLE");
   });

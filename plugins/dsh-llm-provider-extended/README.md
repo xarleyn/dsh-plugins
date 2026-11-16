@@ -20,7 +20,7 @@ Top K, Min P and Seed are gateway extensions: the configured server must support
 
 ## Requirements
 
-- DeepSeek Harness >=0.1.7-rc.2 <0.2.0
+- DeepSeek Harness >=0.2.2-rc.3 <0.3.0-0
 - Node.js ^22.19.0 or >=24.0.0
 
 ## Installation
@@ -160,7 +160,7 @@ See [SPEC.md](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-llm-p
 
 ## Compatibility
 
-- DeepSeek Harness >=0.1.7-rc.2 <0.2.0 (see `compatibility.json`)
+- DeepSeek Harness >=0.2.2-rc.3 <0.3.0-0 (see `compatibility.json`)
 
 ## Development
 

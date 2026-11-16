@@ -143,10 +143,10 @@ export function generationPayload(
 ): unknown {
   const checked = validateGeneration(generation, api);
   if (typeof payload !== "object" || payload === null || Array.isArray(payload))
-    throw new LlmError(
-      "Provider SDK returned an invalid request payload",
-      "PROTOCOL",
-    );
+    throw LlmError.fromFailure({
+      message: "Provider SDK returned an invalid request payload",
+      code: "PROTOCOL",
+    });
   const result = { ...payload };
   if (
     checked.temperature !== undefined &&

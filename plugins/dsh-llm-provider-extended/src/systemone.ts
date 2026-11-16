@@ -312,7 +312,10 @@ export async function* streamSystemOne(
     }
     const reader = response.body?.getReader();
     if (!reader)
-      throw new LlmError("System One returned an empty body", "PROTOCOL");
+      throw LlmError.fromFailure({
+        message: "System One returned an empty body",
+        code: "PROTOCOL",
+      });
     const chunks: Uint8Array[] = [];
     let size = 0;
     try {
@@ -321,7 +324,10 @@ export async function* streamSystemOne(
         if (next.done) break;
         size += next.value.length;
         if (size > 1024 * 1024)
-          throw new LlmError("System One response exceeds 1MiB", "PROTOCOL");
+          throw LlmError.fromFailure({
+            message: "System One response exceeds 1MiB",
+            code: "PROTOCOL",
+          });
         chunks.push(next.value);
       }
     } finally {
@@ -338,7 +344,10 @@ export async function* streamSystemOne(
     try {
       value = JSON.parse(new TextDecoder().decode(bytes));
     } catch {
-      throw new LlmError("System One returned invalid JSON", "PROTOCOL");
+      throw LlmError.fromFailure({
+        message: "System One returned invalid JSON",
+        code: "PROTOCOL",
+      });
     }
     const checked = validateDecisionResponse(value, request);
     const result = JSON.stringify(checked);

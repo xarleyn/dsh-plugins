@@ -145,7 +145,7 @@ by name.
 
 ## Compatibility
 
-- DeepSeek Harness `>=0.1.7-rc.2 <0.3.0-0` (channel `next`), host feature
+- DeepSeek Harness `>=0.1.7-rc.2 <0.3.0-0 || 0.2.1-rc.3 || 0.2.2-rc.3` (channel `next`), host feature
   `tools/register`, client feature `plugins.row.config` for the settings card.
 - Node `^22.19.0 || >=24.0.0`.
 

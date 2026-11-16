@@ -14,13 +14,15 @@ import type { QaModelPair, QaModelReplacement } from "./types.js";
 
 /** Host selection is durable and can differ from immutable agent creation options. */
 export function sessionModelSelection(
-  ctx: Context,
-  agent: Pick<Agent, "session" | "options">,
+  agent: Pick<Agent, "model" | "options">,
 ): ModelSelectionFacts {
-  const projections = ctx.get?.("sessionProjections") as
-    Context["sessionProjections"] | undefined;
-  const state = projections?.stateOf?.(agent.session, "modelSelection");
-  return state?.pending ?? state?.lastUsed ?? agent.options;
+  const { provider, model, reasoningEffort } =
+    agent.model?.current() ?? agent.options;
+  return {
+    ...(provider === undefined ? {} : { provider }),
+    ...(model === undefined ? {} : { model }),
+    ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
+  };
 }
 
 /**

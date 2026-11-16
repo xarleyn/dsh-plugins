@@ -1,3 +1,17 @@
+## 0.3.1 (2026-11-16)
+
+### 🩹 Fixes
+
+- Support DeepSeek Harness 0.2.2-rc.3 and Cordis 4.1. Plugins that use the new session, delegation or provider error APIs require this Host line. ([7e758d8a](https://github.com/xarleyn/dsh-plugins/commit/7e758d8a))
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-kit to 0.8.1
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.3.0 (2026-11-12)
 
 ### 🚀 Features

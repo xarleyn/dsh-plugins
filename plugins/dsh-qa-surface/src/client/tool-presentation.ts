@@ -81,12 +81,15 @@ const TOOL_LABELS: Readonly<Record<string, string>> = Object.freeze({
   interrupt_agent: "Остановка агента",
 });
 
-/** The durable id a continuable launch reports back ("started subagent <id>"). */
-const SUBAGENT_STARTED = /started subagent ([0-9a-f][0-9a-f-]*)/iu;
+/** Recent receipts carry a child name. Older logs may contain a Session id. */
+const SUBAGENT_STARTED = /started subagent ([a-z0-9][a-z0-9/-]*)/iu;
 
 export function isDelegationTool(name: string): boolean {
   return (
-    name === "subagent" || name === "subagent_fork" || name === "qa_subagent"
+    name === "subagent" ||
+    name === "subagent_fork" ||
+    name === "subagent_oar" ||
+    name === "qa_subagent"
   );
 }
 
@@ -97,8 +100,15 @@ function launchedSubagentId(
   try {
     const value = JSON.parse(output ?? "") as {
       kind?: unknown;
+      name?: unknown;
       subagentId?: unknown;
     } | null;
+    if (
+      value?.kind === "activation" &&
+      typeof value.name === "string" &&
+      value.name
+    )
+      return value.name;
     if (
       (value?.kind === "activation" || value?.kind === "continuable") &&
       typeof value.subagentId === "string" &&

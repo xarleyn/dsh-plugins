@@ -193,7 +193,7 @@ is required or assumed (SPEC §8).
 
 ## Compatibility
 
-- DeepSeek Harness >=0.1.7-rc.2 <0.2.0 (see `compatibility.json`)
+- DeepSeek Harness >=0.1.7-rc.2 <0.3.0-0 || 0.2.1-rc.3 || 0.2.2-rc.3 (see `compatibility.json`)
 - Node.js ^22.19.0 or >=24.0.0
 - A `git` executable available to the host process (git 2.25+ recommended;
   the `--no-textconv` blame flag used against hostile textconv drivers is

@@ -32,8 +32,8 @@ const managerClient = readFileSync(
 /** One `renderSlot("plugins.row.config", { … })` call, matched loosely. */
 const rowSeatCall = (view: string): RegExp =>
   new RegExp(
-    `renderSlot\\(\\s*["']plugins\\.row\\.config["']\\s*,\\s*\\{[^}]*?` +
-      `["']?view["']?\\s*:\\s*["']${view}["'][^}]*?\\}`,
+    `renderSlot\\(\\s*["'\x60]plugins\\.row\\.config["'\x60]\\s*,\\s*\\{[^}]*?` +
+      `["'\x60]?view["'\x60]?\\s*:\\s*["'\x60]${view}["'\x60][^}]*?\\}`,
     "u",
   );
 

@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-llm-provider-extended",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Full DSH provider adapter with generation controls and typed System One decisions",
   "repository": {
     "type": "git",
@@ -55,23 +55,23 @@
     "@earendil-works/pi-ai": "0.85.1"
   },
   "peerDependencies": {
-    "@deepseek-ai/dsh-brand": "catalog:dsh",
-    "@deepseek-ai/dsh-util-values": ">=0.1.7-rc.2 <0.3.0-0",
+    "@deepseek-ai/dsh-brand": ">=0.2.2-rc.3 <0.3.0-0",
+    "@deepseek-ai/dsh-util-values": ">=0.2.2-rc.3 <0.3.0-0",
     "@deepseek-ai/schemastery": "catalog:dsh",
     "@deepseek-ai/cordis": "catalog:dsh",
-    "@deepseek-ai/dsh-attachment": ">=0.1.7-rc.2 <0.3.0-0",
-    "@deepseek-ai/dsh-authorization": ">=0.1.7-rc.2 <0.3.0-0",
-    "@deepseek-ai/dsh-credentials": ">=0.1.7-rc.2 <0.3.0-0",
-    "@deepseek-ai/dsh-fs": ">=0.1.7-rc.2 <0.3.0-0",
-    "@deepseek-ai/dsh-launch-environment": ">=0.1.7-rc.2 <0.3.0-0",
-    "@deepseek-ai/dsh-llm": ">=0.1.7-rc.2 <0.3.0-0",
-    "@deepseek-ai/dsh-timeout": ">=0.1.7-rc.2 <0.3.0-0",
-    "@deepseek-ai/cordis-plugin-loader": "~1.0.5",
-    "@deepseek-ai/dsh-settings": "catalog:dsh",
-    "@deepseek-ai/dsh-client-ui-plugin-manager": "catalog:dsh",
-    "@deepseek-ai/dsh-client-ui-renderer": "catalog:dsh",
-    "@deepseek-ai/dsh-client-ui-settings": "catalog:dsh",
-    "@deepseek-ai/dsh-client-ui-slots": "catalog:dsh",
+    "@deepseek-ai/dsh-attachment": ">=0.2.2-rc.3 <0.3.0-0",
+    "@deepseek-ai/dsh-authorization": ">=0.2.2-rc.3 <0.3.0-0",
+    "@deepseek-ai/dsh-credentials": ">=0.2.2-rc.3 <0.3.0-0",
+    "@deepseek-ai/dsh-fs": ">=0.2.2-rc.3 <0.3.0-0",
+    "@deepseek-ai/dsh-launch-environment": ">=0.2.2-rc.3 <0.3.0-0",
+    "@deepseek-ai/dsh-llm": ">=0.2.2-rc.3 <0.3.0-0",
+    "@deepseek-ai/dsh-timeout": ">=0.2.2-rc.3 <0.3.0-0",
+    "@deepseek-ai/cordis-plugin-loader": "~1.0.5 || ~1.1.0",
+    "@deepseek-ai/dsh-settings": ">=0.2.2-rc.3 <0.3.0-0",
+    "@deepseek-ai/dsh-client-ui-plugin-manager": ">=0.2.2-rc.3 <0.3.0-0",
+    "@deepseek-ai/dsh-client-ui-renderer": ">=0.2.2-rc.3 <0.3.0-0",
+    "@deepseek-ai/dsh-client-ui-settings": ">=0.2.2-rc.3 <0.3.0-0",
+    "@deepseek-ai/dsh-client-ui-slots": ">=0.2.2-rc.3 <0.3.0-0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
@@ -107,8 +107,8 @@
     "react-dom": "catalog:frontend-dev",
     "jsdom": "catalog:tooling",
     "@testing-library/react": "^16.3.0",
-    "@deepseek-ai/dsh-credentials-local": "0.2.1-rc.3",
-    "@deepseek-ai/dsh-http-proxy": "0.2.1-rc.3"
+    "@deepseek-ai/dsh-credentials-local": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-http-proxy": "0.2.2-rc.3"
   },
   "publishConfig": {
     "access": "public",

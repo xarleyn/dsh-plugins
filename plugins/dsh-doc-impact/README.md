@@ -153,7 +153,7 @@ With `debug: true` (settings card or profile patch) the log additionally records
 
 - Node.js 20 or newer
 - pnpm 10.4.1 for development
-- DeepSeek Harness `>=0.1.7-rc.2 <0.2.0`
+- DeepSeek Harness `>=0.1.7-rc.2 <0.3.0-0 || 0.2.1-rc.3 || 0.2.2-rc.3`
 - Cordis `^4.0.1`
 
 ## Development

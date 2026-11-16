@@ -38,7 +38,10 @@ function fixture() {
   };
   const modelCatalog = vi.fn(async () => catalog);
   const resolveCallConfig = vi.fn(async () => small);
-  const startActivation = vi.fn(async () => ({ childId: "child-1" }));
+  const startActivation = vi.fn(async () => ({
+    childId: "child-1",
+    name: "reviewer/checker",
+  }));
   const backend = { capabilities: { agentOptions: true, depthLimit: true } };
   const runtime: QaSubagentsFace = {
     getProvider: vi.fn(() => backend),
@@ -184,7 +187,10 @@ describe("QA native subagent startup", () => {
     try {
       await expect(
         createQaSubagentTool(options).execute(f.args, f.exec),
-      ).resolves.toMatchObject({ kind: "activation", subagentId: "child-1" });
+      ).resolves.toMatchObject({
+        kind: "activation",
+        name: "reviewer/checker",
+      });
       expect(f.startActivation).toHaveBeenCalledOnce();
     } finally {
       await ctx.fiber.dispose();
@@ -196,7 +202,7 @@ describe("QA native subagent startup", () => {
     const parentOptions = { ...f.exec.agent!.options };
     await expect(f.start()).resolves.toEqual({
       kind: "activation",
-      subagentId: "child-1",
+      name: "reviewer/checker",
       ...small,
       reasoningEffort: undefined,
     });
@@ -205,12 +211,10 @@ describe("QA native subagent startup", () => {
       label: f.args.description,
       delivery: "parent",
       signal: f.exec.signal,
-      request: {
-        parent: f.exec.agent,
-        prompt: [{ type: "text", text: f.args.prompt }],
-        agentOptions: { ...small, reasoningEffort: undefined },
-        maxDepth: 2,
-      },
+      parent: f.exec.agent,
+      prompt: [{ type: "text", text: f.args.prompt }],
+      agentOptions: { ...small, reasoningEffort: undefined },
+      maxDepth: 2,
     });
     expect(f.exec.agent!.options).toEqual(parentOptions);
   });

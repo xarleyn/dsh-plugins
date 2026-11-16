@@ -1228,7 +1228,7 @@ chat's model is unchanged. A missing spawn backend refuses the call; a Host
 without subagents can still load the QA surface.
 
 Run the packed integration check with
-`DSH_QA_SMOKE_VERSION=0.2.1-rc.3 pnpm --filter @yadsh/dsh-qa-surface run smoke:packed --subagent-models`.
+`DSH_QA_SMOKE_VERSION=0.2.2-rc.3 pnpm --filter @yadsh/dsh-qa-surface run smoke:packed --subagent-models`.
 It uses a disposable Host and a scripted local LLM endpoint to verify model
 discovery for an ordinary account, denial of an unassigned model, a native child
 request on the selected route and preservation of the parent's model.
@@ -1236,7 +1236,7 @@ request on the selected route and preservation of the parent's model.
 Subagents: the deployment may opt the delegation family (`subagent`,
 `subagent_fork`, `send_message`, `list_agents`, `interrupt_agent`) into the
 lockdown allow-list; the preset must mount them. Launches then render as
-first-class work items (description, background flag, durable child id),
+first-class work items (description, background flag, child name or historical Session id),
 settlement notices appear as status rows, an "Агенты" header drawer lists the
 chat's subagents with live status, and any subagent opens as a read-only
 live transcript (composer disabled, one click back to the chat) - viewing

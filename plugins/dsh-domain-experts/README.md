@@ -235,7 +235,7 @@ resets the error streak; native structured result capture is exempt. Exhaustion
 disposes the activation and reports an error instead of returning an incomplete
 verdict. Ordinary expert calls keep their existing lifecycle.
 
-- DeepSeek Harness `>=0.1.7-rc.2 <0.2.0` (tested against `0.1.7-rc.2`)
+- DeepSeek Harness `>=0.2.2-rc.3 <0.3.0-0` (tested against `0.2.2-rc.3`)
 - Node `^22.19.0 || >=24.0.0`
 - Browser half requires the `plugins.bundle.config` seat
 

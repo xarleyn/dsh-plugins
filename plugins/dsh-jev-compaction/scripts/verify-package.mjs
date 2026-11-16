@@ -53,7 +53,7 @@ await runVerifyPackage({
   patch: { headerComment: true, id: "dsh-jev-compaction" },
   compatibility: {
     node: "matchesEngines",
-    testedReleases: ["0.1.7-rc.2"],
+    testedReleases: ["0.1.7-rc.2", "0.2.2-rc.3"],
     clientFeatures: ["plugins.row.config", "conversation.chat.node"],
   },
   clientBundle: {

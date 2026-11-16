@@ -1,3 +1,4 @@
+import * as NativeExecutor from "@deepseek-ai/dsh-tool-executor-native";
 import { Context } from "@deepseek-ai/cordis";
 import ToolRuntime from "@deepseek-ai/dsh-tools";
 import { expect, it } from "vitest";
@@ -7,6 +8,7 @@ it("formats through the real Host registry and unregisters on disposal", async (
   const ctx = new Context();
   ctx.provide("systemPrompt", { tools: () => () => {} });
   const runtime = await ctx.plugin(ToolRuntime);
+  await ctx.plugin(NativeExecutor);
   const fiber = await ctx.plugin(plugin);
   const value = {
     items: Array.from({ length: 50 }, (_, i) => ({
@@ -37,14 +39,21 @@ it("formats through the real Host registry and unregisters on disposal", async (
     execute: async () => value,
   });
   const call = () =>
-    ctx.tools.execute({
-      callId: "synthetic-call" as Parameters<
-        typeof ctx.tools.execute
-      >[0]["callId"],
-      name: "synthetic_fields",
-      arguments: {},
-      signal: new AbortController().signal,
-    });
+    ctx.tools
+      .execute({
+        calls: [
+          {
+            type: "tool-call",
+            id: "synthetic-call" as Parameters<
+              typeof ctx.tools.execute
+            >[0]["calls"][number]["id"],
+            name: "synthetic_fields",
+            arguments: JSON.stringify({}),
+          },
+        ],
+        signal: new AbortController().signal,
+      })
+      .then((batch) => batch.results[0]!.result);
   try {
     const result = await call();
     expect(result.isError).toBe(false);

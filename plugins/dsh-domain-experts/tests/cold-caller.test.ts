@@ -69,7 +69,7 @@ function fixture(
     ctx.provide("agents", { get: () => undefined, list: () => [] });
     ctx.provide("subagents", {
       ...runtime,
-      listChildren: (parent: string, signal: AbortSignal) => {
+      listDescendants: (parent: string, signal: AbortSignal) => {
         lookups.push(parent);
         lookupSignals.push(signal);
         if (options.pendingListing) return new Promise<never>(() => undefined);
@@ -79,6 +79,8 @@ function fixture(
           options.missingRow
             ? []
             : (options.duplicateRow ? [1, 2] : [1]).map(() => ({
+                kind: "child",
+                depth: 1,
                 id: options.descriptorFromStart
                   ? runtime.started[0]?.childId
                   : "resumed",

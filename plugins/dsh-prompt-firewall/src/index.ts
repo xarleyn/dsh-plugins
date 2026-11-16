@@ -1,7 +1,7 @@
 import { Context } from "@deepseek-ai/cordis";
 import type {
   AssembledSection,
-  PromptAssembly,
+  PromptPresentation,
 } from "@deepseek-ai/dsh-system-prompt";
 import type {} from "@deepseek-ai/dsh-settings";
 import { Remote, TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
@@ -90,7 +90,7 @@ export class PromptFirewall
     // apply policy while their final result unwinds back through this listener.
     ctx.on(
       "system-prompt/assemble",
-      async (_assembly, _context, next): Promise<PromptAssembly> => {
+      async (_assembly, _context, next): Promise<PromptPresentation> => {
         const resolved = this.snapshot();
         const rules = compileRules(resolved);
         this.audits.configure(

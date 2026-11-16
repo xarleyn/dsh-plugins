@@ -333,13 +333,11 @@ export function createSubagentBackend(deps: {
           activation = await deps.face.startActivation({
             provider: deps.config.provider,
             label: "answer-review",
-            request: {
-              prompt,
-              parent: deps.parent,
-              ...(preset === "" ? {} : { agentPreset: preset }),
-              ...(Object.keys(agentOptions).length > 0 ? { agentOptions } : {}),
-              outputSchema: REVIEWER_OUTPUT_SCHEMA,
-            },
+            prompt,
+            parent: deps.parent,
+            ...(preset === "" ? {} : { agentPreset: preset }),
+            ...(Object.keys(agentOptions).length > 0 ? { agentOptions } : {}),
+            outputSchema: REVIEWER_OUTPUT_SCHEMA,
             signal: input.signal,
             // A foreground reviewer: the parent model must not be notified,
             // the result belongs to this review alone.

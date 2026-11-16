@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-answer-review-gate",
-  "version": "0.2.12",
+  "version": "0.3.0",
   "description": "Independent answer review gate for DeepSeek Harness agent responses",
   "repository": {
     "type": "git",
@@ -55,14 +55,14 @@
     "@yadsh/dsh-plugin-log": "workspace:^"
   },
   "peerDependencies": {
-    "@deepseek-ai/dsh-client-ui-plugin-manager": "catalog:dsh",
-    "@deepseek-ai/dsh-client-ui-renderer": "catalog:dsh",
-    "@deepseek-ai/dsh-client-ui-settings": "catalog:dsh",
-    "@deepseek-ai/dsh-client-ui-slots": "catalog:dsh",
+    "@deepseek-ai/dsh-client-ui-plugin-manager": ">=0.2.2-rc.3 <0.3.0-0",
+    "@deepseek-ai/dsh-client-ui-renderer": ">=0.2.2-rc.3 <0.3.0-0",
+    "@deepseek-ai/dsh-client-ui-settings": ">=0.2.2-rc.3 <0.3.0-0",
+    "@deepseek-ai/dsh-client-ui-slots": ">=0.2.2-rc.3 <0.3.0-0",
     "@deepseek-ai/cordis": "catalog:dsh",
-    "@deepseek-ai/dsh-llm": "catalog:dsh",
+    "@deepseek-ai/dsh-llm": ">=0.2.2-rc.3 <0.3.0-0",
     "@deepseek-ai/schemastery": "catalog:dsh",
-    "@deepseek-ai/dsh-scope": "catalog:dsh"
+    "@deepseek-ai/dsh-scope": ">=0.2.2-rc.3 <0.3.0-0"
   },
   "devDependencies": {
     "@deepseek-ai/dsh-client-ui-plugin-manager": "catalog:dsh-dev",

@@ -204,10 +204,10 @@ describe("reviewer child composition (gate branch)", () => {
     const spec = await startedSpec(
       rawReviewerConfig(["read", "docs_read", "file_delete", "bash"]),
     );
-    expect(spec.request).not.toHaveProperty("toolFilter");
+    expect(spec).not.toHaveProperty("toolFilter");
     // A config that skipped the resolver (no `agentPreset` key at all) is
     // "no preset", not an unresolvable id.
-    expect(spec.request).not.toHaveProperty("agentPreset");
+    expect(spec).not.toHaveProperty("agentPreset");
   });
 
   it("reports the unenforceable boundary once per backend, not per round", async () => {
@@ -228,8 +228,8 @@ describe("reviewer child composition (gate branch)", () => {
       verdict: "pass",
     });
     expect(started).toHaveLength(2);
-    expect(started[0]!.request).not.toHaveProperty("toolFilter");
-    expect(started[1]!.request).not.toHaveProperty("toolFilter");
+    expect(started[0]!).not.toHaveProperty("toolFilter");
+    expect(started[1]!).not.toHaveProperty("toolFilter");
     expect(degradations).toEqual([
       ["TOOL_UNFILTERABLE", expect.stringContaining("Agent Preset")],
     ]);
@@ -248,7 +248,7 @@ describe("reviewer child composition (gate branch)", () => {
       onDegradation: (code, detail) => degradations.push([code, detail]),
     });
     await backend.review(reviewInput());
-    expect(started[0]!.request).not.toHaveProperty("toolFilter");
+    expect(started[0]!).not.toHaveProperty("toolFilter");
     expect(degradations).toEqual([
       ["TOOL_UNFILTERABLE", expect.stringContaining("Agent Preset")],
     ]);
@@ -258,7 +258,7 @@ describe("reviewer child composition (gate branch)", () => {
     const spec = await startedSpec(
       rawReviewerConfig([...REVIEWER_READ_ONLY_TOOLS]),
     );
-    expect(spec.request).not.toHaveProperty("toolFilter");
+    expect(spec).not.toHaveProperty("toolFilter");
   });
 
   it("sends a configured preset id through to the child request", async () => {
@@ -269,7 +269,7 @@ describe("reviewer child composition (gate branch)", () => {
       parent: "parent-agent",
     });
     await backend.review(reviewInput());
-    expect(started[0]!.request.agentPreset).toBe("reviewer-readonly");
+    expect(started[0]!.agentPreset).toBe("reviewer-readonly");
   });
 });
 

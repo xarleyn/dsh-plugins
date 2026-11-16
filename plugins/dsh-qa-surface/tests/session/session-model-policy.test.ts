@@ -48,13 +48,13 @@ describe("opening a chat on its policy's pair", () => {
     const old = { provider: "local", model: "old-model" };
     const next = { provider: "local", model: "new-model" };
     let pending: typeof next | null = next;
-    const ctx = {
-      get: () => ({ stateOf: () => ({ pending, lastUsed: old }) }),
-    } as unknown as Context;
-    const agent = { session: {}, options: old } as unknown as Agent;
-    expect(sessionModelSelection(ctx, agent)).toEqual(next);
+    const agent = {
+      model: { current: () => pending ?? old },
+      options: old,
+    } as unknown as Agent;
+    expect(sessionModelSelection(agent)).toEqual(next);
     pending = null;
-    expect(sessionModelSelection(ctx, agent)).toEqual(old);
+    expect(sessionModelSelection(agent)).toEqual(old);
     expect(agent.options).toBe(old);
   });
   it("repairs an idle session only through the operator's exact redirect", async () => {

@@ -153,7 +153,7 @@ dsh plugin --profile web add @yadsh/dsh-domain-experts
 
 ## Совместимость
 
-- DeepSeek Harness `>=0.1.7-rc.2 <0.2.0` (протестировано на `0.1.7-rc.2`)
+- DeepSeek Harness `>=0.2.2-rc.3 <0.3.0-0` (протестировано на `0.2.2-rc.3`)
 - Node `^22.19.0 || >=24.0.0`
 - Браузерная часть требует слот `plugins.bundle.config`
 

@@ -421,7 +421,7 @@ retained.
 
 ## Compatibility
 
-- DeepSeek Harness `>=0.1.7-rc.2 <0.2.0`, tested against `0.1.7-rc.2` (see
+- DeepSeek Harness `>=0.1.7-rc.2 <0.3.0-0 || 0.2.1-rc.3 || 0.2.2-rc.3`, tested against `0.2.2-rc.3` (see
   `compatibility.json`); the settings card requires the `plugins.row.config`
   seat of the Plugins page, and immediate shaping requires the
   `tools/post-execute` waterfall. Phase 0 API findings:

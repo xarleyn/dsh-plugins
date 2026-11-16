@@ -5,7 +5,7 @@ import type {
   SessionFollowFrame,
   SessionFollowRequest,
   SessionPageRequest,
-  SessionPage,
+  SessionEventsPage,
   SessionListValue,
   SessionProjectionBaseline,
   SessionProjectionsValue,
@@ -96,7 +96,7 @@ export class QaChatTransport {
     token: string,
     request: SessionPageRequest,
     signal: AbortSignal,
-  ): Promise<SessionPage> {
+  ): Promise<SessionEventsPage> {
     const access = await this.addressAccess(token, request.address, signal);
     const value = await this.ctx.sessionController.page(request, signal);
     const current = this.store().revalidate(token, access);
@@ -193,17 +193,12 @@ export class QaChatTransport {
         try {
           // Cold rows already carry bounded cache hints. Replaying every cold
           // history on each polling tick thrashes the prepared-session cache.
-          const value = item.agentAvailable
-            ? await this.projections(token, String(item.sessionId), signal)
-            : item.projections === undefined
-              ? null
-              : {
-                  kind: item.projections.kind,
-                  asOfSeq: item.projections.asOfSeq,
-                  values: item.projections.values,
-                };
-          // A migration-required row has no event cut yet, so it cannot seed a
-          // baseline; the reader learns its state from its own projections read.
+          if (!item.agentAvailable) continue;
+          const value = await this.projections(
+            token,
+            String(item.sessionId),
+            signal,
+          );
           if (value !== null && value.kind !== "migration-required")
             projections[String(item.sessionId)] = {
               asOfSeq: value.asOfSeq,

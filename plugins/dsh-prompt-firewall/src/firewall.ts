@@ -1,4 +1,4 @@
-import type { PromptAssembly } from "@deepseek-ai/dsh-system-prompt";
+import type { PromptPresentation } from "@deepseek-ai/dsh-system-prompt";
 import { AuditStore, createAuditResult } from "./audit.js";
 import type { FirewallMetrics } from "./metrics.js";
 import { compileRules, evaluateSection } from "./rules.js";
@@ -25,7 +25,7 @@ function errorMessage(error: unknown): string {
 }
 
 function validateAssembly(
-  assembly: PromptAssembly,
+  assembly: PromptPresentation,
 ): asserts assembly is FirewallAssembly {
   if (!Array.isArray(assembly.sections))
     throw new TypeError("prompt assembly sections must be an array");
@@ -93,10 +93,10 @@ function logAudit(
  * Filter an already assembled DSH prompt. Any internal error is contained and
  * returns the exact original object (fail-open).
  */
-export function applyFirewall(
-  assembly: PromptAssembly,
+export function applyFirewall<T extends PromptPresentation>(
+  assembly: T,
   options: ApplyFirewallOptions,
-): PromptAssembly {
+): T {
   try {
     validateAssembly(assembly);
     const { config } = options;

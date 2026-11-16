@@ -137,8 +137,8 @@ The plugin's own configuration is the live settings namespace, keyed by its prof
 
 - Node.js 20 or newer
 - pnpm 10.4.1 for development
-- DeepSeek Harness `>=0.1.7-rc.2 <0.2.0`
-- Cordis `^4.0.1`
+- DeepSeek Harness `>=0.1.7-rc.2 <0.3.0-0 || 0.2.1-rc.3 || 0.2.2-rc.3`
+- Cordis `~4.0.4 || ~4.1.0`
 
 ## Development
 

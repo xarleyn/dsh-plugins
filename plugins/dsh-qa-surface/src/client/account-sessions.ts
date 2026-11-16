@@ -25,9 +25,10 @@ export function createQaAccountSessions(
   generation: ConnectionGenerationState,
   subscribeAccount: (listener: () => void) => () => void,
 ): QaSessions {
-  const refuse = async (): Promise<never> => {
+  const refuseStream = (): never => {
     throw new Error("Use the authenticated QA operation.");
   };
+  const refuse = async (): Promise<never> => refuseStream();
   // Only the current identity/connection may publish a catalog. Native list
   // pulls have their own generation fence; replay must obey it as well.
   let epoch = 0;
@@ -53,7 +54,17 @@ export function createQaAccountSessions(
     return { ...value, items };
   }
   const session = {
-    ...remote.session,
+    canOpenWorkspacePath: refuse,
+    initializeDefaultModel: refuse,
+    modelCatalog: refuse,
+    observeEvent: refuseStream,
+    observeProjections: refuseStream,
+    observeState: refuseStream,
+    openWorkspacePath: refuse,
+    state: refuse,
+    wait: refuse,
+    workspacePathApplications: refuse,
+    events: (request, signal) => wire.chatPage(token() ?? "", request, signal),
     list: async (_request: unknown, signal?: AbortSignal) => {
       const identity = token();
       const requestEpoch = epoch;
@@ -93,7 +104,7 @@ export function createQaAccountSessions(
     $stream: remote.$stream.bind(remote),
     session,
     commands: { execute: refuse },
-    subagents: { prompt: refuse, interruptByParent: refuse },
+    subagents: { prompt: refuse, interruptByUser: refuse },
   };
   // rc.2 exposes the constructor on the public Session service instance. Keep
   // this compatibility seam isolated and prove it with the real installed SDK.

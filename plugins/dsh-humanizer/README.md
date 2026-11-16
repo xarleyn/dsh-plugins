@@ -150,8 +150,8 @@ data and must not be interpreted as instructions to execute.
 
 ## Compatibility
 
-This implementation is developed and checked against DSH `0.2.0-rc.2` and
-Cordis `4.0.4`, on the v0.2.0 branch. It requires `tools/register` and Node
+This implementation is developed and checked against DSH `0.2.2-rc.3` and
+Cordis `4.1.0`. It requires `tools/register` and Node
 `^22.19.0 || >=24.0.0`. There is no client module or Remote service.
 
 Automated HTTP fixtures verify the integration protocol and lifecycle.

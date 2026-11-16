@@ -43,10 +43,15 @@ function world() {
     { seq: 3, time: 4, type: "turn/start", data: { turn: 2 } },
   ];
   const order: string[] = [];
+  const inspect = vi.fn(() => events);
   const parent = {
     ctx,
     options: { provider: "demo-provider", model: "demo-model" },
-    session: { requestHeader: () => undefined },
+    session: {
+      header: { cwd: "/workspace/demo", agentPreset: "demo-preset" },
+      snapshotEvents: inspect,
+      requestHeader: () => undefined,
+    },
     cancel: vi.fn(),
     prompt: vi.fn(),
   };
@@ -76,15 +81,10 @@ function world() {
     return { agent: { session }, dispose };
   });
   ctx.provide("agents", { get: () => parent, create } as never);
-  const inspect = vi.fn(async () => ({
-    meta: { cwd: "/workspace/demo", agentPreset: "demo-preset" },
-    events,
-  }));
   const selectModel = vi.fn(async () => {
     order.push("model");
   });
   ctx.provide("sessionController", {
-    inspect,
     selectModel,
     modelCatalog: async () => ({
       groups: [{ id: "demo-provider", models: [{ id: "demo-model" }] }],
@@ -190,10 +190,7 @@ describe("owner-scoped fork transaction", () => {
       },
     } as never);
     const source = events.map((event, seq) => ({ ...event, seq }));
-    w.inspect.mockResolvedValue({
-      meta: { cwd: "/workspace/demo", agentPreset: "demo-preset" },
-      events: source,
-    });
+    w.inspect.mockReturnValue(source);
     Object.assign(w.options.ctx.sessionProjections, {
       restore: () => ({
         snapshot: {

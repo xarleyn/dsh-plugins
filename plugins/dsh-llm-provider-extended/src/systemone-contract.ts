@@ -28,7 +28,7 @@ export interface DecisionResponse {
 }
 
 function invalid(message: string): never {
-  throw new LlmError(message, "PROTOCOL");
+  throw LlmError.fromFailure({ message: message, code: "PROTOCOL" });
 }
 export function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
