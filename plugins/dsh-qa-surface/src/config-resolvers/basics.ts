@@ -5,7 +5,8 @@ import type {
   ResolvedQaSurfaceConfig,
 } from "../types.js";
 import { DEFAULT_QA_SURFACE_CONFIG } from "./defaults.js";
-import { optionalText } from "./shared.js";
+import { assertIntInRange, optionalText } from "./shared.js";
+import { QA_QUESTION_TIMEOUT_MAX_MINUTES } from "../shared/question-timing.js";
 
 /**
  * One name in the resolved config: the `enabled` spelling a deployment may
@@ -47,6 +48,15 @@ type BasicsSlice = Pick<
 
 /** Resolve the master switch, route, branding, embedding, and entry domains. */
 export function resolveBasics(input: QaSurfaceConfig): BasicsSlice {
+  const questionTimeoutMinutes =
+    input.interaction?.questionTimeoutMinutes ??
+    DEFAULT_QA_SURFACE_CONFIG.interaction.questionTimeoutMinutes;
+  assertIntInRange(
+    "interaction.questionTimeoutMinutes",
+    questionTimeoutMinutes,
+    1,
+    QA_QUESTION_TIMEOUT_MAX_MINUTES,
+  );
   return {
     enabled: input.enabled ?? DEFAULT_QA_SURFACE_CONFIG.enabled,
     route: Object.freeze({
@@ -92,6 +102,7 @@ export function resolveBasics(input: QaSurfaceConfig): BasicsSlice {
         input.interaction?.approvals ??
         DEFAULT_QA_SURFACE_CONFIG.interaction.approvals,
       questions: resolveQuestionInteraction(input.interaction?.questions),
+      questionTimeoutMinutes,
     }),
   };
 }

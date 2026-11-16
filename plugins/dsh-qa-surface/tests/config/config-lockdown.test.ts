@@ -123,13 +123,26 @@ describe("qa surface config", () => {
     expect(resolveConfig().interaction).toEqual({
       approvals: "blocked",
       questions: "unsupported",
+      questionTimeoutMinutes: 30,
     });
     expect(
       resolveConfig({ interaction: { approvals: "interactive" } }).interaction,
-    ).toEqual({ approvals: "interactive", questions: "unsupported" });
+    ).toMatchObject({ approvals: "interactive", questions: "unsupported" });
     expect(
       resolveConfig({ interaction: { questions: "interactive" } }).interaction,
-    ).toEqual({ approvals: "blocked", questions: "interactive" });
+    ).toMatchObject({ approvals: "blocked", questions: "interactive" });
+  });
+
+  it("accepts whole-minute waits through the Host schema and rejects invalid timer delays", () => {
+    const config = { interaction: { questionTimeoutMinutes: 7 } };
+    expect(
+      resolveConfig(schemaParse(config)).interaction.questionTimeoutMinutes,
+    ).toBe(7);
+    for (const invalid of [0, -1, 0.5, 35_792]) {
+      expect(() =>
+        resolveConfig({ interaction: { questionTimeoutMinutes: invalid } }),
+      ).toThrow(/questionTimeoutMinutes/u);
+    }
   });
 
   it("reads the documented `enabled` spelling of the question seam", () => {

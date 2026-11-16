@@ -17,6 +17,7 @@ import { runIntegrationFolderBrowserPass } from "./smoke-integration-folder-brow
 import { runFileDropBrowserPass } from "./smoke-file-drop-browser.mjs";
 import { runFileWriteSettingsBrowserPass } from "./smoke-file-writes-browser.mjs";
 import { runSubagentModelsPass } from "./smoke-subagent-models.mjs";
+import { runQuestionSoundsPass } from "./smoke-question-sounds.mjs";
 import {
   runAnswerModesPass,
   runAnswerModesBrowserPass,
@@ -51,6 +52,7 @@ const discoverySettingsOnly = process.argv.includes(
 const modelSelectionOnly = process.argv.includes("--model-selection");
 const subagentModelsOnly = process.argv.includes("--subagent-models");
 const answerModesOnly = process.argv.includes("--answer-modes");
+const questionSoundsOnly = process.argv.includes("--question-sounds");
 if (modelSelectionOnly && !withBrowser)
   throw new Error("--model-selection requires --browser");
 if (chatLayoutOnly && !withBrowser)
@@ -1168,6 +1170,7 @@ try {
       matchChildren: true
     session:
       agentPreset: minimal
+    ${questionSoundsOnly ? "interaction: { questions: interactive }" : ""}
     ui:
       showReset: false
       showSessionList: true
@@ -1302,9 +1305,16 @@ try {
     !chatLayoutOnly &&
     !reviewDockOnly &&
     !answerModesOnly &&
-    !discoverySettingsOnly
+    !discoverySettingsOnly &&
+    !questionSoundsOnly
   )
     await runLanPass({ dshBin, dshEnv, repo, hostLog });
+  if (questionSoundsOnly)
+    await runQuestionSoundsPass({
+      origin,
+      cookie,
+      authenticatedUrl: `${origin}/?token=${encodeURIComponent(token)}`,
+    });
   if (discoverySettingsOnly || fileWriteSettingsOnly || fullBrowser)
     await runFileWriteSettingsBrowserPass({
       origin,

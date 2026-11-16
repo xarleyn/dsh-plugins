@@ -743,6 +743,7 @@ export class QaSurface extends TypertRemoteService {
           this.answerModes.answered(request, answer),
         cancelled: (request) => this.answerModes.cancelled(request),
       },
+      () => this.getConfig().interaction.questionTimeoutMinutes,
     );
     this.formGate = new QaFormGate(
       () => this.forms(),

@@ -6,6 +6,10 @@
  */
 
 import {
+  QA_QUESTION_TIMEOUT_DEFAULT_MINUTES,
+  QA_QUESTION_TIMEOUT_MAX_MINUTES,
+} from "../../../shared/question-timing.js";
+import {
   Notice,
   NumberField,
   Section,
@@ -36,7 +40,10 @@ export function SessionSection(props: ConfigProps) {
   const workspaceId = config?.session?.workspaceId ?? "";
   const provider = config?.session?.provider ?? "";
   const model = config?.session?.model ?? "";
-  const paths: SectionPaths = [["session"]];
+  const paths: SectionPaths = [
+    ["session"],
+    ["interaction", "questionTimeoutMinutes"],
+  ];
   const modified = overriddenAny(props, paths);
   return (
     <Section
@@ -163,6 +170,21 @@ export function SessionSection(props: ConfigProps) {
           onChange={(value) => {
             props.write(["session", "maxActiveRequests"], value);
           }}
+        />
+        <NumberField
+          label="Время на ответ ассистенту, мин"
+          value={
+            config?.interaction?.questionTimeoutMinutes ??
+            QA_QUESTION_TIMEOUT_DEFAULT_MINUTES
+          }
+          min={1}
+          max={QA_QUESTION_TIMEOUT_MAX_MINUTES}
+          disabled={disabled}
+          hint="Действует для новых вопросов. Пока вопрос открыт в чате, звуковое напоминание повторяется каждые 5 минут. Если время истекло, ассистент узнает, что ответа не было."
+          testId="qa-settings-question-timeout"
+          onChange={(value) =>
+            props.write(["interaction", "questionTimeoutMinutes"], value)
+          }
         />
       </div>
       {provider !== "" && model === "" ? (

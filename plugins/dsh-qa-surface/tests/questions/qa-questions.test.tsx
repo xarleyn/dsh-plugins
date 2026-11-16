@@ -6,7 +6,13 @@ import { QaQuestions } from "../../src/client/components/QaQuestions.js";
 import type { QaPendingQuestion } from "../../src/types.js";
 
 function request(questions: QaPendingQuestion["questions"]): QaPendingQuestion {
-  return { id: "request-1", sessionId: "s1", createdAt: 1, questions };
+  return {
+    id: "request-1",
+    sessionId: "s1",
+    createdAt: 1,
+    expiresAt: 1_800_001,
+    questions,
+  };
 }
 
 const SINGLE = request([

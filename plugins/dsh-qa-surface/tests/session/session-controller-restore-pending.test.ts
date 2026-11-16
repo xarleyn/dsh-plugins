@@ -22,6 +22,7 @@ const PARKED_QUESTION: QaPendingQuestion = {
   id: "question-1",
   sessionId: "saved",
   createdAt: 1,
+  expiresAt: 1_800_001,
   questions: [
     {
       id: "q1",
