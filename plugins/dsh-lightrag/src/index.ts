@@ -13,6 +13,8 @@
  * whose name an allow-list could carry.
  */
 
+import type { Context } from "@deepseek-ai/cordis";
+import type {} from "@deepseek-ai/dsh-settings";
 import {
   getPluginLogger,
   silentPluginLogger,
@@ -23,7 +25,9 @@ import { createLightRagClient, type LightRagClient } from "./http-client.js";
 import {
   LightRagConfigSchema,
   resolveLightRagConfig,
+  snapshotLightRagConfig,
   type LightRagConfig,
+  type LiveLightRagConfig,
   type ResolvedLightRagConfig,
 } from "./config.js";
 import { createLightRagDocumentsTool } from "./tools/documents.js";
@@ -63,6 +67,8 @@ export {
   resolveLightRagConfig,
   resolveLightRagEndpoint,
   resolveQueryMode,
+  snapshotLightRagConfig,
+  type LiveLightRagConfig,
   type LightRagConfig,
   type QueryMode,
   type ResolvedLightRagConfig,
@@ -113,6 +119,9 @@ export const Config = LightRagConfigSchema;
 /** Structural view of the host surface the plugin needs. */
 export interface LightRagToolsHost {
   tools: { register(definition: unknown): () => void };
+  on?(event: "loader/volatile-update", listener: () => void): () => void;
+  inject?: Context["inject"];
+  fiber?: Context["fiber"];
 }
 
 /** Read-only tool names this plugin registers (deployment allow-list contract). */
@@ -150,29 +159,46 @@ export function createLightRagToolDeps(
  */
 export function apply(
   ctx: LightRagToolsHost,
-  rawConfig?: LightRagConfig,
+  rawConfig?: LightRagConfig | LiveLightRagConfig,
 ): void {
-  const config = resolveLightRagConfig(rawConfig);
   const logger = getPluginLogger({ pluginId: "dsh-lightrag" });
-  if (!config.enabled) {
-    logger.info("plugin.disabled");
-    return;
-  }
-  const deps = createLightRagToolDeps(config, logger);
-  ctx.tools.register(createLightRagQueryTool(deps));
-  ctx.tools.register(createLightRagDocumentsTool(deps));
-  ctx.tools.register(createLightRagStatusTool(deps));
-  const registered = [...LIGHTRAG_TOOL_NAMES];
-  if (config.writesEnabled) {
-    ctx.tools.register(createLightRagInsertTool(deps));
-    ctx.tools.register(createLightRagScanTool(deps));
-    ctx.tools.register(createLightRagDeleteTool(deps));
-    registered.push(...LIGHTRAG_WRITE_TOOL_NAMES);
-  }
-  logger.info("plugin.applied", {
-    tools: registered,
-    endpoint: config.endpoint,
-    authenticated: config.apiKey !== "",
+  let disposeTools: (() => void)[] = [];
+  const refresh = (): void => {
+    // Resolve before replacing registrations; in-flight calls retain their
+    // original client, timeout and limits until that operation finishes.
+    const config = resolveLightRagConfig(snapshotLightRagConfig(rawConfig));
+    for (const dispose of disposeTools) dispose();
+    disposeTools = [];
+    if (!config.enabled) {
+      logger.info("plugin.disabled");
+      return;
+    }
+    const deps = createLightRagToolDeps(config, logger);
+    const definitions: { readonly name: string }[] = [
+      createLightRagQueryTool(deps),
+      createLightRagDocumentsTool(deps),
+      createLightRagStatusTool(deps),
+    ];
+    if (config.writesEnabled) {
+      definitions.push(
+        createLightRagInsertTool(deps),
+        createLightRagScanTool(deps),
+        createLightRagDeleteTool(deps),
+      );
+    }
+    disposeTools = definitions.map((definition) =>
+      ctx.tools.register(definition),
+    );
+    logger.info("plugin.applied", {
+      tools: definitions.map((definition) => definition.name),
+      endpoint: config.endpoint,
+      authenticated: config.apiKey !== "",
+    });
+  };
+  refresh();
+  ctx.on?.("loader/volatile-update", refresh);
+  ctx.inject?.(["settings"], (settingsCtx) => {
+    return settingsCtx.settings.configure({ auto: false }, ctx.fiber);
   });
 }
 
