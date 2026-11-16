@@ -450,6 +450,34 @@ it also runs as part of the full `e2e:browser` pass.
 
 ### Dynamic QA tools
 
+The Plugins panel → QA Surface → **Инструменты интеграций** controls a
+separate option, `tools.discoveryMode`, for newly attested native QA chats
+with lockdown. It applies only to owner-registered GitLab, TeamCity, Test IT,
+Weblate and Bitrix24 operations. Jira and Confluence remain ordinary tools.
+
+| Mode | What the model sees |
+| --- | --- |
+| `off` (default) | The original schemas, no discovery tool or observations. |
+| `observe` | The same schemas. Host logs report schema counts and estimated JSON bytes for the candidate set (`tool-discovery.observe`) and families actually called (`tool-discovery.used`), without arguments, results or user messages. |
+| `search` | `qa_find_tools` in place of eligible schemas. Search by topic, family or exact name, or browse with pagination. Only a search opens up to five native tools for the next step; browsing runs and opens nothing. |
+
+Loading an operation never executes it. The original callable, argument schema,
+principal checks, approvals and audit trail remain in force. A role cannot use
+search to acquire an unactivated skill grant. A successful skill invocation
+also opens its already granted integration tools for the next step. Revealed tools remain open in
+the current chat; a restored native chat starts from its most recent search
+header and rechecks the current policy. Existing ordinary chats, delegated
+agents, forks, admin previews and PTC-only presets keep their usual tools.
+Switching discovery off lifts this extra filter and removes the finder; it
+does not change the permissions or replay actions. JSON bytes in observations
+are not model tokens or a billing estimate.
+
+For example, `qa_find_tools({"query":"gitlab_repository_tree"})` opens that
+single tool if the chat can use it. `qa_find_tools({"query":"gitlab","browse":true})`
+instead lists one page without changing the next request.
+Run `pnpm --filter @yadsh/dsh-qa-surface run smoke:packed --tool-discovery-settings`
+to check all three modes and reload persistence in a disposable local Host.
+
 A QA deployment tends to grow a large toolset, and attaching all of it at boot
 puts every schema into every request — including the first small talk of a chat
 that will never use them. `tools.dynamicActivation` (the default) inverts that:

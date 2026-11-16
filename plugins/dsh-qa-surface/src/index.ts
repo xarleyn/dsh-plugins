@@ -868,6 +868,7 @@ export class QaSurface extends TypertRemoteService {
     ctx.effect(
       () =>
         listenVolatile("loader/volatile-update", () => {
+          this.admission.refreshDiscoveryMode();
           this.tools.refreshForms();
           if (!this.getConfig().forms.enabled) this.formGate.cancelAll();
         }),

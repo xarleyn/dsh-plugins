@@ -185,6 +185,7 @@ export interface QaSurfaceConfig {
    * model request until the activation skill has actually been loaded.
    */
   readonly tools?: {
+    readonly discoveryMode?: "off" | "observe" | "search";
     /** Deny native file writes by suffix; an empty list disables this policy. */
     readonly fileWritePolicy?: Partial<
       import("../shared/file-write-policy.js").QaFileWritePolicy
@@ -536,6 +537,7 @@ export interface ResolvedQaSurfaceConfig {
     readonly allowOs: boolean;
   };
   readonly tools: {
+    readonly discoveryMode: "off" | "observe" | "search";
     readonly fileWritePolicy: import("../shared/file-write-policy.js").QaFileWritePolicy;
     readonly dynamicActivation: boolean;
     readonly activationSkill: string;

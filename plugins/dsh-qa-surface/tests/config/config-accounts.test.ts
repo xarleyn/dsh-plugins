@@ -280,6 +280,7 @@ describe("qa surface config", () => {
 
   it("resolves the QA tool delivery defaults and rejects an impossible policy", () => {
     expect(resolveConfig().tools).toEqual({
+      discoveryMode: "off",
       fileWritePolicy: {
         blockedExtensions: [".py", ".pyw"],
         message: expect.any(String),
@@ -306,6 +307,7 @@ describe("qa surface config", () => {
       ).tools,
     ).toEqual({
       dynamicActivation: false,
+      discoveryMode: "off",
       fileWritePolicy: {
         blockedExtensions: [".py", ".pyw"],
         message: expect.any(String),
@@ -328,6 +330,7 @@ describe("qa surface config", () => {
       ).tools,
     ).toEqual({
       dynamicActivation: true,
+      discoveryMode: "off",
       activationSkill: "qa-surface",
       activationMode: "all",
       activationPresets: [],

@@ -14,6 +14,11 @@ const SKILL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 
 /** Resolve the QA tool delivery domain: activation trigger, policy, and scope. */
 export function resolveTools(input: QaSurfaceConfig): ToolsSlice {
+  const discoveryMode =
+    input.tools?.discoveryMode ?? DEFAULT_QA_SURFACE_CONFIG.tools.discoveryMode;
+  if (!["off", "observe", "search"].includes(discoveryMode)) {
+    throw new Error("tools.discoveryMode must be off, observe or search");
+  }
   const activationSkill =
     input.tools?.activationSkill ??
     DEFAULT_QA_SURFACE_CONFIG.tools.activationSkill;
@@ -52,6 +57,7 @@ export function resolveTools(input: QaSurfaceConfig): ToolsSlice {
     );
   }
   return Object.freeze({
+    discoveryMode,
     fileWritePolicy: resolveFileWritePolicy(input.tools?.fileWritePolicy),
     activationSkill,
     activationMode,
