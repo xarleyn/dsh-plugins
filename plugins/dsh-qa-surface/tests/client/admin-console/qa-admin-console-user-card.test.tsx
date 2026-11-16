@@ -63,9 +63,7 @@ describe("admin user detail card", () => {
     );
     const dialog = within(screen.getByRole("dialog"));
     expect(dialog.queryByRole("checkbox")).toBeNull();
-    fireEvent.click(
-      dialog.getByRole("button", { name: "Удалить аккаунт" }),
-    );
+    fireEvent.click(dialog.getByRole("button", { name: "Удалить аккаунт" }));
     expect((await dialog.findByRole("alert")).textContent).toContain(
       "администратор",
     );
