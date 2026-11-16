@@ -67,15 +67,11 @@ export async function runFileWriteSettingsBrowserPass({
     await section.screenshot({ path: join(evidenceDirectory, `${name}.png`) });
   }
   try {
-    await page.goto(authenticatedUrl);
     const notice = page.getByText(/^(?:Internal Testing|Preview) Notice$/u);
-    if (
-      await notice
-        .waitFor({ state: "visible", timeout: 3000 })
-        .then(() => true)
-        .catch(() => false)
-    )
+    await page.addLocatorHandler(notice, async () => {
       await page.getByRole("button", { name: "Continue", exact: true }).click();
+    });
+    await page.goto(authenticatedUrl);
     await openCard();
     const discovery = page.getByTestId("qa-settings-discovery-mode");
     assert.equal(await discovery.inputValue(), "off");
