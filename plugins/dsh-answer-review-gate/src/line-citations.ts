@@ -64,11 +64,16 @@ export function witnessedLineComparison(
         .slice(1)
         .map((ref) => citedText(target, ref[1]!))
         .join(" ");
-    const tokens = note.match(/[\p{L}\p{N}]+(?:[-_][\p{L}\p{N}]+)*/gu) ?? [];
+    const tokenPattern = /[\p{L}\p{N}]+(?:[-_][\p{L}\p{N}]+)*/gu;
+    const tokens = note.normalize("NFKC").match(tokenPattern) ?? [];
+    const words = (text: string) =>
+      new Set(text.normalize("NFKC").toLowerCase().match(tokenPattern) ?? []);
+    const leftWords = words(lhs),
+      rightWords = words(rhs);
     const shared = new Set<string>();
     for (const token of tokens) {
       const lower = token.toLowerCase();
-      if (!lhs.includes(lower) || !rhs.includes(lower)) continue;
+      if (!leftWords.has(lower) || !rightWords.has(lower)) continue;
       // A mixed-case product name or alphanumeric equipment designation is
       // distinctive even in a row containing only its name.
       if (

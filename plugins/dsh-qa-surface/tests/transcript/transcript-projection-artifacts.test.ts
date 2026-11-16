@@ -76,6 +76,63 @@ function answerOf(messages: readonly QaMessage[]) {
 }
 
 describe("transcript artifacts", () => {
+  it.each([
+    ["Исправь документ и пришли исправленную версию", true],
+    ["Пришли report.docx ещё раз", false],
+  ])("reconciles a pending resend with steering: %s", (text, revised) => {
+    const original = created("Отчёт готов.", CREATED);
+    const updated = created(
+      "Исправленный отчёт.",
+      CREATED.replaceAll("report.docx", "revised.docx"),
+    );
+    const nodes = [
+      ...original,
+      {
+        ...original[0],
+        seq: 5,
+        content: [{ type: "text", text: "resend report.docx" }],
+      },
+      {
+        ...original[3],
+        seq: 6,
+        turn: 2,
+        blocks: [{ kind: "text", text: "Отправляю." }],
+      },
+      {
+        kind: "steering",
+        messageId: "steer-1",
+        seq: 7,
+        time: 70,
+        source: {},
+        content: [{ type: "text", text }],
+      },
+      ...(revised
+        ? [
+            {
+              ...updated[1],
+              seq: 8,
+              turn: 2,
+              blocks: [
+                {
+                  kind: "tool-call",
+                  callId: "call-revised",
+                  name: "document_create",
+                  argsRaw: "{}",
+                },
+              ],
+            },
+            { ...updated[2], seq: 9, callId: "call-revised" },
+          ]
+        : []),
+      { ...updated[3], seq: 10, turn: 2 },
+    ] as ConversationNode[];
+    const last = projectTranscript(snapshot(legacy({ nodes })))
+      .filter((m) => m.role === "assistant")
+      .at(-1);
+    expect(last?.artifacts?.map((file) => file.name)).toEqual([
+      revised ? "revised.docx" : "report.docx",
+    ]);
+  });
   it("renders a completed file transfer even without an assistant generation", () => {
     const file = {
       format: "docx",

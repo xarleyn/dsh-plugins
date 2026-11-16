@@ -92,8 +92,6 @@ export function documentTargets(
         );
       if (match) {
         const name = path.basename(match[1]!);
-        const named = label(answer).includes(label(name));
-        if (e.seq <= request && !named) continue;
         files.set(match[1]!, {
           path: match[1]!,
           digestPrefix: match[2]!.toLowerCase(),
@@ -103,7 +101,7 @@ export function documentTargets(
                   collectUserRequest(session, e.seq)?.files ?? [],
               }
             : {}),
-          ...(named && !answer.includes(name)
+          ...(label(answer).includes(label(name)) && !answer.includes(name)
             ? { filenameMismatch: true }
             : {}),
         });
@@ -111,7 +109,27 @@ export function documentTargets(
         files.set(line, { path: "", digestPrefix: "" });
     }
   }
-  return [...files.values()];
+  const historical = [...files.values()].filter((file) => file.previousSources);
+  const mentions = (value: string) => {
+    const escaped = label(value)
+      .split("-")
+      .map((part) => part.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"))
+      .join("[\\s_-]+");
+    return new RegExp(
+      `(?<![\\p{L}\\p{N}_./\\\\-])${escaped}(?![\\p{L}\\p{N}_/\\\\-]|\\.[\\p{L}\\p{N}])`,
+      "u",
+    ).test(answer.normalize("NFC").toLowerCase());
+  };
+  return [...files.values()].filter((file) => {
+    if (!file.previousSources) return true;
+    const name = path.basename(file.path);
+    if (file.path !== name && mentions(file.path)) return true;
+    return (
+      historical.filter(
+        (item) => label(path.basename(item.path)) === label(name),
+      ).length === 1 && mentions(name)
+    );
+  });
 }
 
 async function insideFile(root: string, file: string): Promise<string> {

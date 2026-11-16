@@ -123,8 +123,9 @@ describe("integration question policy", () => {
       expect((await f.step(1, [])).messages).toEqual([]);
       for (const turn of [2, 3]) {
         expect((await f.step(turn, [requestId])).messages).toHaveLength(1);
-        expect(f.policy.allowed(f.agent)).toBe(requestId === "allowed");
-        expect(f.policy.allowed(f.delegated)).toBe(requestId === "allowed");
+        const mode = requestId === "allowed" ? "untimed" : "blocked";
+        expect(f.policy.mode(f.agent)).toBe(mode);
+        expect(f.policy.mode(f.delegated)).toBe(mode);
       }
       f.policy.dispose();
     },

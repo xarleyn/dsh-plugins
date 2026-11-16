@@ -336,6 +336,10 @@ function collectTurnArtifacts(
   for (const node of nodes) {
     if (node.kind === "user" || node.kind === "steering") {
       pending = undefined;
+      // Steering replaces the active turn's delivery instruction. A new
+      // request below can select it again; an edit must release the old file.
+      if (node.kind === "steering" && nearestTurn !== undefined)
+        delete getTurn(turns, nearestTurn).redelivery;
       const requested = requestedDocument(visibleContentText(node.content));
       if (
         requested !== undefined &&

@@ -47,9 +47,10 @@ export class QaIntegrationQuestionPolicy {
             state = { turn, mode };
             this.turns.set(id, state);
           }
-          const text = state.mode === "blocked"
-            ? QA_INTEGRATION_NO_CLARIFICATIONS
-            : ALLOWED_NOTE;
+          const text =
+            state.mode === "blocked"
+              ? QA_INTEGRATION_NO_CLARIFICATIONS
+              : ALLOWED_NOTE;
           return this.admission.propose(agent, decision, [
             { name: NOTE, text },
           ]);

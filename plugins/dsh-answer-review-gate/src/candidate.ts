@@ -156,7 +156,8 @@ export function collectUserRequest(
   readonly files: readonly FileReference[];
   readonly images: readonly Extract<ContentBlock, { type: "image" }>[];
 } | null {
-  for (const seq of [...activeHistoryNodes(session)].sort((a, b) => b - a)) {
+  const nodes = [...activeHistoryNodes(session)].sort((a, b) => b - a);
+  for (const seq of nodes) {
     if (seq > beforeSeq) continue;
     const event = session.eventAt(seq);
     if (event === undefined || event.type !== "user/message") continue;
@@ -172,14 +173,31 @@ export function collectUserRequest(
       text !== "" ||
       content.some((block) => block.type === "image" || block.type === "file")
     ) {
+      // A text-only follow-up still refers to the most recent human upload
+      // batch. Stop at that batch so unrelated earlier uploads do not become
+      // sources for every later deliverable. Withdrawn events and notes cannot
+      // supply files; activeHistoryNodes recovers originals behind compaction.
+      let files: FileReference[] = [];
+      for (const sourceSeq of nodes) {
+        if (sourceSeq > seq) continue;
+        const sourceEvent = session.eventAt(sourceSeq);
+        if (sourceEvent?.type !== "user/message") continue;
+        const source = sourceEvent.data as typeof data;
+        if (source.source?.kind !== "user") continue;
+        files = (source.content ?? []).flatMap((b) =>
+          b.type === "file" ? [b.attachment] : [],
+        );
+        if (files.length) break;
+      }
+      const retained = content.some((b) => b.type === "file")
+        ? []
+        : files.map((attachment) => ({ type: "file" as const, attachment }));
       return {
         text,
         seq,
         messageId: typeof data.id === "string" ? data.id : null,
-        attachments: attachmentHandleTexts(content, pathFor),
-        files: content.flatMap((b) =>
-          b.type === "file" ? [b.attachment] : [],
-        ),
+        attachments: attachmentHandleTexts([...content, ...retained], pathFor),
+        files,
         images: content.filter(
           (block): block is Extract<ContentBlock, { type: "image" }> =>
             block.type === "image",

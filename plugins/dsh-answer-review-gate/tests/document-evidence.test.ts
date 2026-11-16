@@ -22,7 +22,12 @@ const req = "The pump must stop within thirty seconds";
 const report = "The acceptance test records a thirty second cutoff";
 const explanation = "Both passages specify the same cutoff for the pump.";
 const proof = `CHECK S1 D1 | ${req} | ${report} | ${explanation}`;
-async function fixture(summary: string, read = true, reader = "review-child") {
+async function fixture(
+  summary: string,
+  read = true,
+  reader = "review-child",
+  textFollowup = false,
+) {
   const cwd = await mkdtemp(path.join(os.tmpdir(), "document-gate-"));
   dirs.push(cwd);
   const src = path.join(cwd, "requirements.txt");
@@ -116,6 +121,16 @@ async function fixture(summary: string, read = true, reader = "review-child") {
     { type: "assistant/message", seq: 3, data: answer("Done.") },
   ];
   const receipts: ReviewReceipt[] = [];
+  if (textFollowup) {
+    events.splice(1, 0, {
+      type: "user/message",
+      seq: 1,
+      data: user("Create the final DOCX from the attachment above"),
+    });
+    events.forEach((event, seq) => {
+      event.seq = seq;
+    });
+  }
   const audit = new ReviewAudit(50);
   let calls = 0;
   const gate = new AnswerReviewGate({
@@ -248,4 +263,23 @@ it("accepts two observed quotations with inline annotations and a comparison aft
     `CHECK S1 D1 | S1 line 7: «${req}» → D1 line 5: «${report}». ${explanation}`,
   );
   expect(await f.stop()).toBe("pass");
+});
+
+it("compares a new deliverable to uploads retained by a text-only follow-up", async () => {
+  const f = await fixture(proof, true, "review-child", true);
+  expect(await f.stop()).toBe("pass");
+  expect(f.receipts.at(-1)).toMatchObject({
+    requestSeq: 1,
+    documents: [{ sourceSha256: [hash(req)] }],
+  });
+});
+it("rejects a self-only document pass when a follow-up has retained source files", async () => {
+  const f = await fixture(
+    `CHECK D1 D1 | ${report} | ${report} | Matches.`,
+    true,
+    "review-child",
+    true,
+  );
+  expect(await f.stop()).toBe("failure");
+  expect(f.receipts.some((r) => r.status === "pass")).toBe(false);
 });

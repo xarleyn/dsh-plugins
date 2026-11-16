@@ -39,3 +39,38 @@ it("declines unrelated, out-of-range and unread citations", () => {
     ),
   ).toBe(false);
 });
+
+it.each(["mysqlrouter", "my-mysql", "mysql2"])(
+  "does not certify MySQL from the different product %s",
+  (product) => {
+    const pages = new Map([
+      ["S1", ["required database: mysql"]],
+      ["D1", ["installed product: " + product]],
+    ]);
+    expect(
+      witnessedLineComparison(
+        "S1 D1 — MySQL (line 1) matches MySQL (line 1)",
+        "S1",
+        "D1",
+        pages,
+        new Map([...pages].map(([key, rows]) => [key, new Set(rows)])),
+      ),
+    ).toBe(false);
+  },
+);
+
+it("accepts exact product identifiers next to punctuation", () => {
+  const pages = new Map([
+    ["S1", ["database: mysql (required)"]],
+    ["D1", ["verify mysql, then continue"]],
+  ]);
+  expect(
+    witnessedLineComparison(
+      "S1 D1 — MySQL (line 1) matches MySQL (line 1)",
+      "S1",
+      "D1",
+      pages,
+      new Map([...pages].map(([key, rows]) => [key, new Set(rows)])),
+    ),
+  ).toBe(true);
+});

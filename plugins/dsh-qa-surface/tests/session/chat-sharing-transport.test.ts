@@ -119,6 +119,20 @@ const request = (id: string): SessionPromptRequest =>
   }) as unknown as SessionPromptRequest;
 const signal = () => new AbortController().signal;
 describe("authenticated QA chat transport", () => {
+  it("forwards a compound resend and creation request to the native prompt handler", async () => {
+    const f = fixture();
+    const input = {
+      ...request("compound"),
+      content: [
+        {
+          type: "text" as const,
+          text: "send report.docx and create summary.docx",
+        },
+      ],
+    };
+    await f.transport.prompt(f.owner.token, input, signal());
+    expect(f.native.prompt).toHaveBeenCalledOnce();
+  });
   it("settles a resend once without starting a writer or reviewer turn", async () => {
     const events = [
       {
