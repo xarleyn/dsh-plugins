@@ -23,7 +23,10 @@ import {
   runAnswerModesBrowserPass,
 } from "./smoke-answer-modes.mjs";
 import {
+  authenticateBrowser,
+  bootGraph,
   freePort,
+  launchToken,
   requestWithAuthority,
   rpc,
   run,
@@ -66,37 +69,6 @@ const toolDirectory = join(temporaryRoot, "tool");
 const dshHome = join(temporaryRoot, "home");
 const workspacePath = join(temporaryRoot, "workspace");
 const hostLog = [];
-
-function launchToken(log) {
-  const match = /https?:\/\/[^\s]+\/\?token=([^\s]+)/u.exec(log.join(""));
-  return match?.[1];
-}
-
-function bootGraph(html) {
-  const marker = 'globalThis["__DSH_BOOT__"] = ';
-  const start = html.indexOf(marker);
-  if (start === -1)
-    throw new Error("DSH index did not expose its client graph");
-  const valueStart = start + marker.length;
-  const valueEnd = html.indexOf("</script>", valueStart);
-  if (valueEnd === -1) throw new Error("DSH client graph was truncated");
-  return JSON.parse(html.slice(valueStart, valueEnd));
-}
-
-async function authenticateBrowser(port, authority, token) {
-  const response = await requestWithAuthority(
-    port,
-    authority,
-    `/?token=${encodeURIComponent(token)}`,
-  );
-  const setCookie = response.headers["set-cookie"]?.[0];
-  if (response.status !== 303 || setCookie === undefined) {
-    throw new Error(
-      `DSH browser authentication failed: ${response.status} ${response.body.slice(0, 200)}`,
-    );
-  }
-  return setCookie.split(";", 1)[0];
-}
 
 /**
  * A bad deployment preset must fail before SessionController.create. This is
