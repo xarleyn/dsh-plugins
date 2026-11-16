@@ -404,11 +404,17 @@ export async function prepareDocumentEvidence(options: {
             ]
           : []),
       ]),
-      "Report substantive gaps against the user's requested scope. CHECK lines are the independent reviewer's own evidence. The cover message and the document have no obligation to contain these lines, quotations, or replies to reviewer feedback. For a pass, put one line for EACH listed pair in your own structured summary. Copy a substantive verbatim passage from each file (12 or more characters), and explain their correspondence. Use this exact format:",
-      "CHECK S1 D1 | source passage | deliverable passage | comparison",
+      "Report substantive gaps against the user's requested scope. CHECK lines are the independent reviewer's own evidence. The cover message and the document have no obligation to contain these lines, quotations, or replies to reviewer feedback. For a pass, put one line for EACH listed pair in your own structured summary. Copy substantive verbatim passages (12 or more characters) from the files identified by that pair, and explain their correspondence.",
+      "S and D identifiers are evidence keys in the JSON records above, not filenames or paths. Open each record's read path. S keys identify sources; D keys identify deliverables.",
       "Required pairs: " +
         pairs.map((pair) => pair.join(" ")).join(", ") +
-        ". A D-to-D pair checks the deliverable against the user request without a source file. An answer about review status is not a document review.",
+        ". Use the matching format below for every required pair:",
+      ...pairs.map(([s, d]) =>
+        s === d
+          ? `CHECK ${s} ${d} | first deliverable passage | second deliverable passage | comparison to the user's requirements`
+          : `CHECK ${s} ${d} | source passage | deliverable passage | comparison`,
+      ),
+      "For a D-to-D pair there is no separate source file: both quoted passages come from the listed deliverable. Explain whether it satisfies the user's request. An answer about review status is not a document review.",
     ].join("\n"),
     observeRead(child: string, file: string, lines: readonly string[]) {
       const keys = readPaths.get(path.normalize(file));
