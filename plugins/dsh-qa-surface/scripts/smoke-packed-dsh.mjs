@@ -36,11 +36,14 @@ const dshVersion =
   process.env.DSH_QA_SMOKE_VERSION ??
   compatibility.deepseekHarness.testedReleases.at(-1);
 const withBrowser = process.argv.includes("--browser");
+const chatLayoutOnly = process.argv.includes("--chat-layout");
 const fileWriteSettingsOnly = process.argv.includes("--file-write-settings");
 const modelSelectionOnly = process.argv.includes("--model-selection");
 const subagentModelsOnly = process.argv.includes("--subagent-models");
 if (modelSelectionOnly && !withBrowser)
   throw new Error("--model-selection requires --browser");
+if (chatLayoutOnly && !withBrowser)
+  throw new Error("--chat-layout requires --browser");
 const presetScopedTool = process.platform === "win32" ? "pwsh" : "bash";
 const keepFailedSmoke = process.env.DSH_QA_KEEP_SMOKE === "1";
 const temporaryRoot = await mkdtemp(join(tmpdir(), "dsh-qa-packed-smoke-"));
@@ -796,6 +799,11 @@ async function runBrowserPass({
     // preferences has to reach the Host token sheet from `/qa` alone — proven
     // by the colours the surface ends up painting, not by the click.
     const palette = page.getByRole("group", { name: "Тема оформления" });
+    const openAppearance = () =>
+      page.getByTestId("qa-surface-header-settings").click();
+    const closeAppearance = () =>
+      page.getByRole("button", { name: "Закрыть настройки" }).click();
+    await openAppearance();
     await palette.waitFor({ timeout: 15_000 });
     const themeStorageKey = "dsh-qa-surface.session:v1:/qa:theme";
     const paintedPalette = () =>
@@ -939,6 +947,7 @@ async function runBrowserPass({
     await page.reload();
     await page.locator("main.dsh-qa-surface").waitFor({ timeout: 30_000 });
     await deferModelSetup();
+    await openAppearance();
     const reloaded = await awaitPalette(false);
     if (
       reloaded.darkPalette ||
@@ -950,7 +959,15 @@ async function runBrowserPass({
       );
     }
     await expectChosenThemeIsVisible("after the reload");
-    await runHistoryBrowserPass({ page, choosePalette });
+    await closeAppearance();
+    await runHistoryBrowserPass({
+      page,
+      choosePalette: async (label, dark) => {
+        await openAppearance();
+        await choosePalette(label, dark);
+        await closeAppearance();
+      },
+    });
     // The Host booted this document under a dark OS; QA restored the stored
     // light choice above. Leaving the route must return that borrowed native
     // palette, which is visibly different from the browser's QA preference.
@@ -1248,9 +1265,10 @@ try {
     );
   }
 
-  if (!modelSelectionOnly && !subagentModelsOnly)
+  const fullBrowser = withBrowser && !modelSelectionOnly && !chatLayoutOnly;
+  if (!modelSelectionOnly && !subagentModelsOnly && !chatLayoutOnly)
     await runLanPass({ dshBin, dshEnv, repo, hostLog });
-  if (fileWriteSettingsOnly || (withBrowser && !modelSelectionOnly))
+  if (fileWriteSettingsOnly || fullBrowser)
     await runFileWriteSettingsBrowserPass({
       origin,
       authenticatedUrl: `${origin}/?token=${encodeURIComponent(token)}`,
@@ -1260,7 +1278,7 @@ try {
         join(temporaryRoot, "file-write-evidence"),
     });
   if (withBrowser) {
-    if (!modelSelectionOnly)
+    if (fullBrowser)
       await runBrowserPass({
         origin,
         authenticatedUrl: `${origin}/?token=${encodeURIComponent(token)}`,
@@ -1273,6 +1291,7 @@ try {
     host = undefined;
     await runIntegrationFolderBrowserPass({
       modelSelection: modelSelectionOnly,
+      chatLayoutOnly,
       dshBin,
       dshEnv,
       root: temporaryRoot,
@@ -1297,7 +1316,7 @@ try {
   }
   completed = true;
   console.log(
-    `packed DSH ${dshVersion} QA smoke passed${withBrowser || fileWriteSettingsOnly ? " with browser E2E" : ""}`,
+    `packed DSH ${dshVersion} QA smoke passed${withBrowser || fileWriteSettingsOnly ? " with browser E2E" : ""}${chatLayoutOnly ? " (chat layout)" : ""}`,
   );
 } finally {
   await stopProcess(host);

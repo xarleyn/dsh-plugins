@@ -5,11 +5,8 @@ import {
 } from "../theme-preference.js";
 
 /**
- * The palette choice of the QA surface. Three cubes, like the Host's own
- * Appearance row: the selection is the preference, never the resolved scheme,
- * so «Системная тема» stays pressed while the OS decides which palette that
- * is. Icons only — the row is the header's, and the labels travel as the
- * accessible name and the tooltip instead of eating 200px of it.
+ * Keep the selected preference visible even when the operating system changes
+ * which palette "system" paints.
  */
 export interface QaThemeSwitcherProps {
   readonly preference: QaThemePreference;
@@ -64,6 +61,7 @@ export function QaThemeSwitcher({
           <svg viewBox="0 0 16 16" aria-hidden="true">
             {THEME_ICONS[id]}
           </svg>
+          {THEME_LABELS[id].split(" ")[0]}
         </button>
       ))}
     </div>

@@ -204,17 +204,15 @@ describe("the notice stack inside the surface's Tab ring", () => {
 
   it("leaves the stack out of the ring while a dialog of the surface is open", async () => {
     await mount({ withSessionList: true });
-    fireEvent.click(screen.getByTestId("qa-surface-sidebar-version"));
+    const opener = screen.getByTestId("qa-surface-sidebar-version");
+    opener.focus();
+    fireEvent.click(opener);
     await screen.findByTestId("qa-surface-modal");
     const surface = surfaceRoot();
     const offer = screen.getByTestId("qa-turn-notice-offer-action");
 
-    // `QaModal` marks nothing inert and traps no Tab of its own, so while it is
-    // up the dialog is where the reader is and this ring does not own the
-    // keyboard. The stack therefore answers nothing, in either direction — the
-    // same answer it gave before the notices joined the ring at all. A key taken
-    // here would turn the reader out of the dialog and onto a surface held under
-    // the scrim.
+    // The dialog owns its Tab ring. If a notice receives focus programmatically,
+    // the notice stack must not route its keys into the chat behind the dialog.
     offer.focus();
     expect(fireEvent.keyDown(offer, { key: "Tab" })).toBe(true);
     expect(fireEvent.keyDown(offer, { key: "Tab", shiftKey: true })).toBe(true);
@@ -237,6 +235,8 @@ describe("the notice stack inside the surface's Tab ring", () => {
     );
 
     // Gone, and the ring is drawn around the stack again.
+    expect(focused()).toBe(opener);
+    offer.focus();
     expect(fireEvent.keyDown(offer, { key: "Tab" })).toBe(false);
     expect(surfaceRoot().contains(focused())).toBe(true);
   });

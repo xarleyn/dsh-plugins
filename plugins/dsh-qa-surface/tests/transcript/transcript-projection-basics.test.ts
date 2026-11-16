@@ -5,6 +5,26 @@ import { projectTranscript } from "../../src/client/QaTranscriptAdapter.js";
 import { legacy, snapshot } from "../helpers/conversation-fakes.js";
 
 describe("transcript projection", () => {
+  it("omits only the private owner's byline, even for participants with the same name", () => {
+    const nodes = [false, null].map((qaOwnerByline, seq) => ({
+      kind: "user" as const,
+      seq,
+      time: seq,
+      source: { qaAuthor: "Demo", qaOwnerByline },
+      content: [{ type: "text" as const, text: "Question" }],
+    }));
+    const history = snapshot(legacy({ nodes: nodes as ConversationNode[] }));
+    const personal = projectTranscript(history);
+    expect(personal[0]).not.toHaveProperty("author");
+    expect(personal[1]).toHaveProperty("author", "Demo");
+    expect(
+      projectTranscript(history, { showOwnerByline: true })[0],
+    ).toHaveProperty("author", "Demo");
+    expect(
+      projectTranscript(history, { showOwnerByline: false })[1],
+    ).toHaveProperty("author", "Demo");
+  });
+
   it("keeps user and assistant text while removing hidden content by default", () => {
     const messages = projectTranscript(
       snapshot(

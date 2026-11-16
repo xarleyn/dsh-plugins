@@ -8,10 +8,7 @@ import {
   screen,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  QaHeader,
-  type QaHeaderProps,
-} from "../../../src/client/components/QaHeader.js";
+import { QaUserSettingsDialog } from "../../../src/client/user-settings/UserSettingsDialog.js";
 import { QaThemeSwitcher } from "../../../src/client/components/QaThemeSwitcher.js";
 import {
   QA_DARK_THEME_ATTRIBUTE,
@@ -384,49 +381,27 @@ describe("QA palette in the surface", () => {
   });
 });
 
-describe("header palette control", () => {
-  const BASE: QaHeaderProps = {
-    logoUrl: null,
-    title: "Чат",
-    viewingSubagent: false,
-    onCloseSubagent: () => undefined,
-    agentCount: 0,
-    agentsOpen: false,
-    onToggleAgents: () => undefined,
-    sourcesVisible: true,
-    sourcesCount: 0,
-    sourcesComplete: true,
-    sourcesOpen: false,
-    onOpenSources: () => undefined,
-    fileCount: 0,
-    filesEnabled: false,
-    filesOpen: false,
-    onOpenFiles: () => undefined,
-    showReset: false,
-    resetDisabled: false,
-    onReset: () => undefined,
-  };
-
-  it("keeps the palette control beside the role control", () => {
-    const { container } = render(
-      <QaHeader
-        {...BASE}
-        roleSelector={<span data-testid="role">Роль</span>}
-        themeSwitcher={
-          <QaThemeSwitcher preference="dark" onSelect={() => undefined} />
-        }
+describe("personal appearance settings", () => {
+  it("exposes the browser preference in General even with profile editing disabled", () => {
+    const select = vi.fn();
+    render(
+      <QaUserSettingsDialog
+        open
+        initialSection="general"
+        email="reader@example.com"
+        role="user"
+        chatCount={0}
+        onClose={() => undefined}
+        appearance={<QaThemeSwitcher preference="dark" onSelect={select} />}
       />,
     );
-    const row = screen.getByTestId("qa-surface-header-title-row");
-    const theme = container.querySelector(".dsh-qa-theme");
-    expect(row.contains(theme ?? null)).toBe(true);
-    expect(theme?.previousElementSibling?.getAttribute("data-testid")).toBe(
-      "role",
-    );
-    // Not in the right-hand action cluster, which is what runs off the edge of
-    // a phone-sized header first.
+    const panel = screen.getByRole("tabpanel", { name: "Общие" });
     expect(
-      screen.getByTestId("qa-surface-header-actions").contains(theme ?? null),
-    ).toBe(false);
+      panel.contains(
+        screen.getByRole("button", { name: "Тёмная тема", pressed: true }),
+      ),
+    ).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Светлая тема" }));
+    expect(select).toHaveBeenCalledWith("light");
   });
 });

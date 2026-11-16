@@ -6,9 +6,11 @@ import type {
   QaMessage as QaMessageModel,
   QaImageView,
   QaSource,
-  QaTurnSources,
 } from "../../types.js";
-import { QaAnswerReviewStatus } from "./QaAnswerReviewStatus.js";
+import {
+  QaAnswerDetails,
+  type QaOpenAnswerSources,
+} from "./QaAnswerDetails.js";
 import { sameWorkItems } from "./QaWorkGroup.js";
 import { QaFileAttachment } from "./QaFileAttachment.js";
 import { QaArtifactAttachment } from "./QaArtifactAttachment.js";
@@ -109,11 +111,7 @@ export interface QaMessageProps {
   /** Resolve one durable attachment into a viewable URL. */
   readonly resolveImage?: (attachmentId: string) => Promise<string>;
   /** Open the drawer at the exact canonical snapshot shown in this footer. */
-  readonly onOpenSources?: (
-    sources: readonly QaSource[],
-    complete: boolean,
-    incompleteOrigins: QaTurnSources["incompleteOrigins"],
-  ) => void;
+  readonly onOpenSources?: QaOpenAnswerSources;
   /** Open one path-backed source's detail (an inline footnote click). */
   readonly onSourceDetail?: (source: QaSource) => void;
   /**
@@ -702,27 +700,8 @@ export const QaMessage = memo(
             Подготавливаю ответ…
           </span>
         ) : null}
-        {message.role === "assistant" &&
-        onOpenSources !== undefined &&
-        message.sources !== undefined &&
-        message.sources.length > 0 ? (
-          <button
-            type="button"
-            className="dsh-qa-message__sources"
-            data-testid="qa-message-sources"
-            onClick={() =>
-              onOpenSources(
-                message.sources ?? [],
-                message.sourcesComplete ?? true,
-                message.incompleteSourceOrigins,
-              )
-            }
-          >
-            Источники ({message.sources.length})
-          </button>
-        ) : null}
-        {message.role === "assistant" && message.review !== undefined ? (
-          <QaAnswerReviewStatus review={message.review} />
+        {message.role === "assistant" ? (
+          <QaAnswerDetails message={message} onOpenSources={onOpenSources} />
         ) : null}
         {showActions ? (
           <div

@@ -114,10 +114,7 @@ export interface QaUserMessage {
   readonly images?: readonly QaImageView[];
   /** Durable files the user attached to this message, in prompt order. */
   readonly files?: readonly QaFileView[];
-  /**
-   * Chat owner's display name, set only for an admin reading a foreign
-   * chat; the owner themself sees their messages unlabeled.
-   */
+  /** Visible byline for a participant's message or a foreign chat under inspection. */
   readonly author?: string;
 }
 

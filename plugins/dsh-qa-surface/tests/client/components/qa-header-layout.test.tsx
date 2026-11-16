@@ -58,7 +58,9 @@ describe("header action cluster", () => {
     const cluster = clusters[0]!;
     const files = screen.getByTestId("qa-surface-header-files");
 
-    expect(files.className).toBe("dsh-qa-header__files");
+    expect(
+      screen.getByRole("group", { name: "Панели чата" }).contains(files),
+    ).toBe(true);
     expect(cluster.contains(files)).toBe(false);
     expect(labels(cluster)).toEqual([
       "Администрирование",
@@ -152,19 +154,15 @@ describe("header empty states and the chat tab", () => {
     );
     const agents = screen.getByTestId("qa-surface-header-agents");
     expect(agents.getAttribute("aria-disabled")).toBeNull();
-    expect(agents.textContent).toContain("Агенты (2)");
+    expect(screen.getByRole("button", { name: "Агенты (2)" })).toBe(agents);
     fireEvent.click(agents);
     expect(onToggleAgents).toHaveBeenCalledOnce();
   });
 
-  it("leaves the chat marker a label while the chat is all there is", () => {
+  it("needs no second navigation row when only the conversation is open", () => {
     render(<QaHeader {...BASE} />);
     expect(screen.queryByTestId("qa-surface-header-chat-tab")).toBeNull();
-    const marker = screen.getByTestId(
-      "qa-surface-header-tabs",
-    ).firstElementChild;
-    expect(marker?.tagName).toBe("SPAN");
-    expect(marker?.getAttribute("aria-current")).toBe("page");
+    expect(screen.queryByTestId("qa-surface-header-tabs")).toBeNull();
   });
 
   it("makes the chat marker the way back while a panel is open", () => {
@@ -172,7 +170,9 @@ describe("header empty states and the chat tab", () => {
     render(<QaHeader {...BASE} onBackToChat={onBackToChat} />);
     const tab = screen.getByTestId("qa-surface-header-chat-tab");
     expect(tab.tagName).toBe("BUTTON");
-    expect(tab.getAttribute("aria-current")).toBe("page");
+    expect(
+      screen.getByTestId("qa-surface-header-title-row").contains(tab),
+    ).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Вернуться к чату" }));
     expect(onBackToChat).toHaveBeenCalledOnce();
   });
