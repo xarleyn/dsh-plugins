@@ -7,6 +7,7 @@ import { QaAccounts, QaAccountsError } from "../../src/accounts/store.js";
 import { QaAccessService } from "../../src/access/service.js";
 import { QaRoleRepository } from "../../src/access/role-repository.js";
 import { QaAdminService } from "../../src/admin/service.js";
+import type { QaSessionPurge } from "../../src/admin/session-purge.js";
 import { QaChatSharingStore } from "../../src/chat-sharing/store.js";
 import { QaQualityStore } from "../../src/admin/quality-store.js";
 import {
@@ -128,6 +129,7 @@ export function harness(
     readonly pinned?: readonly string[];
     /** Stored-session removal the deployment offers, if any. */
     readonly sessionFiles?: QaStoredSessionEraser;
+    readonly sessionPurge?: QaSessionPurge;
     /** Collector for the sessions whose collected sources were dropped. */
     readonly droppedSources?: string[];
     /** Ids the fixture's Harness still holds open. */
@@ -313,7 +315,7 @@ export function harness(
           sessionPurge: {
             stage: (_accounts, _id, ids, required) =>
               catalog.sessionFiles!.erase(ids, required),
-            recover() {},
+            recover: () => false,
           },
         }),
     ...(catalog.droppedSources === undefined
@@ -323,6 +325,7 @@ export function harness(
             catalog.droppedSources?.push(sessionId);
           },
         }),
+    ...(catalog.sessionPurge ? { sessionPurge: catalog.sessionPurge } : {}),
     ...(memoryAdmin === undefined
       ? {}
       : {

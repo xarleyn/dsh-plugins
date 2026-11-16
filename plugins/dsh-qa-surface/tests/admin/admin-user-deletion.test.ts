@@ -1,9 +1,123 @@
 import { describe, expect, it, vi } from "vitest";
+import { DatabaseSync } from "node:sqlite";
+import {
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+  rmSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { createSessionPurge } from "../../src/admin/session-purge.js";
 import { fakeEraser, harness } from "./admin-service.helpers.js";
 import { staticSessionLogReader } from "../../src/admin/session-log.js";
 import type { QaStoredSessionHeader } from "../../src/admin/session-log.js";
 
 describe("admin account removal", () => {
+  it("restores conversations, quality records and shared access when the final SQLite commit fails", async () => {
+    const home = mkdtempSync(path.join(tmpdir(), "qa-removal-commit-"));
+    const purge = createSessionPurge(vi.fn(), vi.fn(), home);
+    const f = harness({ sessionPurge: purge });
+    const session = "session-alice";
+    const directory = path.join(home, "sessions", "project", session);
+    const db = new DatabaseSync(f.accounts.filePath);
+    try {
+      mkdirSync(directory, { recursive: true });
+      writeFileSync(path.join(directory, "log"), "retained bytes");
+      f.quality.rateFeedback(
+        { conversationId: session, messageId: "2", userId: f.alice.user.id },
+        { rating: "positive" },
+      );
+      f.sharing().set(f.alice.token, session, f.bob.user.email, "read");
+      db.exec(
+        "CREATE TABLE fixture_reference (account_id TEXT REFERENCES qa_accounts(id) DEFERRABLE INITIALLY DEFERRED)",
+      );
+      db.prepare("INSERT INTO fixture_reference VALUES (?)").run(
+        f.alice.user.id,
+      );
+      await expect(
+        f.service.deleteUser(f.admin.token, f.alice.user.id, true),
+      ).rejects.toThrow(/FOREIGN KEY/i);
+      expect(readFileSync(path.join(directory, "log"), "utf8")).toBe(
+        "retained bytes",
+      );
+      expect(f.accounts.whoami(f.alice.token).authenticated).toBe(true);
+      expect(f.quality.allFeedback()).toHaveLength(1);
+      expect(
+        f.quality
+          .auditEvents()
+          .filter((event) => event.action === "user.deleted"),
+      ).toEqual([]);
+      expect(f.sharing().grants(f.alice.token, session)).toHaveLength(1);
+      db.exec("DELETE FROM fixture_reference");
+      expect(
+        await f.service.deleteUser(f.admin.token, f.alice.user.id, true),
+      ).toBe(1);
+      expect(f.quality.allFeedback()).toEqual([]);
+      expect(
+        f.quality
+          .auditEvents()
+          .filter((event) => event.action === "user.deleted"),
+      ).toHaveLength(1);
+    } finally {
+      db.close();
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it.each([false, true])(
+    "restores pending histories before listing and refuses any later restoration (%s)",
+    async (late) => {
+      let recovered = false;
+      const source = staticSessionLogReader({});
+      const stage = vi.fn(
+        (_accounts: unknown, _user: string, targets: readonly string[]) => ({
+          removed: targets,
+          absent: [],
+        }),
+      );
+      const f = harness({
+        sessionPurge: {
+          stage,
+          recover() {
+            const alreadyRecovered = recovered;
+            recovered = true;
+            return !alreadyRecovered || late;
+          },
+        },
+        sessionLog: {
+          ...source,
+          list: async () => ({
+            complete: true,
+            headers: recovered
+              ? [
+                  {
+                    id: "child",
+                    parentSessionId: "session-alice",
+                    createdAt: 2,
+                  },
+                ]
+              : [],
+          }),
+        },
+      });
+      const removal = f.service.deleteUser(
+        f.admin.token,
+        f.alice.user.id,
+        true,
+      );
+      if (late) {
+        await expect(removal).rejects.toMatchObject({
+          reason: "account-changed",
+        });
+        expect(stage).not.toHaveBeenCalled();
+      } else {
+        await expect(removal).resolves.toBe(1);
+        expect(stage.mock.calls[0]?.[2]).toEqual(["session-alice", "child"]);
+      }
+    },
+  );
   it.each([false, true])(
     "rolls credentials and shared access back on audit failure before erasing files (purge=%s)",
     async (purge) => {

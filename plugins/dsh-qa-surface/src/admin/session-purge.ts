@@ -22,7 +22,7 @@ export interface QaSessionPurge {
     targets: readonly string[],
     required: ReadonlySet<string>,
   ): QaSessionEraseOutcome;
-  recover(accounts: QaAccounts, userId?: string): void;
+  recover(accounts: QaAccounts, userId?: string): boolean;
 }
 
 /** Directory moves are reversible until the account transaction commits. Each
@@ -103,7 +103,8 @@ export function createSessionPurge(
     },
     recover(accounts, userId) {
       const root = journal(accounts);
-      if (!existsSync(root)) return;
+      if (!existsSync(root)) return false;
+      let restored = false;
       accounts.reconcileRemoval((exists) => {
         for (const name of userId === undefined ? dirs(root) : [key(userId)]) {
           const id = Buffer.from(name, "hex").toString();
@@ -111,8 +112,10 @@ export function createSessionPurge(
           if (!id || key(id) !== name || !existsSync(folder)) continue;
           const shouldRestore = exists(id);
           try {
-            if (shouldRestore) restore(folder);
-            else forgetSources(folder);
+            if (shouldRestore) {
+              restore(folder);
+              restored = true;
+            } else forgetSources(folder);
             rmSync(folder, { recursive: true, force: true });
           } catch (error) {
             onDeferredCleanup(error);
@@ -121,6 +124,7 @@ export function createSessionPurge(
           }
         }
       });
+      return restored;
     },
   };
 }

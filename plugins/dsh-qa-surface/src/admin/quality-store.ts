@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import { readFileSync, renameSync } from "node:fs";
 import path from "node:path";
 import {
@@ -196,6 +197,39 @@ export const ROW_PLACEMENT_SQL = `
  * finds the rows of a conversation it is forgetting. */
 export const FAMILY_MEMBERSHIP_SQL = `
   SELECT key, json FROM quality_rows WHERE kind = ?`;
+
+function deleteConversationRows(
+  db: DatabaseSync,
+  table: "quality_rows" | "qa_quality.quality_rows",
+  wanted: ReadonlySet<string>,
+): number {
+  if (wanted.size === 0) return 0;
+  const rows = db.prepare(
+    FAMILY_MEMBERSHIP_SQL.replaceAll("quality_rows", table),
+  );
+  const remove = db.prepare(`DELETE FROM ${table} WHERE kind=? AND key=?`);
+  let removed = 0;
+  for (const kind of CONVERSATION_KINDS) {
+    for (const row of asRows<{ key: string; json: string }>(rows.all(kind))) {
+      let record: unknown;
+      try {
+        record = JSON.parse(row.json);
+      } catch {
+        // Leave malformed records for the normal quality reader to diagnose.
+        continue;
+      }
+      if (
+        isRecord(record) &&
+        typeof record.conversationId === "string" &&
+        wanted.has(record.conversationId)
+      ) {
+        remove.run(kind, row.key);
+        removed++;
+      }
+    }
+  }
+  return removed;
+}
 
 const MIGRATIONS: readonly SqliteMigration[] = [
   {
@@ -640,36 +674,22 @@ export class QaQualityStore {
    * @param conversationIds - the conversations to forget.
    * @returns how many rows were removed.
    */
-  dropConversations(conversationIds: readonly string[]): number {
-    this.reload();
+  dropConversations(
+    conversationIds: readonly string[],
+    attached?: DatabaseSync,
+  ): number {
     const wanted = new Set(conversationIds);
     if (wanted.size === 0) return 0;
-    let removed = 0;
-    this.storage.transaction(() => {
-      for (const kind of CONVERSATION_KINDS) {
-        for (const row of asRows<{ key: string; json: string }>(
-          this.storage.db.prepare(FAMILY_MEMBERSHIP_SQL).all(kind),
-        )) {
-          let record: unknown;
-          try {
-            record = JSON.parse(row.json);
-          } catch {
-            // A row the store cannot parse is reported by the readers that
-            // surface it; housekeeping is not the place to delete it.
-            continue;
-          }
-          if (
-            !isRecord(record) ||
-            typeof record.conversationId !== "string" ||
-            !wanted.has(record.conversationId)
-          ) {
-            continue;
-          }
-          this.deleteRow(kind, row.key);
-          removed += 1;
-        }
-      }
-    });
+    if (attached)
+      return deleteConversationRows(
+        attached,
+        "qa_quality.quality_rows",
+        wanted,
+      );
+    this.reload();
+    const removed = this.storage.transaction(() =>
+      deleteConversationRows(this.storage.db, "quality_rows", wanted),
+    );
     if (removed === 0) return 0;
     const keep = <T extends { readonly conversationId: string }>(
       rows: readonly T[],
@@ -688,15 +708,17 @@ export class QaQualityStore {
   // -------------------------------------------------------------------------
 
   /** Append one administrative action to the audit trail. */
-  appendAudit(input: {
-    readonly actorId: string;
-    readonly action: QaAdminAuditAction;
-    readonly targetType?: string | undefined;
-    readonly targetId?: string | undefined;
-    readonly before?: unknown;
-    readonly after?: unknown;
-  }): QaAdminAuditEvent {
-    this.reload();
+  appendAudit(
+    input: {
+      readonly actorId: string;
+      readonly action: QaAdminAuditAction;
+      readonly targetType?: string | undefined;
+      readonly targetId?: string | undefined;
+      readonly before?: unknown;
+      readonly after?: unknown;
+    },
+    attached?: DatabaseSync,
+  ): QaAdminAuditEvent {
     const targetType = optionalText(input.targetType, "targetType", 64);
     const targetId = optionalText(input.targetId, "targetId", MAX_ID_LENGTH);
     const record: QaAdminAuditEvent = Object.freeze({
@@ -713,28 +735,32 @@ export class QaQualityStore {
         ? {}
         : { after: this.snapshot(input.after) }),
     });
+    if (attached) {
+      attached
+        .prepare(
+          ROW_PLACEMENT_SQL.replaceAll(
+            "quality_rows",
+            "qa_quality.quality_rows",
+          ),
+        )
+        .run("audit", record.id, "audit", JSON.stringify(record));
+      attached
+        .prepare(
+          OVERFLOW_CUT_SQL.replaceAll(
+            "quality_rows",
+            "qa_quality.quality_rows",
+          ),
+        )
+        .run("audit", "audit", MAX_AUDIT - 1);
+      return record;
+    }
+    this.reload();
     this.appendRow("audit", record);
     this.file = {
       ...this.file,
       audit: [...this.file.audit, record].slice(-MAX_AUDIT),
     };
     return record;
-  }
-
-  /** Record the intent before erasing files and publish it only if the work succeeds. */
-  withAudit(
-    input: Parameters<QaQualityStore["appendAudit"]>[0],
-    work: () => void,
-  ): void {
-    try {
-      this.storage.transaction(() => {
-        this.appendAudit(input);
-        work();
-      });
-    } catch (error) {
-      this.file = this.load();
-      throw error;
-    }
   }
 
   auditEvents(): readonly QaAdminAuditEvent[] {

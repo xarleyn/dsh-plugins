@@ -949,6 +949,7 @@ export class QaAdminService {
       let targets: readonly string[] = [];
       if (purge) {
         this.require(token, "conversations.delete");
+        this.options.sessionPurge?.recover(accounts, userId);
         roots = accounts
           .listOwnershipRecords()
           .filter((row) => row.userId === userId)
@@ -987,13 +988,20 @@ export class QaAdminService {
         }
       }
       const sharing = this.options.sharing?.();
+      const quality = this.options.quality();
       const kept = accounts.deleteAccount(userId, {
-        beforeRemoval: () =>
-          this.options.sessionPurge?.recover(accounts, userId),
+        beforeRemoval: () => {
+          if (this.options.sessionPurge?.recover(accounts, userId) && purge)
+            throw new QaAccountsError(
+              "account-changed",
+              "session histories were restored during listing",
+            );
+        },
         ...(purge ? { purge: { roots, sessions: targets } } : {}),
         ...(sharing ? { sharingPath: sharing.storage.filePath } : {}),
-        beforeCommit: (retained) => {
-          this.options.quality().withAudit(
+        qualityPath: quality.filePath,
+        beforeCommit: (retained, db) => {
+          quality.appendAudit(
             {
               actorId: actor.id,
               action: "user.deleted",
@@ -1005,20 +1013,20 @@ export class QaAdminService {
                 retained,
               },
             },
-            () => {
-              if (targets.length === 0) return;
-              const purgeFiles = this.options.sessionPurge;
-              if (!purgeFiles)
-                throw new QaAccountsError(
-                  "conversation-not-removable",
-                  "recoverable session removal is unavailable",
-                );
-              this.eraseConversations(targets, headers, (ids, required) => {
-                staging = true;
-                return purgeFiles.stage(accounts, userId, ids, required);
-              });
-            },
+            db,
           );
+          if (targets.length === 0) return;
+          const purgeFiles = this.options.sessionPurge;
+          if (!purgeFiles)
+            throw new QaAccountsError(
+              "conversation-not-removable",
+              "recoverable session removal is unavailable",
+            );
+          this.removeStoredConversations(targets, headers, (ids, required) => {
+            staging = true;
+            return purgeFiles.stage(accounts, userId, ids, required);
+          });
+          quality.dropConversations(targets, db);
         },
       });
       return purge ? roots.length : kept;
@@ -1479,11 +1487,10 @@ export class QaAdminService {
       );
     }
     const targets = conversationSessions([conversationId], listing.headers);
-    const { outcome, qualityRows } = this.eraseConversations(
-      targets,
-      listing.headers,
-    );
+    const outcome = this.removeStoredConversations(targets, listing.headers);
     const sharing = this.options.sharing?.();
+    const qualityRows = this.options.quality().dropConversations(targets);
+    for (const id of targets) this.options.dropSources?.(id);
     for (const id of targets) sharing?.dropSession(id);
     accounts.forgetSessions(new Set(targets));
     this.options.quality().appendAudit({
@@ -1508,7 +1515,7 @@ export class QaAdminService {
     });
   }
 
-  private eraseConversations(
+  private removeStoredConversations(
     targets: readonly string[],
     headers: readonly QaStoredSessionHeader[],
     stage?: (
@@ -1549,13 +1556,10 @@ export class QaAdminService {
         "this deployment does not store conversations as directories",
       );
     }
-    const qualityRows = this.options.quality().dropConversations(targets);
-    if (!stage)
-      for (const sessionId of targets) this.options.dropSources?.(sessionId);
     // A removed log is never read again, so its projection must not survive to
     // answer a later page: the cache holds it as if the conversation existed.
     for (const sessionId of targets) this.transcripts.delete(sessionId);
-    return { outcome, qualityRows };
+    return outcome;
   }
   private failuresOf(
     conversationId: string,

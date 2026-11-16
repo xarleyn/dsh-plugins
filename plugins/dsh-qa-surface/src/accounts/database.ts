@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import { QaAccountsError } from "./errors.js";
 import { dropAttachedUserSharing } from "../chat-sharing/store.js";
 import type { QaHistoryFolderTarget } from "../types/accounts.js";
@@ -31,8 +32,9 @@ export interface QaAccountRemoval {
     readonly sessions: readonly string[];
   };
   readonly sharingPath?: string;
+  readonly qualityPath?: string;
   readonly beforeRemoval?: () => void;
-  readonly beforeCommit?: (retained: number) => void;
+  readonly beforeCommit?: (retained: number, db: DatabaseSync) => void;
 }
 
 /**
@@ -652,9 +654,16 @@ export class QaAccountsDatabase {
   /** Hold the SQLite writer from the ownership check through synchronous erasure and commit. */
   deleteAccount(userId: string, options: QaAccountRemoval): number {
     const db = this.storage.db;
-    if (options.sharingPath !== undefined)
-      db.prepare("ATTACH DATABASE ? AS qa_sharing").run(options.sharingPath);
+    const attached: string[] = [];
     try {
+      for (const [schema, file] of [
+        ["qa_sharing", options.sharingPath],
+        ["qa_quality", options.qualityPath],
+      ] as const) {
+        if (file === undefined) continue;
+        db.prepare(`ATTACH DATABASE ? AS ${schema}`).run(file);
+        attached.push(schema);
+      }
       return this.storage.transaction(() => {
         this.requireExistingOwner(userId);
         options.beforeRemoval?.();
@@ -711,12 +720,12 @@ export class QaAccountsDatabase {
         const retained = options.purge ? 0 : owned.length;
         if (options.sharingPath !== undefined)
           dropAttachedUserSharing(db, userId, options.purge?.sessions ?? []);
-        options.beforeCommit?.(retained);
+        options.beforeCommit?.(retained, db);
         return retained;
       });
     } finally {
-      if (options.sharingPath !== undefined)
-        db.exec("DETACH DATABASE qa_sharing");
+      for (const schema of attached.reverse())
+        db.exec(`DETACH DATABASE ${schema}`);
     }
   }
 
