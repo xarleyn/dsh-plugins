@@ -36,11 +36,14 @@ const dshVersion =
   process.env.DSH_QA_SMOKE_VERSION ??
   compatibility.deepseekHarness.testedReleases.at(-1);
 const withBrowser = process.argv.includes("--browser");
+const chatLayoutOnly = process.argv.includes("--chat-layout");
 const fileWriteSettingsOnly = process.argv.includes("--file-write-settings");
 const modelSelectionOnly = process.argv.includes("--model-selection");
 const subagentModelsOnly = process.argv.includes("--subagent-models");
 if (modelSelectionOnly && !withBrowser)
   throw new Error("--model-selection requires --browser");
+if (chatLayoutOnly && !withBrowser)
+  throw new Error("--chat-layout requires --browser");
 const presetScopedTool = process.platform === "win32" ? "pwsh" : "bash";
 const keepFailedSmoke = process.env.DSH_QA_KEEP_SMOKE === "1";
 const temporaryRoot = await mkdtemp(join(tmpdir(), "dsh-qa-packed-smoke-"));
@@ -1262,9 +1265,10 @@ try {
     );
   }
 
-  if (!modelSelectionOnly && !subagentModelsOnly)
+  const fullBrowser = withBrowser && !modelSelectionOnly && !chatLayoutOnly;
+  if (!modelSelectionOnly && !subagentModelsOnly && !chatLayoutOnly)
     await runLanPass({ dshBin, dshEnv, repo, hostLog });
-  if (fileWriteSettingsOnly || (withBrowser && !modelSelectionOnly))
+  if (fileWriteSettingsOnly || fullBrowser)
     await runFileWriteSettingsBrowserPass({
       origin,
       authenticatedUrl: `${origin}/?token=${encodeURIComponent(token)}`,
@@ -1274,7 +1278,7 @@ try {
         join(temporaryRoot, "file-write-evidence"),
     });
   if (withBrowser) {
-    if (!modelSelectionOnly)
+    if (fullBrowser)
       await runBrowserPass({
         origin,
         authenticatedUrl: `${origin}/?token=${encodeURIComponent(token)}`,
@@ -1287,6 +1291,7 @@ try {
     host = undefined;
     await runIntegrationFolderBrowserPass({
       modelSelection: modelSelectionOnly,
+      chatLayoutOnly,
       dshBin,
       dshEnv,
       root: temporaryRoot,
@@ -1311,7 +1316,7 @@ try {
   }
   completed = true;
   console.log(
-    `packed DSH ${dshVersion} QA smoke passed${withBrowser || fileWriteSettingsOnly ? " with browser E2E" : ""}`,
+    `packed DSH ${dshVersion} QA smoke passed${withBrowser || fileWriteSettingsOnly ? " with browser E2E" : ""}${chatLayoutOnly ? " (chat layout)" : ""}`,
   );
 } finally {
   await stopProcess(host);

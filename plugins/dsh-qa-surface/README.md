@@ -91,6 +91,10 @@ credentials, including access filtering, switching, reload persistence,
 new-chat defaults, and desktop/phone layout. It does not run the separate LAN
 deployment-overlay acceptance pass.
 
+Run `pnpm --filter @yadsh/dsh-qa-surface e2e:browser --chat-layout` to
+check the theme, reading width, document panel and private-chat bylines in
+Chromium on localhost. The default browser suite also exercises the LAN overlay.
+
 - contributes one root-scoped entry to the additive `shell.overlay` slot;
 - stays invisible outside the configured route;
 - creates or restores one real DSH Session;

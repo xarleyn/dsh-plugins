@@ -10,6 +10,45 @@ import {
 afterEach(cleanup);
 
 describe("QA modal focus lifetime", () => {
+  it("wraps Tab inside each dialog and restores the opener at each level", () => {
+    const view = (outer: boolean, inner: boolean) => (
+      <>
+        <button>Open settings</button>
+        <QaModal
+          open={outer}
+          title="Settings"
+          closeLabel="Close settings"
+          onClose={() => {}}
+        >
+          <button>Open details</button>
+          <QaModal
+            open={inner}
+            title="Details"
+            closeLabel="Close details"
+            onClose={() => {}}
+          >
+            <button>Done</button>
+          </QaModal>
+        </QaModal>
+      </>
+    );
+    const button = (name: string) => screen.getByRole("button", { name });
+    const mounted = render(view(false, false));
+    button("Open settings").focus();
+    mounted.rerender(view(true, false));
+    fireEvent.keyDown(button("Close settings"), { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(button("Open details"));
+    mounted.rerender(view(true, true));
+    fireEvent.keyDown(button("Close details"), { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(button("Done"));
+    fireEvent.keyDown(button("Done"), { key: "Tab" });
+    expect(document.activeElement).toBe(button("Close details"));
+    mounted.rerender(view(true, false));
+    expect(document.activeElement).toBe(button("Open details"));
+    mounted.rerender(view(false, false));
+    expect(document.activeElement).toBe(button("Open settings"));
+  });
+
   it("leaves Escape to an expanded control inside the dialog", () => {
     const close = vi.fn();
     render(

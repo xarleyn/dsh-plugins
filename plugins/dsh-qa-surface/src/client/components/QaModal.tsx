@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode } from "react";
+import { trapKeys } from "../focus-ring.js";
 
 /**
  * Open dialogs, innermost last. A dialog opened from another one (the tool
@@ -71,12 +72,12 @@ export function QaModal(props: QaModalProps) {
   }, [props.onClose]);
   useEffect(() => {
     if (!props.open) return;
+    const opener = document.activeElement;
+    const layer = joinQaDialogStack();
     closeButton.current?.focus();
-    const token = Symbol("dsh-qa-modal");
-    openDialogs.push(token);
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
-      if (openDialogs.at(-1) !== token) return;
+      if (!layer.innermost()) return;
       const target = event.target;
       if (
         target instanceof Element &&
@@ -95,8 +96,11 @@ export function QaModal(props: QaModalProps) {
     window.addEventListener("keydown", onKey, true);
     return () => {
       window.removeEventListener("keydown", onKey, true);
-      const index = openDialogs.indexOf(token);
-      if (index >= 0) openDialogs.splice(index, 1);
+      const restore =
+        layer.innermost() || document.activeElement === document.body;
+      layer.leave();
+      if (restore && opener instanceof HTMLElement && opener.isConnected)
+        opener.focus({ preventScroll: true });
     };
   }, [props.open]);
   if (!props.open) return null;
@@ -107,6 +111,15 @@ export function QaModal(props: QaModalProps) {
       role="dialog"
       aria-modal="true"
       aria-label={props.title}
+      onKeyDown={(event) => {
+        if (
+          event.key === "Tab" &&
+          !event.defaultPrevented &&
+          event.target instanceof Element &&
+          event.target.closest('[role="dialog"]') === event.currentTarget
+        )
+          trapKeys(event, [event.currentTarget]);
+      }}
       onClick={(event) => {
         if (event.target === event.currentTarget) props.onClose();
       }}

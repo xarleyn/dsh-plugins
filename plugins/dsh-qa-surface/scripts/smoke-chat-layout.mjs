@@ -140,7 +140,28 @@ export async function runChatLayoutPass(
   await shot("chat");
   await openProfileAppearance(page);
   await shot("appearance");
-  await page.getByRole("button", { name: "Закрыть настройки" }).click();
+  const closeSettings = page.getByRole("button", { name: "Закрыть настройки" });
+  await closeSettings.focus();
+  await page.keyboard.press("Shift+Tab");
+  const settings = page.getByRole("dialog").filter({ has: closeSettings });
+  assert.ok(
+    await settings.evaluate((el) =>
+      el.contains(el.ownerDocument.activeElement),
+    ),
+    "reverse Tab stays inside settings",
+  );
+  await page.keyboard.press("Tab");
+  assert.ok(
+    await closeSettings.evaluate((el) => el === el.ownerDocument.activeElement),
+    "forward Tab returns to the close button",
+  );
+  await page.keyboard.press("Escape");
+  assert.ok(
+    await page
+      .getByTestId("qa-surface-sidebar-account-name")
+      .evaluate((el) => el === el.ownerDocument.activeElement),
+    "closing settings returns focus to the profile button",
+  );
   await page.getByTestId("qa-surface-header-sources").click();
   const separator = page.getByRole("separator", {
     name: "Ширина правой панели",
