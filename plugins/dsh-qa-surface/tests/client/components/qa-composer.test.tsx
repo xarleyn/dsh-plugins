@@ -57,9 +57,9 @@ function pasteText(input: HTMLElement, text: string): void {
 describe("QA composer", () => {
   it("shows the Fast warning when enabled and keeps the mode explicit", () => {
     const changed = vi.fn();
-    mount({ fastMode: true, onFastModeChange: changed });
-    const toggle = screen.getByTestId("qa-composer-fast");
-    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    mount({ answerModes: ["fast", "deep"], onAnswerModesChange: changed });
+    const toggle = screen.getByTestId("qa-composer-modes");
+    expect(toggle.textContent).toContain("Fast + Deep Thinking");
     expect(screen.getByTestId("qa-composer-fast-warning").textContent).toMatch(
       /Автоматическое ревью ответов пропускается/u,
     );
@@ -67,15 +67,17 @@ describe("QA composer", () => {
       /Проверка документов перед согласованием сохраняется/u,
     );
     fireEvent.click(toggle);
-    expect(changed).toHaveBeenCalledWith(false);
+    fireEvent.click(screen.getByRole("checkbox", { name: "Fast" }));
+    expect(changed).toHaveBeenCalledWith(["deep"]);
   });
 
   it("starts without a Fast warning and enables the mode by an explicit click", () => {
     const changed = vi.fn();
-    mount({ fastMode: false, onFastModeChange: changed });
+    mount({ answerModes: ["deep"], onAnswerModesChange: changed });
     expect(screen.queryByTestId("qa-composer-fast-warning")).toBeNull();
-    fireEvent.click(screen.getByTestId("qa-composer-fast"));
-    expect(changed).toHaveBeenCalledWith(true);
+    fireEvent.click(screen.getByTestId("qa-composer-modes"));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Fast" }));
+    expect(changed).toHaveBeenCalledWith(["fast", "deep"]);
   });
 
   it("sends on Enter and preserves Shift+Enter", async () => {

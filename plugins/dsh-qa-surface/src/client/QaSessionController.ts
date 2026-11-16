@@ -12,6 +12,12 @@ import type {
 import type { ConversationBinding } from "@deepseek-ai/dsh-client-ui-conversation/client";
 import type { UserMessage } from "@deepseek-ai/dsh-llm";
 import { bytesToBase64 } from "./base64.js";
+import {
+  QA_DEFAULT_ANSWER_MODES,
+  qaAnswerModes,
+  type QaAnswerMode,
+} from "../shared/answer-modes.js";
+import { qaPromptRequestId } from "./request-id.js";
 import { qaStorageNamespace } from "../shared/session-key.js";
 import type { QaSharingApi } from "./chat-sharing-api.js";
 import type { QaChatAccess } from "../chat-sharing/types.js";
@@ -70,6 +76,7 @@ import type {
   QaSessionsApi,
   QaQuestionApi,
   QaSlashApi,
+  QaAnswerModesApi,
   QaSourceApi,
   StorageLike,
 } from "./types.js";
@@ -155,6 +162,7 @@ export interface QaSessionControllerOptions {
    * working, which is exactly the pre-feature behaviour.
    */
   readonly slashApi?: QaSlashApi;
+  readonly answerModesApi?: QaAnswerModesApi;
   /**
    * Global admission snapshot. Managed queues accept sends even while full;
    * legacy Hosts retain the courtesy refusal. A failed read still submits the
@@ -301,6 +309,7 @@ export class QaSessionController {
   private readonly accounts: QaAccountsFacade | undefined;
   /** Slash half of the Host namespace; absent on an older Host build. */
   private readonly slashApi: QaSlashApi | undefined;
+  private readonly answerModesApi: QaAnswerModesApi | undefined;
   /** Resolved per send: a page without the upload plugin has no receipts. */
   private readonly fileUpload: () => QaFileUpload | undefined;
   /** Per-chat attachment URL cache; blob URLs die with the chat binding. */
@@ -456,6 +465,7 @@ export class QaSessionController {
     );
     this.accounts = options.accounts;
     this.slashApi = options.slashApi;
+    this.answerModesApi = options.answerModesApi;
     this.selectedSubrole = options.initialSubrole ?? null;
     this.adminPreview = options.adminPreview === true;
     this.fileUpload = options.fileUpload ?? (() => undefined);
@@ -627,8 +637,17 @@ export class QaSessionController {
     text: string,
     attachments: readonly QaAttachmentDraft[] = [],
     pick: string | null = null,
-    fastReview = false,
+    selection: readonly QaAnswerMode[] | boolean = QA_DEFAULT_ANSWER_MODES,
   ): Promise<boolean> {
+    // Copy before the first await: later UI changes belong to later requests.
+    const modes = qaAnswerModes(
+      typeof selection === "boolean"
+        ? selection
+          ? ["fast", "deep"]
+          : ["deep"]
+        : selection,
+    );
+    const fastReview = modes.includes("fast");
     const prompt = text.trim();
     // Images ride the prompt inline; files must be staged first, because the
     // wire carries a receipt rather than bytes.
@@ -647,7 +666,14 @@ export class QaSessionController {
       picked: pick,
     });
     if (route.kind === "command") {
-      return this.sendCommand(prompt, attachments, files, route.entry);
+      return this.sendCommand(
+        prompt,
+        attachments,
+        files,
+        route.entry,
+        false,
+        route.entry.name === "no-review" ? modes : undefined,
+      );
     }
     if (route.kind === "disabled") {
       this.operationError = SLASH_DISABLED_COPY;
@@ -717,6 +743,7 @@ export class QaSessionController {
         files,
         command,
         true,
+        modes,
       );
     }
     this.operationError = null;
@@ -776,11 +803,31 @@ export class QaSessionController {
             attachments: submissionImages(attachments),
           })
         : undefined;
+      const requestId = echo?.requestId ?? qaPromptRequestId();
+      if (this.answerModesApi !== undefined) {
+        const prepared = await this.answerModesApi.prepare(
+          this.accounts?.token() ?? "",
+          String(target.sessionId),
+          String(requestId),
+          modes,
+        );
+        if (!prepared.ok || !prepared.value)
+          throw new Error("Answer modes were not admitted.");
+        if (this.disposed || this.session !== target) {
+          echo?.abandon();
+          return false;
+        }
+      } else if (modes.includes("rag")) {
+        throw new Error("RAG Priority is unavailable on this Host.");
+      }
       this.admissionPending = true;
       this.publish();
-      const result = queueing
-        ? await target.prompt(content, "queue", undefined, echo?.requestId)
-        : await target.prompt(content, "queue");
+      const result =
+        this.answerModesApi !== undefined
+          ? await target.prompt(content, "queue", undefined, requestId)
+          : queueing
+            ? await target.prompt(content, "queue", undefined, echo?.requestId)
+            : await target.prompt(content, "queue");
       if (this.session !== target) return false;
       if (!result.ok) {
         this.admissionPending = false;
@@ -891,6 +938,7 @@ export class QaSessionController {
     files: readonly QaFileDraft[],
     entry: QaSlashCatalogEntry,
     requireSuccess = false,
+    modes?: readonly QaAnswerMode[],
   ): Promise<boolean> {
     if (this.slashApi === undefined) {
       this.operationError = SLASH_DISABLED_COPY;
@@ -933,6 +981,7 @@ export class QaSessionController {
         String(target.sessionId),
         line,
         buildQaSlashAttachments(attachments, receipts),
+        ...(modes === undefined ? [] : [modes]),
       );
       if (this.session !== target) return false;
       if (!result.ok) {
@@ -1173,8 +1222,10 @@ export class QaSessionController {
    * hides the marker message, and the consecutive turns read as variants of
    * the original question (switched in the surface).
    */
-  async regenerate(fastReview = false): Promise<boolean> {
-    return this.send(QA_REGENERATE_MARKER, [], null, fastReview);
+  async regenerate(
+    modes: readonly QaAnswerMode[] | boolean = QA_DEFAULT_ANSWER_MODES,
+  ): Promise<boolean> {
+    return this.send(QA_REGENERATE_MARKER, [], null, modes);
   }
 
   async stop(): Promise<void> {

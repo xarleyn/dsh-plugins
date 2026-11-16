@@ -17,11 +17,13 @@ import { useSlashNavigation } from "../slash/useSlashNavigation.js";
 import { QaFileAttachment } from "./QaFileAttachment.js";
 import { isQaModalOpen } from "./QaModal.js";
 import { useQaFileDrop } from "../use-qa-file-drop.js";
+import type { QaAnswerMode } from "../../shared/answer-modes.js";
+import { QaAnswerModes } from "./QaAnswerModes.js";
 
 export interface QaComposerProps {
   readonly modelSelector?: ReactNode;
-  readonly fastMode?: boolean;
-  readonly onFastModeChange?: (enabled: boolean) => void;
+  readonly answerModes?: readonly QaAnswerMode[];
+  readonly onAnswerModesChange?: (modes: readonly QaAnswerMode[]) => void;
   readonly placeholder: string;
   /** Shown while the chat is empty; the label reads, the prompt sends. */
   readonly quickQuestions?: readonly QaQuickQuestion[];
@@ -449,19 +451,12 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
               </span>
             )}
           </div>
-          {props.onFastModeChange === undefined ? null : (
-            <button
-              type="button"
-              className={`dsh-qa-composer__fast${props.fastMode === true ? " dsh-qa-composer__fast--active" : ""}`}
-              data-testid="qa-composer-fast"
-              aria-label="Fast: без автоматического ревью ответов"
-              aria-pressed={props.fastMode === true}
-              title="Fast действует на следующие сообщения в этом чате"
+          {props.onAnswerModesChange === undefined ? null : (
+            <QaAnswerModes
+              modes={props.answerModes ?? ["deep"]}
               disabled={!props.canSend || submitting}
-              onClick={() => props.onFastModeChange?.(props.fastMode !== true)}
-            >
-              Fast
-            </button>
+              onChange={props.onAnswerModesChange}
+            />
           )}
           {props.running && props.showStop ? (
             <button
@@ -508,7 +503,7 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
           )}
         </div>
       </div>
-      {props.fastMode === true ? (
+      {props.answerModes?.includes("fast") === true ? (
         <p
           className="dsh-qa-composer__fast-warning"
           data-testid="qa-composer-fast-warning"

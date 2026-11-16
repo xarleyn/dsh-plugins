@@ -110,6 +110,11 @@ export class QaQuestionGate {
     private readonly ownership: QaSessionOwnership,
     private readonly logger: PluginLogger,
     private readonly questionsAllowed: (agent: Agent) => boolean = () => true,
+    private readonly policy?: {
+      prepare(request: QaQuestionRequest): QaQuestionRequest;
+      answered(request: QaQuestionRequest, answer: QaQuestionAnswer): void;
+      cancelled?(request: QaQuestionRequest): void;
+    },
   ) {}
 
   /** Claim question requests for the chats this deployment answers. */
@@ -272,8 +277,13 @@ export class QaQuestionGate {
       this.logger.info("question.unsupported", { sessionId });
       throw new Error(QA_QUESTIONS_UNSUPPORTED);
     }
+    request = this.policy?.prepare(request) ?? request;
     const outcome = await this.park(sessionId, askingId, request);
-    if (outcome.kind === "cancelled") throw new Error(CANCELLED_MESSAGE);
+    if (outcome.kind === "cancelled") {
+      this.policy?.cancelled?.(request);
+      throw new Error(CANCELLED_MESSAGE);
+    }
+    this.policy?.answered(request, outcome.answer);
     return outcome.answer;
   }
 

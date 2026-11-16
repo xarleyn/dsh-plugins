@@ -123,6 +123,21 @@ function settle(built: ReturnType<typeof world>, text = "hello"): void {
 }
 
 describe("QA session controller slash routing", () => {
+  it("keeps RAG selection on an explicitly typed no-review request", async () => {
+    const built = await ready({ entries: [FAST_COMMAND] });
+    expect(
+      await built.controller.send("/no-review question", [], null, ["rag"]),
+    ).toBe(true);
+    expect(built.execute).toHaveBeenCalledWith(
+      "",
+      "saved",
+      "/no-review question",
+      [],
+      ["rag"],
+    );
+    expect(built.faces.get("saved")?.prompt).not.toHaveBeenCalled();
+    built.controller.dispose();
+  });
   it("routes Fast through the trusted waiver command and restores ordinary submission when off", async () => {
     const built = await ready({ entries: [FAST_COMMAND, COMMAND] });
     expect(await built.controller.send("  question  ", [], null, true)).toBe(
@@ -133,6 +148,7 @@ describe("QA session controller slash routing", () => {
       "saved",
       "/no-review question",
       [],
+      ["fast", "deep"],
     );
     expect(built.faces.get("saved")?.prompt).not.toHaveBeenCalled();
     built.execute.mockClear();

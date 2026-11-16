@@ -12,6 +12,7 @@ export type * from "./types/documents.js";
 export type * from "./types/session.js";
 export type * from "./types/code-sources.js";
 export type * from "./types/answer-review.js";
+export type { QaAnswerMode } from "./shared/answer-modes.js";
 export type * from "./types/quality.js";
 export type * from "./types/admin.js";
 export type {
