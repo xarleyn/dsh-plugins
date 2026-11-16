@@ -27,10 +27,11 @@ const report = "The acceptance test records a thirty second cutoff";
 const explanation = "Both passages specify the same cutoff for the pump.";
 const proof = `CHECK S1 D1 | ${req} | ${report} | ${explanation}`;
 async function fixture(
-  summary: string,
+  summary: string | ((task: string) => string),
   read = true,
   reader = "review-child",
   textFollowup = false,
+  withSource = true,
 ) {
   const cwd = await mkdtemp(path.join(os.tmpdir(), "document-gate-"));
   dirs.push(cwd);
@@ -90,16 +91,18 @@ async function fixture(
       seq: 0,
       data: {
         ...user("deliver"),
-        content: [
-          {
-            type: "file",
-            attachment: {
-              attachmentId: "sha256:" + hash(req),
-              name: "requirements.txt",
-              bytes: req.length,
-            },
-          },
-        ],
+        content: withSource
+          ? [
+              {
+                type: "file",
+                attachment: {
+                  attachmentId: "sha256:" + hash(req),
+                  name: "requirements.txt",
+                  bytes: req.length,
+                },
+              },
+            ]
+          : [{ type: "text", text: req }],
       },
     },
     {
@@ -150,7 +153,7 @@ async function fixture(
       async reviewExpertBounded(_domain, task) {
         calls++;
         if (task.includes("DOCUMENT REVIEW")) {
-          expect(task).toContain(JSON.stringify(src));
+          if (withSource) expect(task).toContain(JSON.stringify(src));
           expect(task).toContain(JSON.stringify(markdownPath));
           if (read)
             for (const file of [src, markdownPath])
@@ -164,7 +167,7 @@ async function fixture(
           structured: true,
           findings: [],
           conflicts: [],
-          summary,
+          summary: typeof summary === "function" ? summary(task) : summary,
         };
         return { ok: true, code: "OK", message: "", result };
       },
@@ -286,6 +289,42 @@ it("rejects a self-only document pass when a follow-up has retained source files
   );
   expect(await f.stop()).toBe("failure");
   expect(f.receipts.some((r) => r.status === "pass")).toBe(false);
+});
+
+it("guides a source-free reviewer with the actual deliverable pair and still requires witnessed quotations", async () => {
+  const f = await fixture(
+    (task) => {
+      expect(task).toContain("Required pairs: D1 D1.");
+      expect(task).not.toContain("CHECK S1 D1");
+      const example = task
+        .split("\n")
+        .find((line) => line.startsWith("CHECK "));
+      expect(example).toContain("first deliverable passage");
+      const pair = example!.split(" | ")[0];
+      return `${pair} | ${report} | ${report} | The deliverable states the requested cutoff.`;
+    },
+    true,
+    "review-child",
+    false,
+    false,
+  );
+  expect(await f.stop()).toBe("pass");
+  expect(f.receipts.at(-1)).toMatchObject({
+    status: "pass",
+    documents: [{ sourceSha256: [] }],
+  });
+});
+
+it("rejects an invented source key even when a source-free reviewer read the deliverable", async () => {
+  const f = await fixture(
+    `CHECK S1 D1 | ${report} | ${report} | Matches.`,
+    true,
+    "review-child",
+    false,
+    false,
+  );
+  expect(await f.stop()).toBe("failure");
+  expect(f.receipts.some((receipt) => receipt.status === "pass")).toBe(false);
 });
 
 it("credits every evidence key for a shared cached extraction, only to the child that read it", async () => {
