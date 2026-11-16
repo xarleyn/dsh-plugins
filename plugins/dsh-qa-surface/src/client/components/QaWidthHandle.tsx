@@ -76,6 +76,9 @@ export function resolveQaContentWidth(
   preference: number | null,
   minContentWidth: number,
 ): number {
+  // At phone width the whole column belongs to the conversation, including
+  // on a desktop with a large document pane. The resize gutters disappear.
+  if (columnWidth <= 600) return Math.max(0, columnWidth);
   const available = Math.max(0, columnWidth - QA_CONTENT_EDGE_BUDGET);
   const minimum = Math.min(minContentWidth, available);
   const adaptive = Math.max(
@@ -179,7 +182,6 @@ export function QaWidthHandle(props: QaWidthHandleProps) {
 }
 
 interface UseQaContentWidthOptions {
-  readonly active: boolean;
   readonly root: RefObject<HTMLDivElement | null>;
   readonly storage: Pick<Storage, "getItem" | "setItem">;
   readonly storageKey: string;
@@ -187,7 +189,6 @@ interface UseQaContentWidthOptions {
 }
 
 export function useQaContentWidth({
-  active,
   root,
   storage,
   storageKey,
@@ -202,6 +203,7 @@ export function useQaContentWidth({
     const element = root.current;
     if (element === null) return;
     const column = element.offsetWidth;
+    element.toggleAttribute("data-compact", column <= 600);
     const preference = readQaStoredWidth(storage, storageKey);
     const width = resolveQaContentWidth(column, preference, minContentWidth);
     element.style.setProperty("--dsh-qa-column-width", `${column}px`);
@@ -209,14 +211,17 @@ export function useQaContentWidth({
   }, [minContentWidth, root, storage, storageKey]);
 
   useLayoutEffect(() => {
-    if (!active) return;
     const element = root.current;
     if (element === null) return;
     publish();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", publish);
+      return () => window.removeEventListener("resize", publish);
+    }
     const observer = new ResizeObserver(publish);
     observer.observe(element);
     return () => observer.disconnect();
-  }, [active, publish, root]);
+  }, [publish, root]);
 
   const onStart = useCallback(() => {
     const element = root.current;

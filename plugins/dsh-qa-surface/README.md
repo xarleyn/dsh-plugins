@@ -91,6 +91,10 @@ credentials, including access filtering, switching, reload persistence,
 new-chat defaults, and desktop/phone layout. It does not run the separate LAN
 deployment-overlay acceptance pass.
 
+Run `pnpm --filter @yadsh/dsh-qa-surface e2e:browser --chat-layout` to
+check the theme, reading width, document panel and private-chat bylines in
+Chromium on localhost. The default browser suite also exercises the LAN overlay.
+
 - contributes one root-scoped entry to the additive `shell.overlay` slot;
 - stays invisible outside the configured route;
 - creates or restores one real DSH Session;
@@ -165,7 +169,7 @@ deployment-overlay acceptance pass.
   provider this plugin registers instead of the filesystem one, so no account
   can see another's, and `allowed-tools` is stored as declared but never
   grants anything the session does not already allow;
-- carries its own light/dark/system palette control in the header: the Host's
+- carries its own light/dark/system palette control in personal settings: the Host's
   Appearance row lives in the settings this surface suppresses, so `/qa` would
   otherwise open in whichever theme the application happened to boot with (see
   [Theme](#theme));
@@ -778,12 +782,9 @@ belongs to the documentation or the expert before it belongs to memory.
 
 ### Theme
 
-Three cubes in the header, next to the role control: light, dark, and follow
-the system. The surface needs its own because the Host keeps its Appearance row
-inside the settings — and the QA overlay is precisely what suppresses the native
-shell, while the kiosk never mounts it. Without these cubes the stand opens in
-whichever palette the application booted with and a visitor has nowhere to
-answer that.
+Open your profile settings and select **Общие → Тема оформления** to choose
+light, dark, or system. Deployments without accounts offer the same choice
+through **Настройки** in the chat header.
 
 The choice belongs to the browser, not to the deployment. It is stored under
 this stand's own localStorage namespace (`<storageKey>:v1:<route>:theme`) and

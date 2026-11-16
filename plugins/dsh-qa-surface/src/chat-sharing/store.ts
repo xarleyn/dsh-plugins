@@ -52,6 +52,12 @@ export class QaChatSharingStore {
         ownerName: owner.displayName,
         actorId: actor.id,
         mode: "owner",
+        shared:
+          this.storage.db
+            .prepare(
+              "SELECT 1 FROM grants WHERE session_id=? AND owner_id=? LIMIT 1",
+            )
+            .get(sessionId, owner.id) !== undefined,
         revision: 0,
       };
     const grant = this.storage.db
@@ -67,6 +73,7 @@ export class QaChatSharingStore {
       ownerName: owner.displayName,
       actorId: actor.id,
       mode: grant.mode,
+      shared: true,
       revision: grant.revision,
     };
   }
@@ -211,16 +218,14 @@ export class QaChatSharingStore {
       .all(sessionId) as unknown as QaChatAuthor[];
   }
 
-  requestActor(
-    sessionId: string,
-    requestId: string,
-  ): { userId: string; revision: number | null } | undefined {
+  requestActor(sessionId: string, requestId: string) {
     return this.storage.db
       .prepare(
-        "SELECT user_id AS userId, grant_revision AS revision FROM authors WHERE session_id=? AND request_id=?",
+        "SELECT user_id AS userId, display_name AS displayName, grant_revision AS revision FROM authors WHERE session_id=? AND request_id=?",
       )
       .get(sessionId, requestId) as
-      { userId: string; revision: number | null } | undefined;
+      | { userId: string; displayName: string; revision: number | null }
+      | undefined;
   }
 
   /** Copy only immutable attribution for the native prefix, never memberships. */

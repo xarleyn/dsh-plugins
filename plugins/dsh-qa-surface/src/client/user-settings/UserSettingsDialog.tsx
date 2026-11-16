@@ -1,4 +1,4 @@
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import { QaModal } from "../components/QaModal.js";
 import type {
   QaAccountIdentityField,
@@ -39,6 +39,7 @@ export interface QaUserSettingsDialogProps {
   readonly email: string;
   readonly role: string;
   readonly chatCount: number;
+  readonly appearance?: ReactNode;
   /** Self-service profile editing; absent when the deployment turns it off. */
   readonly profile?: {
     readonly profile: QaAccountProfile;
@@ -229,6 +230,7 @@ export function QaUserSettingsDialog(props: QaUserSettingsDialogProps) {
               email={props.email}
               role={props.role}
               chatCount={props.chatCount}
+              appearance={props.appearance}
             />
           ) : null}
           {active === "skills" && props.skills !== undefined ? (
