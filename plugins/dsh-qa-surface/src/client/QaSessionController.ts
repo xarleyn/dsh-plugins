@@ -81,6 +81,7 @@ import type {
 } from "../types.js";
 import { waitFor } from "./wait-for.js";
 import { QA_REGENERATE_MARKER } from "./QaTranscriptAdapter.js";
+import { latestChatTurn } from "./answer-review.js";
 import { readableSubagentName } from "./settlement.js";
 import {
   hostNamedSubmissionIds,
@@ -1177,9 +1178,21 @@ export class QaSessionController {
     return this.send(QA_REGENERATE_MARKER, [], null, fastReview);
   }
 
-  async stop(): Promise<void> {
+  async stop(expected?: { chatKey: number; turn?: number }): Promise<void> {
     const target = this.session;
     if (target === undefined || !this.state.canStop) return;
+    if (expected !== undefined) {
+      const live = latestChatTurn(
+        this.conversationBinding?.snapshot.getSnapshot(),
+      );
+      if (
+        this.chatKey !== expected.chatKey ||
+        live?.turn !== expected.turn ||
+        live?.status === "closed" ||
+        !target.getSnapshot().running
+      )
+        return;
+    }
     try {
       const result = await target.cancel();
       if (this.session !== target) return;
@@ -2309,10 +2322,7 @@ export class QaSessionController {
   /** Project one session notification; the running-turn spacing policy
    * (first frame at once, further frames absorbed) lives in the publisher. */
   private publishSessionUpdate(): void {
-    // Read before the spacing, from the notification itself: a frame absorbed
-    // into a running turn's window is dropped rather than replayed, so an
-    // admission landing in such a window would otherwise go unrecorded and the
-    // claim frame after it would draw the ghost row this retires.
+    // Keep admissions even if the next projection has already seen the claim.
     this.trackAdmittedSubmissions();
     this.streamPublisher.publish(
       this.session?.getSnapshot().running === true,
@@ -2514,8 +2524,7 @@ export class QaSessionController {
    * ghost the moment the snapshot registers the echo again.
    *
    * Read from the notification, not from the projected frame: the projection of a
-   * running turn is spaced, and an absorbed frame is dropped rather than
-   * replayed, so spacing must not decide whether this browser ever saw the name.
+   * running turn is spaced, so an admission can be claimed before it renders.
    */
   private trackAdmittedSubmissions(): void {
     const snapshot = this.session?.getSnapshot();

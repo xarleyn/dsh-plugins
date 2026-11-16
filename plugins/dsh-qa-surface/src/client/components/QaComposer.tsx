@@ -1,7 +1,15 @@
-import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  memo,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import type { ReactNode } from "react";
 import type {
   QaAttachmentDraft,
+  QaComposerActivity,
   QaSlashView,
   ResolvedQaSlashCommands,
 } from "../../types.js";
@@ -16,6 +24,8 @@ import { QaSlashPalette } from "../slash/SlashPalette.js";
 import { useSlashNavigation } from "../slash/useSlashNavigation.js";
 import { QaFileAttachment } from "./QaFileAttachment.js";
 import { isQaModalOpen } from "./QaModal.js";
+import { QaComposerStatus, QaStopConfirmation } from "./QaComposerStatus.js";
+import { isReviewInProgress } from "../answer-review.js";
 import { useQaFileDrop } from "../use-qa-file-drop.js";
 
 export interface QaComposerProps {
@@ -28,6 +38,8 @@ export interface QaComposerProps {
   readonly canSend: boolean;
   readonly canStop: boolean;
   readonly running: boolean;
+  readonly turn?: number;
+  readonly activity?: QaComposerActivity;
   readonly showStop: boolean;
   readonly status: string | null;
   readonly attachments: readonly QaAttachmentDraft[];
@@ -71,6 +83,7 @@ function focusComposer(
   if (isQaModalOpen()) return;
   const document = input.ownerDocument;
   const active = document.activeElement;
+  if (active?.closest(".dsh-qa-stop-confirmation")) return;
   if (
     active !== null &&
     active !== document.body &&
@@ -111,6 +124,38 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
   const [dragOver, setDragOver] = useState(false);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
+  const stopButton = useRef<HTMLButtonElement>(null);
+  const confirmationId = useId();
+  const reviewing = isReviewInProgress(props.activity);
+  const [stopRequest, setStopRequest] = useState<{
+    turn?: number;
+    reviewing: boolean;
+    pending: boolean;
+  } | null>(null);
+  const mayStop = props.running && props.showStop && props.canStop;
+  if (
+    stopRequest !== null &&
+    (!mayStop ||
+      stopRequest.turn !== props.turn ||
+      (!stopRequest.pending && stopRequest.reviewing !== reviewing))
+  ) {
+    setStopRequest(null);
+  }
+  const confirming = stopRequest?.pending === false;
+  const dismissStop = () => {
+    setStopRequest(null);
+    stopButton.current?.focus();
+  };
+  const confirmStop = async () => {
+    if (!mayStop || !confirming) return;
+    const pending = { ...stopRequest, pending: true };
+    setStopRequest(pending);
+    try {
+      await props.onStop();
+    } finally {
+      setStopRequest((current) => (current === pending ? null : current));
+    }
+  };
   const focusOwner = useRef<HTMLDivElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const attachments = props.attachments;
@@ -213,8 +258,13 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
   }, [draft]);
 
   const hasContent = draft.trim() !== "" || attachments.length > 0;
+  const activity = stopRequest?.pending ? "stopping" : props.activity;
   const hint =
-    submitting && files.length > 0 ? "Отправляю вложения…" : props.status;
+    submitting && files.length > 0
+      ? "Отправляю вложения…"
+      : props.activity === undefined
+        ? props.status
+        : null;
   return (
     <div
       ref={focusOwner}
@@ -224,6 +274,13 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
           : "dsh-qa-composer-wrap"
       }
       data-testid="qa-composer-drop-zone"
+      onKeyDown={(event) => {
+        if (confirming && event.key === "Escape") {
+          event.preventDefault();
+          event.stopPropagation();
+          dismissStop();
+        }
+      }}
     >
       {(props.quickQuestions?.length ?? 0) > 0 ? (
         <div
@@ -259,6 +316,16 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
         />
       ) : null}
       <div className="dsh-qa-composer" data-testid="qa-composer">
+        {confirming ? (
+          <QaStopConfirmation
+            id={confirmationId}
+            reviewing={reviewing}
+            onContinue={dismissStop}
+            onConfirm={() => void confirmStop()}
+          />
+        ) : activity !== undefined ? (
+          <QaComposerStatus activity={activity} writingHint={props.status} />
+        ) : null}
         {files.length === 0 ? null : (
           <div
             className="dsh-qa-composer__files"
@@ -468,10 +535,21 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
               type="button"
               className="dsh-qa-composer__action dsh-qa-composer__action--stop"
               data-testid="qa-composer-stop"
+              ref={stopButton}
               aria-label="Остановить"
               title="Остановить"
-              disabled={!props.canStop}
-              onClick={() => void props.onStop()}
+              aria-expanded={confirming}
+              aria-controls={confirming ? confirmationId : undefined}
+              disabled={!props.canStop || stopRequest?.pending === true}
+              onClick={() => {
+                if (confirming) dismissStop();
+                else
+                  setStopRequest({
+                    turn: props.turn,
+                    reviewing,
+                    pending: false,
+                  });
+              }}
             >
               <svg viewBox="0 0 18 18" aria-hidden="true">
                 <rect x="5.25" y="5.25" width="7.5" height="7.5" rx="1.5" />

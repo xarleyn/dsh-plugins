@@ -934,6 +934,12 @@ export function QaSurface(props: QaSurfaceProps) {
     () => controller?.stop() ?? Promise.resolve(),
     [controller],
   );
+  const handleComposerStop = useCallback(
+    () =>
+      controller?.stop({ chatKey: state.chatKey, turn: state.composerTurn }) ??
+      Promise.resolve(),
+    [controller, state.chatKey, state.composerTurn],
+  );
   const handleQueueEdit = useCallback(
     (id: string, text: string) =>
       controller?.queueAction(id, "edit", text) ?? Promise.resolve(null),
@@ -1158,7 +1164,9 @@ export function QaSurface(props: QaSurfaceProps) {
     return undefined;
   }, [state.messages, state.phase]);
   const runningPhrase = useThinkingPhrase(
-    state.phase === "running",
+    state.phase === "running" &&
+      (state.composerActivity === undefined ||
+        state.composerActivity === "writing"),
     runningStartedAt,
     config.thinkingPhrases,
   );
@@ -2266,6 +2274,8 @@ export function QaSurface(props: QaSurfaceProps) {
                       canStop={state.canStop}
                       running={state.phase === "running"}
                       showStop={config.ui.showStop}
+                      turn={state.composerTurn}
+                      activity={state.composerActivity}
                       status={status}
                       attachments={pendingAttachments}
                       limits={limits}
@@ -2274,7 +2284,7 @@ export function QaSurface(props: QaSurfaceProps) {
                       onAttachmentsChange={setPendingAttachments}
                       onSend={handleSend}
                       onSlashOpen={handleSlashOpen}
-                      onStop={handleStop}
+                      onStop={handleComposerStop}
                     />
                   </div>
                   {config.branding.disclaimer === "" ? null : (

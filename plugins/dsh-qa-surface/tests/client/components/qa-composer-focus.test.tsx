@@ -40,6 +40,79 @@ function field(): HTMLTextAreaElement {
   return screen.getByLabelText("Задать вопрос");
 }
 
+describe("confirming a composer stop", () => {
+  it("keeps the draft and the review live until the user explicitly confirms", async () => {
+    let finish!: () => void;
+    const onStop = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const composer = props({
+      running: true,
+      turn: 7,
+      activity: "reviewing",
+      onStop,
+      status: "Думаю…",
+    });
+    render(<QaComposer {...composer} />);
+    fireEvent.change(field(), { target: { value: "Следующий вопрос" } });
+    const stop = screen.getByTestId("qa-composer-stop");
+    expect(screen.getByTestId("qa-composer-status").textContent).toContain(
+      "Идёт проверка ответа",
+    );
+    expect(screen.queryByTestId("qa-composer-hint")).toBeNull();
+    fireEvent.click(stop);
+    expect(screen.queryByTestId("qa-composer-status")).toBeNull();
+    const keep = screen.getByRole("button", { name: "Продолжить проверку" });
+    expect(document.activeElement).toBe(keep);
+    fireEvent.keyDown(keep, { key: "Escape" });
+    expect(document.activeElement).toBe(stop);
+    fireEvent.click(stop);
+    fireEvent.click(screen.getByTestId("qa-composer-stop-continue"));
+    expect(onStop).not.toHaveBeenCalled();
+    fireEvent.click(stop);
+    fireEvent.click(screen.getByTestId("qa-composer-stop-confirm"));
+    expect(onStop).toHaveBeenCalledTimes(1);
+    expect((stop as HTMLButtonElement).disabled).toBe(true);
+    expect(field().value).toBe("Следующий вопрос");
+    expect(
+      screen.getByRole("button", { name: "Отправить в очередь" }),
+    ).toBeTruthy();
+    await settle(finish);
+  });
+
+  it("discards confirmation when the turn, stage or ability to stop changes", () => {
+    const composer = props({ running: true, turn: 1, activity: "writing" });
+    const view = render(<QaComposer {...composer} />);
+    const open = () => fireEvent.click(screen.getByTestId("qa-composer-stop"));
+    open();
+    expect(
+      screen.getByRole("button", { name: "Продолжить ответ" }),
+    ).toBeTruthy();
+    view.rerender(<QaComposer {...composer} activity="reviewing" />);
+    expect(screen.queryByTestId("qa-composer-stop-confirm")).toBeNull();
+    open();
+    view.rerender(<QaComposer {...composer} activity="reviewing" turn={2} />);
+    expect(screen.queryByTestId("qa-composer-stop-confirm")).toBeNull();
+    open();
+    view.rerender(
+      <QaComposer
+        {...composer}
+        activity="pass"
+        running={false}
+        canStop={false}
+      />,
+    );
+    expect(screen.queryByTestId("qa-composer-stop-confirm")).toBeNull();
+    expect(screen.getByTestId("qa-composer-status").textContent).toContain(
+      "Ответ проверен",
+    );
+    expect(composer.onStop).not.toHaveBeenCalled();
+  });
+});
+
 function page(composer: QaComposerProps, credentialAutoFocus = false) {
   return (
     <>

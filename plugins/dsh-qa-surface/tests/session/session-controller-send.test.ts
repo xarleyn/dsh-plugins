@@ -41,6 +41,10 @@ describe("QA session controller", () => {
     expect(controller.getSnapshot().error).toMatch(/Команды со слешем/u);
 
     saved?.source.set({ ...saved.source.getSnapshot(), running: true });
+    const chatKey = controller.getSnapshot().chatKey;
+    await controller.stop({ chatKey: chatKey + 1 });
+    await controller.stop({ chatKey, turn: 99 });
+    expect(saved?.cancel).not.toHaveBeenCalled();
     await controller.stop();
     expect(saved?.cancel).toHaveBeenCalledOnce();
     controller.dispose();
