@@ -13,6 +13,7 @@ import type {
   ResolvedQaSurfaceConfig,
 } from "../types.js";
 import { projectTranscript } from "./QaTranscriptAdapter.js";
+import { composerActivity, latestChatTurn } from "./answer-review.js";
 import { chatLegacyOf } from "./turn-sources.js";
 import { dedupeAndRankSources } from "../provenance/dedupe.js";
 
@@ -340,8 +341,18 @@ export function projectBoundSessionState(
     input.policyReady &&
     !questionPending &&
     input.compatibilityReadOnly !== true;
+  const turn = latestChatTurn(input.conversationSnapshot);
+  const showActivity =
+    phase === "ready" || (phase === "running" && snapshot.running);
   return {
     phase,
+    composerTurn: turn?.turn,
+    composerActivity:
+      showActivity &&
+      !input.admissionPending &&
+      input.requestQueue?.waiting !== true
+        ? composerActivity(turn, messages, snapshot.running)
+        : undefined,
     sessionId: input.sessionId,
     chatKey: input.chatKey,
     messages,
