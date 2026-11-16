@@ -41,6 +41,9 @@ const dshVersion =
   compatibility.deepseekHarness.testedReleases.at(-1);
 const withBrowser = process.argv.includes("--browser");
 const chatLayoutOnly = process.argv.includes("--chat-layout");
+const reviewDockOnly = process.argv.includes("--review-dock");
+if (reviewDockOnly && !withBrowser)
+  throw new Error("--review-dock requires --browser");
 const fileWriteSettingsOnly = process.argv.includes("--file-write-settings");
 const discoverySettingsOnly = process.argv.includes(
   "--tool-discovery-settings",
@@ -1067,8 +1070,12 @@ try {
     ...Object.fromEntries(
       Object.entries(process.env).filter(
         ([name]) =>
-          !(modelSelectionOnly || subagentModelsOnly || answerModesOnly) ||
-          !/_API_KEY$/u.test(name),
+          !(
+            modelSelectionOnly ||
+            subagentModelsOnly ||
+            answerModesOnly ||
+            reviewDockOnly
+          ) || !/_API_KEY$/u.test(name),
       ),
     ),
     DSH_HOME: dshHome,
@@ -1284,11 +1291,16 @@ try {
   }
 
   const fullBrowser =
-    withBrowser && !modelSelectionOnly && !chatLayoutOnly && !answerModesOnly;
+    withBrowser &&
+    !modelSelectionOnly &&
+    !chatLayoutOnly &&
+    !answerModesOnly &&
+    !reviewDockOnly;
   if (
     !modelSelectionOnly &&
     !subagentModelsOnly &&
     !chatLayoutOnly &&
+    !reviewDockOnly &&
     !answerModesOnly &&
     !discoverySettingsOnly
   )
@@ -1315,10 +1327,24 @@ try {
     // before seeding its durable fixture: there must be only one writer.
     await stopProcess(host);
     host = undefined;
+    if (reviewDockOnly) {
+      const gateDir = join(temporaryRoot, "review-gate");
+      await mkdir(gateDir);
+      await run("pnpm", ["pack", "--pack-destination", gateDir], {
+        cwd: join(repo, "../dsh-answer-review-gate"),
+      });
+      const [gate] = await readdir(gateDir);
+      await run(
+        process.execPath,
+        [dshBin, "plugin", "--profile", "web", "add", join(gateDir, gate)],
+        { cwd: workspacePath, env: dshEnv },
+      );
+    }
     if (!answerModesOnly)
       await runIntegrationFolderBrowserPass({
         modelSelection: modelSelectionOnly,
         chatLayoutOnly,
+        reviewDockOnly,
         dshBin,
         dshEnv,
         root: temporaryRoot,

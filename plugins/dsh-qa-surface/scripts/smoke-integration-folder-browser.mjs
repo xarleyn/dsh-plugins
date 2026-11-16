@@ -4,6 +4,10 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { freePort, rpc, stopProcess, waitFor } from "./smoke-helpers.mjs";
 import {
+  runReviewDockPass,
+  startReviewProvider,
+} from "./smoke-review-dock.mjs";
+import {
   runChatLayoutPass,
   startLayoutProvider,
 } from "./smoke-chat-layout.mjs";
@@ -24,14 +28,21 @@ export async function runIntegrationFolderBrowserPass(options) {
     hostLog,
     modelSelection = false,
     chatLayoutOnly = false,
+    reviewDockOnly = false,
   } = options;
   const port = await freePort();
   const origin = `http://127.0.0.1:${port}`;
   const patch = join(root, "integration-folder.patch.yml");
   const modelPass =
     !chatLayoutOnly &&
+    !reviewDockOnly &&
     (modelSelection || process.env.DSH_QA_MODEL_SMOKE === "1");
-  const layoutProvider = modelPass ? undefined : await startLayoutProvider();
+  const reviewControl = { answerReady: null, reviewRequested: false };
+  const layoutProvider = reviewDockOnly
+    ? await startReviewProvider(reviewControl)
+    : modelPass
+      ? undefined
+      : await startLayoutProvider();
   const stableCode = join(workspacePath, "stable-code");
   const previewCode = join(workspacePath, "preview-code");
   if (modelPass)
@@ -96,7 +107,21 @@ ${
         baseURL: http://127.0.0.1:${layoutProvider.address().port}/v1
         models:
           - id: layout-demo
-            name: Demo`
+            name: Demo${
+              reviewDockOnly
+                ? `
+          - id: review-demo
+            name: Reviewer
+- id: dsh-answer-review-gate
+  config:
+    failMode: open
+    reviewer:
+      backend: subagent
+      provider: spawn
+      route: qa-layout
+      model: review-demo`
+                : ""
+            }`
 }`,
   );
   const log = [];
@@ -136,7 +161,7 @@ ${
     );
     // Create closed, durable conversations across the same restart as the form.
     const removalExamples = [];
-    if (!modelPass) {
+    if (!modelPass && !reviewDockOnly) {
       for (const name of ["keep-history", "erase-history"]) {
         const account = await rpc(
           origin,
@@ -166,11 +191,13 @@ ${
     }
     await stopProcess(host);
     host = undefined;
-    const formFixture = await seedFormBrowserFixture(
-      dshEnv.DSH_HOME,
-      formSession,
-      session.user.id,
-    );
+    const formFixture = reviewDockOnly
+      ? undefined
+      : await seedFormBrowserFixture(
+          dshEnv.DSH_HOME,
+          formSession,
+          session.user.id,
+        );
     log.length = 0;
     host = spawn(
       process.execPath,
@@ -318,6 +345,18 @@ ${
       exact: true,
     });
     if (await notice.isVisible()) await notice.click();
+    if (reviewDockOnly) {
+      try {
+        await runReviewDockPass(page, reviewControl);
+      } catch (error) {
+        console.error(
+          "Review dock at failure:",
+          await page.getByTestId("qa-composer").allInnerTexts(),
+        );
+        throw error;
+      }
+      return;
+    }
     if (removalExamples.length > 0) await verifyRemoval(page);
     await runFormBrowserPass({
       page,

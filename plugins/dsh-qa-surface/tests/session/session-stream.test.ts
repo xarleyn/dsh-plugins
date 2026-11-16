@@ -1,9 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { resolveConfig } from "../../src/resolve-config.js";
 import { QaSessionController } from "../../src/client/QaSessionController.js";
 import { harness } from "../helpers/session-fakes.js";
 
 describe("stream update coalescing", () => {
+  afterEach(() => vi.useRealTimers());
   it("projects running-turn frames at most once per stream interval", async () => {
     const world = harness(["saved"]);
     world.stored.set("dsh-qa-surface.session:v1:/qa:session", "saved");
@@ -13,6 +14,7 @@ describe("stream update coalescing", () => {
       streamIntervalMs: 25,
     });
     await controller.ensureSession();
+    vi.useFakeTimers();
     let publishes = 0;
     controller.subscribe(() => {
       publishes += 1;
@@ -30,12 +32,15 @@ describe("stream update coalescing", () => {
     saved?.source.set(partialText("a") as never);
     saved?.source.set(partialText("ab") as never);
     expect(publishes).toBe(1);
-    // After the window passes, the next frame projects again.
-    await new Promise((resolve) => setTimeout(resolve, 40));
+    // A review receipt can be the last frame until the reviewer finishes.
+    vi.advanceTimersByTime(25);
+    expect(publishes).toBe(2);
     saved?.source.set(partialText("abc") as never);
     expect(publishes).toBe(2);
     // Turn completion projects immediately, so the final state never waits.
     saved?.source.set({ ...saved.source.getSnapshot(), running: false });
+    expect(publishes).toBe(3);
+    vi.advanceTimersByTime(50);
     expect(publishes).toBe(3);
     controller.dispose();
   });

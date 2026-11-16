@@ -15,3 +15,7 @@ export interface QaAnswerReview {
     | "waived";
   readonly at: number;
 }
+
+/** Phase displayed above the input for the latest Host turn. */
+export type QaComposerActivity =
+  QaAnswerReview["status"] | "writing" | "stopped";
