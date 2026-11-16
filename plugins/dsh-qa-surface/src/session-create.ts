@@ -125,7 +125,7 @@ export async function createQaSession(
             cause: failure,
           });
         if (attachmentAttempted) await workspace?.detachSession(id);
-        const erased = await options.sessionFiles.erase([id]);
+        const erased = options.sessionFiles.erase([id]);
         removed = erased.removed.includes(id);
       } catch (cleanupError) {
         logger.error("session.create-cleanup-rejected", {

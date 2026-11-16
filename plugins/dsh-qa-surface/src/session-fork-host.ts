@@ -219,7 +219,7 @@ export async function forkQaSession(
       try {
         await handle?.dispose();
         if (handle !== undefined) {
-          const erased = await options.sessionFiles.erase([childId]);
+          const erased = options.sessionFiles.erase([childId]);
           removed = erased.removed.includes(childId);
         }
       } catch (cleanupError) {

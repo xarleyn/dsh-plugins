@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   QaAccessAdminSnapshot,
   QaAccountRole,
+  QaAdminUserRow,
   QaCapabilitySelection,
   QaCapabilitySourceKind,
   QaSkillAccess,
@@ -21,6 +22,7 @@ import { AdminAudit, AdminFeedback, AdminQuality } from "./pages/Quality.js";
 import { AdminSkillFiles } from "./pages/SkillFiles.js";
 import { AdminExpertMemory } from "./pages/ExpertMemory.js";
 import { AdminUserDetail, AdminUsers } from "./pages/Users.js";
+import { DeleteUserDialog } from "./DeleteUserDialog.js";
 import { RoleEditor } from "./RoleEditor.js";
 import { CapabilityPicker } from "./CapabilityPicker.js";
 import {
@@ -553,13 +555,19 @@ export function QaAdmin(props: {
 }) {
   const [snapshot, setSnapshot] = useState<QaAccessAdminSnapshot>();
   const [pathname, setPathname] = useState(() => window.location.pathname);
+  const [deleteTarget, setDeleteTarget] = useState<QaAdminUserRow>();
+  const [deletion, setDeletion] = useState<{ notice: string }>();
   const [editing, setEditing] = useState<QaSubrole | null | undefined>();
   const [editingSkill, setEditingSkill] = useState<QaSkillAccess>();
 
   // The console owns its own sub-routes: a review finding is a link people
   // paste, and the browser's back button must walk the sections.
   useEffect(() => {
-    const onPopState = () => setPathname(window.location.pathname);
+    const onPopState = () => {
+      setDeleteTarget(undefined);
+      setDeletion(undefined);
+      setPathname(window.location.pathname);
+    };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
@@ -574,6 +582,8 @@ export function QaAdmin(props: {
       : route.page;
   const navigate = useCallback(
     (next: QaAdminRoute) => {
+      setDeletion(undefined);
+      setDeleteTarget(undefined);
       window.history.pushState(
         { qaAdmin: next.page },
         "",
@@ -776,11 +786,18 @@ export function QaAdmin(props: {
             <AdminUsers
               api={adminApi}
               token={props.token}
+              deletion={deletion}
+              onDelete={
+                canOpen(props.role, "users") ? setDeleteTarget : undefined
+              }
               onOpenUser={(userId) => navigate({ page: "user", userId })}
             />
           ) : adminApi !== undefined && page === "user" ? (
             <AdminUserDetail
               api={adminApi}
+              onDelete={
+                canOpen(props.role, "users") ? setDeleteTarget : undefined
+              }
               accessApi={props.api}
               token={props.token}
               userId={route.page === "user" ? route.userId : ""}
@@ -1147,6 +1164,20 @@ export function QaAdmin(props: {
           )}
         </section>
       </div>
+      {adminApi && deleteTarget && (
+        <DeleteUserDialog
+          key={deleteTarget.id}
+          api={adminApi}
+          token={props.token}
+          user={deleteTarget}
+          onClose={() => setDeleteTarget(undefined)}
+          onDeleted={(notice) => {
+            if (page === "user") navigate({ page: "users" });
+            setDeleteTarget(undefined);
+            setDeletion({ notice });
+          }}
+        />
+      )}
     </main>
   );
 }

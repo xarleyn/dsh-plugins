@@ -1,4 +1,14 @@
 import { randomBytes } from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
+import { QaAccountsError } from "./errors.js";
+import { dropAttachedUserSharing } from "../chat-sharing/store.js";
+import {
+  journalAccountRemoval,
+  recoverAccountRemovals,
+  removalJournalMigration,
+  withRemovalStores,
+} from "./removal-journal.js";
+import type { QaAdminAuditEvent } from "../types.js";
 import type { QaHistoryFolderTarget } from "../types/accounts.js";
 import { readFileSync, renameSync } from "node:fs";
 import {
@@ -22,6 +32,20 @@ import {
 
 /** The token secret lives beside the schema version in the meta table. */
 const SECRET_KEY = "token_secret";
+
+export interface QaAccountRemoval {
+  readonly purge?: {
+    readonly roots: readonly string[];
+    readonly sessions: readonly string[];
+  };
+  readonly metadata?: {
+    readonly sharingPath?: string;
+    readonly qualityPath: string;
+    readonly audit: (retained: number, db: DatabaseSync) => QaAdminAuditEvent;
+  };
+  readonly beforeRemoval?: () => void;
+  readonly beforeCommit?: () => void;
+}
 
 /**
  * One step per released layout. Versions are dense: a database records the
@@ -163,6 +187,7 @@ const MIGRATIONS: readonly SqliteMigration[] = [
       CREATE INDEX qa_integration_session_folders_user ON qa_integration_session_folders(user_id);
     `,
   },
+  removalJournalMigration,
 ];
 
 interface AccountRow {
@@ -584,6 +609,7 @@ export class QaAccountsDatabase {
   /** Claim one chat for an account. */
   insertOwnership(sessionId: string, owner: StoredOwnership): void {
     this.storage.transaction(() => {
+      this.requireExistingOwner(owner.userId);
       this.writeOwnership(sessionId, owner);
     });
   }
@@ -592,6 +618,8 @@ export class QaAccountsDatabase {
   insertOwnershipMany(rows: readonly OwnershipWrite[]): void {
     if (rows.length === 0) return;
     this.storage.transaction(() => {
+      for (const userId of new Set(rows.map((row) => row.owner.userId)))
+        this.requireExistingOwner(userId);
       for (const row of rows) this.writeOwnership(row.sessionId, row.owner);
     });
   }
@@ -599,30 +627,149 @@ export class QaAccountsDatabase {
   /** Rewrite an existing chat's pinned role, preview flag or snapshot. */
   updateOwnership(sessionId: string, owner: StoredOwnership): void {
     this.storage.transaction(() => {
+      if (
+        !this.storage.db
+          .prepare(
+            "SELECT 1 FROM qa_ownership WHERE session_id=? AND user_id=?",
+          )
+          .get(sessionId, owner.userId)
+      )
+        throw new QaAccountsError(
+          "account-changed",
+          "session ownership changed",
+        );
       this.writeOwnership(sessionId, owner);
     });
+  }
+
+  private requireExistingOwner(id: string): void {
+    if (
+      !this.storage.db.prepare("SELECT 1 FROM qa_accounts WHERE id=?").get(id)
+    )
+      throw new QaAccountsError(
+        "account-unknown",
+        "session owner no longer exists",
+      );
+  }
+
+  /** Read the committed identity while excluding a concurrent purge or recovery. */
+  reconcileRemoval(work: (exists: (id: string) => boolean) => void): void {
+    this.storage.transaction(() => {
+      const user = this.storage.db.prepare(
+        "SELECT 1 FROM qa_accounts WHERE id=?",
+      );
+      work((id) => user.get(id) !== undefined);
+    });
+  }
+
+  /** Hold the SQLite writer from the ownership check through synchronous erasure and commit. */
+  deleteAccount(userId: string, options: QaAccountRemoval): number {
+    const db = this.storage.db;
+    const remove = () =>
+      this.storage.transaction(() => {
+        this.requireExistingOwner(userId);
+        options.beforeRemoval?.();
+        const otherAdmin = db
+          .prepare(
+            "SELECT 1 FROM qa_accounts WHERE role = 'admin' AND disabled = 0 AND id <> ? LIMIT 1",
+          )
+          .get(userId);
+        if (!otherAdmin)
+          throw new QaAccountsError(
+            "last-admin",
+            "cannot delete the last enabled administrator",
+          );
+        const owned = db
+          .prepare("SELECT session_id FROM qa_ownership WHERE user_id=?")
+          .all(userId) as { session_id: string }[];
+        if (options.purge) {
+          const expected = new Set(options.purge.roots);
+          if (
+            owned.length !== expected.size ||
+            owned.some((row) => !expected.has(row.session_id))
+          )
+            throw new QaAccountsError(
+              "account-changed",
+              "conversation ownership changed during removal",
+            );
+          const ownerOf = db.prepare(
+            "SELECT user_id FROM qa_ownership WHERE session_id=?",
+          );
+          for (const id of options.purge.sessions) {
+            const row = ownerOf.get(id);
+            if (row && row.user_id !== userId)
+              throw new QaAccountsError(
+                "account-changed",
+                "session belongs to another account",
+              );
+          }
+          this.removeOwnershipRows(options.purge.sessions);
+        }
+        for (const table of [
+          "qa_oidc_sessions",
+          "qa_oidc_identities",
+          "qa_service_tokens",
+          "qa_password_resets",
+          "qa_integration_session_folders",
+        ]) {
+          db.prepare(`DELETE FROM ${table} WHERE user_id = ?`).run(userId);
+        }
+        if (
+          !db.prepare("DELETE FROM qa_accounts WHERE id = ?").run(userId)
+            .changes
+        )
+          throw new QaAccountsError("account-unknown", "no such account");
+        const retained = options.purge ? 0 : owned.length;
+        if (options.metadata) {
+          const sessions = options.purge?.sessions ?? [];
+          // Check destination writes before moving files. Their speculative changes
+          // are rolled back, so only the accounts file contains a committed decision.
+          db.exec("SAVEPOINT removal_preflight");
+          if (options.metadata.sharingPath)
+            dropAttachedUserSharing(db, userId, sessions);
+          const audit = options.metadata.audit(retained, db);
+          db.exec("ROLLBACK TO removal_preflight; RELEASE removal_preflight");
+          journalAccountRemoval(db, userId, options.metadata, audit, sessions);
+        }
+        options.beforeCommit?.();
+        return retained;
+      });
+    return options.metadata
+      ? withRemovalStores(db, options.metadata, remove)
+      : remove();
+  }
+
+  recoverAccountRemovals(userId?: string): void {
+    recoverAccountRemovals(this.storage, userId);
   }
 
   /** Forget chats: a rolled-back reservation, or a chat the Harness lost. */
   deleteOwnership(sessionIds: readonly string[]): void {
     if (sessionIds.length === 0) return;
-    this.storage.transaction(() => {
-      const remove = this.storage.db.prepare(
-        "DELETE FROM qa_ownership WHERE session_id = ?",
-      );
-      for (const sessionId of sessionIds) {
-        remove.run(sessionId);
-        this.storage.db
-          .prepare(
-            "DELETE FROM qa_integration_session_folders WHERE session_id = ?",
-          )
-          .run(sessionId);
-        this.storage.db
-          .prepare("DELETE FROM qa_skill_activations WHERE session_id = ?")
-          .run(sessionId);
-      }
-      this.gcSnapshots();
-    });
+    this.storage.transaction(() => this.removeOwnershipRows(sessionIds));
+  }
+
+  private removeOwnershipRows(sessionIds: readonly string[]): void {
+    const remove = this.storage.db.prepare(
+      "DELETE FROM qa_ownership WHERE session_id = ?",
+    );
+    for (const sessionId of sessionIds) {
+      remove.run(sessionId);
+      this.storage.db
+        .prepare(
+          "DELETE FROM qa_integration_request_policies WHERE session_id = ?",
+        )
+        .run(sessionId);
+      this.storage.db
+        .prepare(
+          "DELETE FROM qa_integration_session_folders WHERE session_id = ?",
+        )
+        .run(sessionId);
+      this.storage.db
+        .prepare("DELETE FROM qa_skill_activations WHERE session_id = ?")
+        .run(sessionId);
+    }
+    this.gcSnapshots();
   }
 
   /** Record one freshly minted integration token (digest only, never a secret). */
@@ -997,6 +1144,15 @@ export class QaAccountsDatabase {
   }
 
   private writeOwnership(sessionId: string, owner: StoredOwnership): void {
+    if (
+      this.storage.db
+        .prepare("SELECT 1 FROM qa_pending_session_removals WHERE session_id=?")
+        .get(sessionId)
+    )
+      throw new QaAccountsError(
+        "account-changed",
+        "session removal is in progress",
+      );
     const snapshotHash =
       owner.capabilitySnapshot === undefined
         ? null

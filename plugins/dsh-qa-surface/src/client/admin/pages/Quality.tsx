@@ -567,6 +567,7 @@ export function AdminAudit(props: {
             <option value="">Любое</option>
             <option value="authorization.changed">Роль изменена</option>
             <option value="user.disabled">Пользователь отключён</option>
+            <option value="user.deleted">Аккаунт удалён</option>
             <option value="user.enabled">Пользователь включён</option>
             <option value="subrole.assignment.changed">
               Назначение изменено

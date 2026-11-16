@@ -36,7 +36,7 @@ import {
 } from "../profile.js";
 import { normalizeStarters, validateStartersWrite } from "../starters.js";
 import { validateCredentials, validatePassword } from "./credentials.js";
-import { QaAccountsDatabase } from "./database.js";
+import { QaAccountsDatabase, type QaAccountRemoval } from "./database.js";
 import type {
   QaHistoryFolderTarget,
   QaOwnedSessionsResult,
@@ -70,6 +70,7 @@ export { defaultAccountsFilePath } from "./file.js";
 export type { QaIssuedServiceToken, QaServiceTokenSummary } from "../types.js";
 
 export interface QaAccountsOptions {
+  readonly onRemovalRecoveryError?: (error: unknown) => void;
   readonly oidcEnabled?: boolean;
   readonly localLogin?: boolean;
   readonly sessionTtlDays: number;
@@ -278,6 +279,12 @@ export class QaAccounts {
       // A deployment upgrading from the JSON store keeps its accounts: the
       // file is imported, verified and renamed aside before anything else runs.
       this.database.importLegacyFile(paths.legacyFilePath);
+      try {
+        this.database.recoverAccountRemovals();
+      } catch (error) {
+        if (!options.onRemovalRecoveryError) throw error;
+        options.onRemovalRecoveryError(error);
+      }
       this.file = this.database.loadAll();
     } catch (error) {
       // A store that cannot start must not hold the database open: the caller
@@ -674,6 +681,8 @@ export class QaAccounts {
       (candidate) => candidate.id === owner.userId,
     );
     if (ownerUser === undefined) {
+      // Administrators read retained history through admin.conversation. A live
+      // session needs an existing owner whose access policy it can use.
       throw new QaAccountsError(
         "session-owned-elsewhere",
         "the session owner no longer exists",
@@ -901,7 +910,7 @@ export class QaAccounts {
       .map(([sessionId, owner]) => ({
         sessionId,
         userId: owner.userId,
-        displayName: names.get(owner.userId) ?? owner.userId,
+        displayName: names.get(owner.userId) ?? "Удалённый пользователь",
         claimedAt: owner.claimedAt,
       }))
       .sort((left, right) => left.claimedAt.localeCompare(right.claimedAt));
@@ -1166,6 +1175,22 @@ export class QaAccounts {
       },
     };
     return skillActivations;
+  }
+
+  deleteAccount(userId: string, options: QaAccountRemoval = {}): number {
+    try {
+      return this.database.deleteAccount(userId, options);
+    } finally {
+      this.file = this.database.loadAll();
+    }
+  }
+
+  reconcileRemoval(work: (exists: (id: string) => boolean) => void): void {
+    this.database.reconcileRemoval(work);
+  }
+
+  recoverAccountRemovals(userId?: string): void {
+    this.database.recoverAccountRemovals(userId);
   }
 
   /** Create an account outside the self-registration gate. */

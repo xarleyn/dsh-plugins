@@ -40,7 +40,7 @@ it("lets the installed Host factory unwind scope and registries before failed QA
       },
     } as never);
     const original = new Error("synthetic admission veto");
-    const erase = vi.fn(async (ids: readonly string[]) => {
+    const erase = vi.fn((ids: readonly string[]) => {
       expect(ctx.agents.get(SessionId(id))).toBeUndefined();
       expect(ctx.sessions.get(SessionId(id))).toBeUndefined();
       expect(order).toContain("scope-disposed");

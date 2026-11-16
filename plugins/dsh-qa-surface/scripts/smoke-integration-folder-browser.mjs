@@ -159,6 +159,36 @@ ${
       { args: { token: session.token, subroleId: null, adminPreview: false } },
       cookie,
     );
+    // Create closed, durable conversations across the same restart as the form.
+    const removalExamples = [];
+    if (!modelPass && !reviewDockOnly) {
+      for (const name of ["keep-history", "erase-history"]) {
+        const account = await rpc(
+          origin,
+          "qaSurface/accountsRegister",
+          {
+            args: {
+              email: name + "@example.test",
+              password: "demo-password-two",
+            },
+          },
+          cookie,
+        );
+        const chat = await rpc(
+          origin,
+          "qaSurface/createSession",
+          {
+            args: {
+              token: account.token,
+              subroleId: null,
+              adminPreview: false,
+            },
+          },
+          cookie,
+        );
+        removalExamples.push({ name, account, chat });
+      }
+    }
     await stopProcess(host);
     host = undefined;
     const formFixture = reviewDockOnly
@@ -214,6 +244,82 @@ ${
       },
     );
     await page.goto(`${origin}/?token=${encodeURIComponent(launch)}`);
+    const verifyRemoval = async (adminPage) => {
+      await adminPage.getByTestId("qa-surface-header-admin").click();
+      await adminPage.getByTestId("qa-admin-nav-users").click();
+      for (const { name, account, chat } of removalExamples) {
+        const erase = name === "erase-history";
+        const row = adminPage
+          .getByTestId("qa-admin-users-row")
+          .filter({ hasText: account.user.email });
+        if (erase) {
+          await row.getByRole("button", { name: "Открыть" }).click();
+          await adminPage
+            .getByRole("button", { name: "Удалить аккаунт…", exact: true })
+            .click();
+        } else
+          await row.getByRole("button", { name: /Удалить аккаунт/u }).click();
+        const dialog = adminPage.getByRole("dialog", {
+          name: "Удалить аккаунт?",
+        });
+        assert.equal(await dialog.getByRole("checkbox").isChecked(), false);
+        if (erase) await dialog.getByRole("checkbox").check();
+        await dialog
+          .getByRole("button", {
+            name: erase ? "Удалить аккаунт и 1 разговор" : "Удалить аккаунт",
+            exact: true,
+          })
+          .click();
+        await adminPage
+          .getByRole("status")
+          .filter({ hasText: `Аккаунт «${name}» удалён.` })
+          .waitFor();
+        await row.waitFor({ state: "detached" });
+        const who = await rpc(
+          origin,
+          "qaSurface/accountsWhoami",
+          { args: { token: account.token } },
+          cookie,
+        );
+        assert.equal(who.authenticated, false);
+        const history = await rpc(
+          origin,
+          "qaSurface/adminConversations",
+          {
+            args: {
+              token: session.token,
+              query: { userId: account.user.id },
+              cursor: null,
+              limit: 10,
+            },
+          },
+          cookie,
+        );
+        assert.deepEqual(
+          history.items.map((item) => [item.conversationId, item.displayName]),
+          erase ? [] : [[chat, "Удалённый пользователь"]],
+        );
+      }
+      for (const { chat } of removalExamples.filter(
+        ({ name }) => name === "keep-history",
+      )) {
+        await adminPage.getByTestId("qa-admin-nav-conversations").click();
+        await adminPage
+          .getByTestId("qa-admin-conversations-row")
+          .filter({ hasText: chat })
+          .getByTestId("qa-admin-conversations-open")
+          .click();
+        await adminPage
+          .getByTestId("qa-admin-conversation-transcript")
+          .waitFor();
+        await adminPage.getByText(/Удалённый пользователь ·/u).waitFor();
+        await adminPage.getByTestId("qa-admin-nav-users").click();
+      }
+      await adminPage.getByTestId("qa-admin-back-to-chat").click();
+      console.log(
+        "packed QA account removal: both dialog paths, credentials and stored conversation history passed",
+      );
+    };
     await page.goto(`${origin}/qa`);
     const deferOnboarding = async () => {
       const first = page.getByRole("dialog", {
@@ -253,6 +359,7 @@ ${
       }
       return;
     }
+    if (removalExamples.length > 0) await verifyRemoval(page);
     await runFormBrowserPass({
       page,
       origin,

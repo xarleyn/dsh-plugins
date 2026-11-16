@@ -78,7 +78,7 @@ function world() {
     }),
     logger: { info: vi.fn(), error: vi.fn() } as never,
     sessionFiles: {
-      erase: vi.fn(async (ids: readonly string[]) => {
+      erase: vi.fn((ids: readonly string[]) => {
         order.push("erase");
         expect([...agents.keys()]).toEqual([]);
         return { removed: ids, absent: [] };
