@@ -1,3 +1,19 @@
+## 0.5.6 (2026-11-12)
+
+### 🩹 Fixes
+
+- Retry empty retrieval results within the current session's account memory space while retaining source provenance and account isolation. ([](https://github.com/xarleyn/dsh-plugins/commit/))
+- Honor the configured OpenViking HTTP timeout in bridged MCP calls. Expose independent-review budgets and reviewer configuration through the Host settings forms, applying committed changes to subsequent review operations. ([8e63dfef](https://github.com/xarleyn/dsh-plugins/commit/8e63dfef))
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-qa-surface to 0.20.0
+- Updated @yadsh/dsh-plugin-kit to 0.8.0
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.5.5 (2026-11-09)
 
 ### 🩹 Fixes

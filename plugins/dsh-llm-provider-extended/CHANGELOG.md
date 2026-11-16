@@ -1,3 +1,13 @@
+## 0.3.0 (2026-11-13)
+
+### 🚀 Features
+
+- Add optional local request masking for chat providers, with built-in rules for client names, contact details and monetary amounts, custom dictionaries and format masks, and a settings preview. Restore echoed placeholders in streamed chat replies and re-mask the saved reply on subsequent protected turns. ([6e0f4521](https://github.com/xarleyn/dsh-plugins/commit/6e0f4521))
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.2.2 (2026-11-09)
 
 ### 🩹 Fixes

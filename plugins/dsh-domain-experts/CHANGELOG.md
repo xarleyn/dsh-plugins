@@ -1,3 +1,24 @@
+## 0.5.4 (2026-11-12)
+
+### 🩹 Fixes
+
+- Preserve absolute paths for saved review packets. Support cancellable expert ([c31e8975](https://github.com/xarleyn/dsh-plugins/commit/c31e8975))
+  review budgets with explicit failures for incompatible backends and exhausted
+  limits. Count trusted delegated descendants within the same review budget.
+
+- Accept tool policy entries supplied by the child's own preset without passing ([6fec4fba](https://github.com/xarleyn/dsh-plugins/commit/6fec4fba))
+  them to the inherited-tool mask. Preserve native restrictions for inherited
+  tools and apply explicit denials to local and later registered tools through
+  the scoped execution guard. Unknown allowed tools still refuse the child.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-kit to 0.8.0
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.5.3 (2026-11-09)
 
 ### 🩹 Fixes

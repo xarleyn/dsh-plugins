@@ -1,3 +1,38 @@
+## 0.9.0 (2026-11-13)
+
+### 🚀 Features
+
+- Edit existing XLSX, CSV and TSV attachments into new artifacts with source-version ([8a157918](https://github.com/xarleyn/dsh-plugins/commit/8a157918))
+  checks and bounded cell patches. Preserve unrelated XLSX package parts and expose
+  edited workbooks as downloadable chat attachments.
+
+  Add literal multi-sheet search and deterministic cell/sheet comparisons, with
+  source-bound pagination, optional cell formatting and XLSX package-part hashes.
+
+- Prevent accidental repeat edits from the same input within a turn. Group previous ([383c8271](https://github.com/xarleyn/dsh-plugins/commit/383c8271))
+  outputs while keeping them downloadable, and support a byte-identical Save As.
+  Defer answer review while native child runs are active.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
+## 0.8.3 (2026-11-12)
+
+### 🩹 Fixes
+
+- Preserve embedded fonts from registered Word references when a renderer omits the font parts, keeping generated documents readable by Word and office converters. ([4c40a2fc](https://github.com/xarleyn/dsh-plugins/commit/4c40a2fc))
+- Request the independent reviewer's native structured result consistently instead of asking for a text-only JSON fence that cannot complete the review. ([7b1c00b7](https://github.com/xarleyn/dsh-plugins/commit/7b1c00b7))
+- Expose template preview completeness and continuation offsets so long registered templates can be read without losing their remaining content. ([48acb337](https://github.com/xarleyn/dsh-plugins/commit/48acb337))
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-kit to 0.8.0
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.8.2 (2026-11-09)
 
 ### 🩹 Fixes

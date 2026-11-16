@@ -1,3 +1,40 @@
+## 0.2.12 (2026-11-13)
+
+### 🩹 Fixes
+
+- Let QA agents discover the chat owner's available models and start native ([4da194ef](https://github.com/xarleyn/dsh-plugins/commit/4da194ef))
+  subagents on an explicitly selected model, enforcing current account and role
+  grants, reasoning efforts, availability and delegation depth before startup.
+  Keep answer review waiting for native activations started by QA delegation tools.
+
+- Prevent accidental repeat edits from the same input within a turn. Group previous ([383c8271](https://github.com/xarleyn/dsh-plugins/commit/383c8271))
+  outputs while keeping them downloadable, and support a byte-identical Save As.
+  Defer answer review while native child runs are active.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
+## 0.2.11 (2026-11-12)
+
+### 🩹 Fixes
+
+- Preserve absolute paths for saved review packets. Support cancellable expert ([c31e8975](https://github.com/xarleyn/dsh-plugins/commit/c31e8975))
+  review budgets with explicit failures for incompatible backends and exhausted
+  limits. Count trusted delegated descendants within the same review budget.
+
+- Honor the configured OpenViking HTTP timeout in bridged MCP calls. Expose independent-review budgets and reviewer configuration through the Host settings forms, applying committed changes to subsequent review operations. ([8e63dfef](https://github.com/xarleyn/dsh-plugins/commit/8e63dfef))
+- Bound each review round with a configurable deadline and carry prior findings into subsequent rounds so revisions are assessed against the outstanding objections. ([](https://github.com/xarleyn/dsh-plugins/commit/))
+- Report independent review timeouts, exhausted tool budgets, repeated refusals and cancellation with their specific failure reasons instead of a generic unfinished-expert error. Failed reviews remain unverified. ([15775d00](https://github.com/xarleyn/dsh-plugins/commit/15775d00))
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-kit to 0.8.0
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.2.10 (2026-11-09)
 
 ### 🩹 Fixes

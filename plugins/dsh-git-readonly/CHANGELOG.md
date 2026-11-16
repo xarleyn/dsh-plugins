@@ -1,3 +1,27 @@
+## 0.3.0 (2026-11-12)
+
+### 🚀 Features
+
+- Add source discovery and named source selection to read-only Git tools. Use the ([67cdd839](https://github.com/xarleyn/dsh-plugins/commit/67cdd839))
+  shared QA catalogue or a standalone catalogue while preserving existing repository
+  path selection and independently configured repository access roots. Results
+  identify the selected source and resolved repository. Resolve omitted selectors
+  from the calling chat's persisted preference, including inherited child snapshots.
+
+
+### 🩹 Fixes
+
+- Expose changed file paths in git show text, including stat-only results, and ([f638cb63](https://github.com/xarleyn/dsh-plugins/commit/f638cb63))
+  provide actionable guidance when a history query times out.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-kit to 0.8.0
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.2.8 (2026-11-09)
 
 ### 🩹 Fixes
