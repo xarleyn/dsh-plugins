@@ -108,6 +108,8 @@ export interface QaSessionListing {
 }
 
 export interface QaSessionLogReader {
+  /** Capture session headers through the final synchronous purge decision. */
+  watchCreated?(record: (header: QaStoredSessionHeader) => void): () => void;
   list(): Promise<QaSessionListing>;
   read(sessionId: string): Promise<QaSessionReadResult>;
   /**
@@ -317,6 +319,17 @@ export function createSessionLogReader(
   };
 
   return {
+    watchCreated(record) {
+      for (const header of liveList()) record(header);
+      return ctx.on(
+        "session/created",
+        (session) => {
+          const header = headerOf(session.header);
+          if (header) record(header);
+        },
+        { global: true },
+      );
+    },
     live(sessionId: string): boolean {
       return sessions()?.get(sessionId as SessionId) !== undefined;
     },
@@ -459,55 +472,63 @@ export function staticSessionLogReader(input: {
  * projects or does not exist at all.
  */
 export function createSessionEraser(home?: string): QaStoredSessionEraser {
-  const root = (): string =>
-    path.join(
-      home ?? process.env.DSH_HOME?.trim() ?? process.cwd(),
-      "sessions",
-    );
-
   return {
     erase(
       sessionIds: readonly string[],
       required?: ReadonlySet<string>,
     ): QaSessionEraseOutcome {
-      const removed: string[] = [];
-      const absent: string[] = [];
-      const rootPath = root();
-      const projects = existsSync(rootPath)
-        ? readdirSync(rootPath, { withFileTypes: true })
-            .filter((entry) => entry.isDirectory())
-            .map((entry) => path.join(rootPath, entry.name))
-        : [];
-      const directories = new Map<string, string>();
-      for (const sessionId of sessionIds) {
-        // An id is a harness-minted token and the directory it names is its
-        // last path segment. Requiring exactly that — and a location inside
-        // the sessions root — means an empty string, a traversal or a path
-        // names nothing, instead of naming some other directory to remove.
-        const directory = projects
-          .map((project) => path.resolve(project, sessionId))
-          .filter(
-            (candidate) =>
-              candidate.startsWith(`${rootPath}${path.sep}`) &&
-              path.basename(candidate) === sessionId,
-          )
-          .find((candidate) => existsSync(candidate));
-        if (directory === undefined) {
-          if (required?.has(sessionId))
-            throw new QaAccountsError(
-              "conversation-not-removable",
-              "listed session has no removable directory",
-            );
-          absent.push(sessionId);
-          continue;
-        }
-        directories.set(sessionId, directory);
-      }
-      for (const [sessionId, directory] of directories) {
+      const { directories, absent } = locateSessionDirectories(
+        sessionIds,
+        required,
+        home,
+      );
+      for (const directory of directories.values())
         rmSync(directory, { recursive: true, force: true });
-        removed.push(sessionId);
-      }
-      return { removed, absent };
+      return { removed: [...directories.keys()], absent };
     },
   };
+}
+
+export function locateSessionDirectories(
+  sessionIds: readonly string[],
+  required?: ReadonlySet<string>,
+  home?: string,
+) {
+  const absent: string[] = [];
+  const rootPath = path.resolve(
+    home ?? (process.env.DSH_HOME?.trim() || process.cwd()),
+    "sessions",
+  );
+  const projects = existsSync(rootPath)
+    ? readdirSync(rootPath, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => path.join(rootPath, entry.name))
+    : [];
+  const directories = new Map<string, string>();
+  for (const sessionId of sessionIds) {
+    // An id is a harness-minted token and the directory it names is its
+    // last path segment. Requiring exactly that — and a location inside
+    // the sessions root — means an empty string, a traversal or a path
+    // names nothing, instead of naming some other directory to remove.
+    const directory = projects
+      .map((project) => path.resolve(project, sessionId))
+      .filter(
+        (candidate) =>
+          candidate.startsWith(`${rootPath}${path.sep}`) &&
+          path.dirname(path.dirname(candidate)) === rootPath &&
+          path.basename(candidate) === sessionId,
+      )
+      .find((candidate) => existsSync(candidate));
+    if (directory === undefined) {
+      if (required?.has(sessionId))
+        throw new QaAccountsError(
+          "conversation-not-removable",
+          "listed session has no removable directory",
+        );
+      absent.push(sessionId);
+      continue;
+    }
+    directories.set(sessionId, directory);
+  }
+  return { directories, absent };
 }

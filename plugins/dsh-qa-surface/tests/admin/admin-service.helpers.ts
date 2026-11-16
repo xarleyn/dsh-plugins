@@ -308,7 +308,14 @@ export function harness(
       }),
     ...(catalog.sessionFiles === undefined
       ? {}
-      : { sessionFiles: catalog.sessionFiles }),
+      : {
+          sessionFiles: catalog.sessionFiles,
+          sessionPurge: {
+            stage: (_accounts, _id, ids, required) =>
+              catalog.sessionFiles!.erase(ids, required),
+            recover() {},
+          },
+        }),
     ...(catalog.droppedSources === undefined
       ? {}
       : {

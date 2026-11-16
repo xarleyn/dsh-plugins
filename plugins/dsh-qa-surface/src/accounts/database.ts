@@ -31,6 +31,7 @@ export interface QaAccountRemoval {
     readonly sessions: readonly string[];
   };
   readonly sharingPath?: string;
+  readonly beforeRemoval?: () => void;
   readonly beforeCommit?: (retained: number) => void;
 }
 
@@ -638,6 +639,16 @@ export class QaAccountsDatabase {
       );
   }
 
+  /** Read the committed identity while excluding a concurrent purge or recovery. */
+  reconcileRemoval(work: (exists: (id: string) => boolean) => void): void {
+    this.storage.transaction(() => {
+      const user = this.storage.db.prepare(
+        "SELECT 1 FROM qa_accounts WHERE id=?",
+      );
+      work((id) => user.get(id) !== undefined);
+    });
+  }
+
   /** Hold the SQLite writer from the ownership check through synchronous erasure and commit. */
   deleteAccount(userId: string, options: QaAccountRemoval): number {
     const db = this.storage.db;
@@ -646,6 +657,7 @@ export class QaAccountsDatabase {
     try {
       return this.storage.transaction(() => {
         this.requireExistingOwner(userId);
+        options.beforeRemoval?.();
         const otherAdmin = db
           .prepare(
             "SELECT 1 FROM qa_accounts WHERE role = 'admin' AND disabled = 0 AND id <> ? LIMIT 1",

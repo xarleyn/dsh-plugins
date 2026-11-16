@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { fakeEraser, harness } from "./admin-service.helpers.js";
 import { staticSessionLogReader } from "../../src/admin/session-log.js";
+import type { QaStoredSessionHeader } from "../../src/admin/session-log.js";
 
 describe("admin account removal", () => {
   it.each([false, true])(
@@ -78,6 +79,34 @@ describe("admin account removal", () => {
       actorId: admin.user.id,
       targetId: alice.user.id,
     });
+  });
+
+  it("refuses a delegation which started and finished while the durable listing was pending", async () => {
+    const files = fakeEraser(["session-alice"]);
+    let record: ((header: QaStoredSessionHeader) => void) | undefined;
+    const stop = vi.fn();
+    const { service, accounts, admin, alice } = harness({
+      sessionFiles: files,
+      sessionLog: {
+        ...staticSessionLogReader({
+          sessions: [{ id: "session-alice", createdAt: 1 }],
+        }),
+        watchCreated(listener) {
+          record = listener;
+          return stop;
+        },
+      },
+    });
+    const removal = service.deleteUser(admin.token, alice.user.id, true);
+    record?.({
+      id: "finished-child",
+      parentSessionId: "session-alice",
+      createdAt: 2,
+    });
+    await expect(removal).rejects.toMatchObject({ reason: "account-changed" });
+    expect(stop).toHaveBeenCalledOnce();
+    expect(files.calls).toEqual([]);
+    expect(accounts.ownerIdOf("session-alice")).toBe(alice.user.id);
   });
 
   it("rechecks ownership before erasure if a session was reserved during listing", async () => {

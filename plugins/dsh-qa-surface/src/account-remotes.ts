@@ -135,6 +135,7 @@ export interface QaAccountRemotes {
 
 /** Build the account-remotes context for one `QaSurface` service instance. */
 export function createQaAccountRemotes(options: {
+  onOpen?: (accounts: QaAccounts) => void;
   getConfig: () => ResolvedQaSurfaceConfig;
   logger: PluginLogger;
 }): QaAccountRemotes {
@@ -165,6 +166,13 @@ export function createQaAccountRemotes(options: {
         instructionsMaxLength: config.accounts.profile.instructionsMaxLength,
         identityFields: config.accounts.profile.identities,
       });
+      try {
+        options.onOpen?.(accounts);
+      } catch (error) {
+        accounts.close();
+        accounts = undefined;
+        throw error;
+      }
       accountsOptions = memoKey;
     }
     return accounts;

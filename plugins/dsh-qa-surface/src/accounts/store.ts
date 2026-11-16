@@ -1176,6 +1176,10 @@ export class QaAccounts {
     return retained;
   }
 
+  reconcileRemoval(work: (exists: (id: string) => boolean) => void): void {
+    this.database.reconcileRemoval(work);
+  }
+
   /** Create an account outside the self-registration gate. */
   addUser(
     email: string,

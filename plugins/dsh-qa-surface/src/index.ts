@@ -92,6 +92,7 @@ import {
 import { formFailure, QaFormError } from "./forms/errors.js";
 import type { QaFormCommand, QaFormResult, QaFormView } from "./forms/types.js";
 import { QaSessionOwnership } from "./session-ownership.js";
+import { createSessionPurge } from "./admin/session-purge.js";
 import { QaLlmIdentity } from "./llm-identity.js";
 import { registerTurnFailureLog } from "./turn-failure-log.js";
 import { entryRedirectRow } from "./entry-redirect.js";
@@ -465,10 +466,39 @@ export class QaSurface extends TypertRemoteService {
         ctx.get("attachments") as unknown as QaFormHostAttachments | undefined,
       (sessionId, file) => this.admission.grantAttachmentFile(sessionId, file),
     );
+    let purgeCleanupPending = false;
+    const sessionPurge = createSessionPurge(
+      (id) => this.provenance.dropSession(id),
+      (error) => {
+        purgeCleanupPending = true;
+        this.logger.warn("admin.session-purge-cleanup-pending", {
+          message: String(error),
+        });
+      },
+    );
     this.accountRemotes = createQaAccountRemotes({
+      onOpen: (accounts) => sessionPurge.recover(accounts),
       getConfig: () => this.getConfig(),
       logger: this.logger,
     });
+    ctx.effect(() => {
+      const timer = setInterval(() => {
+        if (!purgeCleanupPending) return;
+        try {
+          const accounts = this.accountRemotes.resolve(this.getConfig());
+          if (!accounts) return;
+          purgeCleanupPending = false;
+          sessionPurge.recover(accounts);
+        } catch (error) {
+          purgeCleanupPending = true;
+          this.logger.warn("admin.session-purge-retry-failed", {
+            message: String(error),
+          });
+        }
+      }, 60_000);
+      timer.unref();
+      return () => clearInterval(timer);
+    }, "qa-surface: pending session purge cleanup");
     // One durable-session reader for the whole plugin: the console lists the
     // deployment's conversations with it, and the access service tells a chat
     // from a delegated child with it.
@@ -501,6 +531,7 @@ export class QaSurface extends TypertRemoteService {
       // Deletion is the console's alone: the sidebar's delete stays a
       // per-browser row, and only an administrator removes the chat itself.
       sessionFiles: createSessionEraser(),
+      sessionPurge,
       dropSources: (sessionId) => this.provenance.dropSession(sessionId),
       sharing: () => this.sharing(),
       // The console writes skills through the same service the owner's editor
