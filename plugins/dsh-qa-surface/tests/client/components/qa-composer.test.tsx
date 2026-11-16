@@ -55,26 +55,25 @@ function pasteText(input: HTMLElement, text: string): void {
 }
 
 describe("QA composer", () => {
-  it("shows the Fast warning when enabled and keeps the mode explicit", () => {
+  it("explains Fast in the tooltip without a persistent mode hint", () => {
     const changed = vi.fn();
     mount({ answerModes: ["fast", "deep"], onAnswerModesChange: changed });
     const toggle = screen.getByTestId("qa-composer-modes");
     expect(toggle.textContent).toContain("Fast + Deep Thinking");
-    expect(screen.getByTestId("qa-composer-fast-warning").textContent).toMatch(
-      /Автоматическое ревью ответов пропускается/u,
-    );
-    expect(screen.getByTestId("qa-composer-fast-warning").textContent).toMatch(
-      /Проверка документов перед согласованием сохраняется/u,
-    );
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(
+      document.getElementById(toggle.getAttribute("aria-describedby")!)
+        ?.textContent,
+    ).toMatch(/Проверка документов перед согласованием сохраняется/u);
     fireEvent.click(toggle);
     fireEvent.click(screen.getByRole("checkbox", { name: "Fast" }));
     expect(changed).toHaveBeenCalledWith(["deep"]);
   });
 
-  it("starts without a Fast warning and enables the mode by an explicit click", () => {
+  it("enables Fast by an explicit click without a persistent mode hint", () => {
     const changed = vi.fn();
     mount({ answerModes: ["deep"], onAnswerModesChange: changed });
-    expect(screen.queryByTestId("qa-composer-fast-warning")).toBeNull();
+    expect(screen.queryByRole("status")).toBeNull();
     fireEvent.click(screen.getByTestId("qa-composer-modes"));
     fireEvent.click(screen.getByRole("checkbox", { name: "Fast" }));
     expect(changed).toHaveBeenCalledWith(["fast", "deep"]);

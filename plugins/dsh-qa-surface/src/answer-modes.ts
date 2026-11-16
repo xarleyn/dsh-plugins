@@ -3,7 +3,11 @@ import { randomUUID } from "node:crypto";
 import type { Context } from "@deepseek-ai/cordis";
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import { createUserMessage, type UserMessage } from "@deepseek-ai/dsh-llm";
-import { SessionId, type Session } from "@deepseek-ai/dsh-session";
+import {
+  SessionId,
+  type Session,
+  type SessionEventInput,
+} from "@deepseek-ai/dsh-session";
 import type { QaNotesMessageSource } from "./prompt-notes.js";
 import type { QaQuestionAnswer, QaQuestionRequest } from "./questions.js";
 import type { QaSessionOwnership } from "./session-ownership.js";
@@ -77,6 +81,8 @@ export class QaAnswerModes {
     captured: Map<string, RequestModes>;
   }>();
   private readonly pending = new Map<string, RequestModes>();
+  private readonly recovery = new Map<string, readonly SessionEventInput[]>();
+  private readonly seenSessions = new Set<string>();
   private readonly turns = new Map<string, TurnModes>();
   private readonly carried = new Map<string, string>();
   private readonly consent = new WeakMap<QaQuestionRequest, TurnModes>();
@@ -86,7 +92,19 @@ export class QaAnswerModes {
     private readonly ctx: Context,
     private readonly ownership: QaSessionOwnership,
   ) {
+    for (const session of ctx.sessions.list()) this.captureRecovery(session);
     this.stops = [
+      ctx.on("session/created", (session) => this.captureRecovery(session), {
+        global: true,
+      }),
+      ctx.on(
+        "session/disposed",
+        (session) => {
+          this.seenSessions.delete(String(session.id));
+          this.recovery.delete(String(session.id));
+        },
+        { global: true },
+      ),
       ctx.on(
         "session/event",
         (session, event) => {
@@ -116,6 +134,7 @@ export class QaAnswerModes {
           if (decision.kind === "reject") return decision;
           const root = this.root(agent);
           if (root === undefined) return decision;
+          this.persistRecovery(root);
           const id = String(root.id);
           let state = this.state(root);
           const human = decision.messages.filter(
@@ -251,6 +270,7 @@ export class QaAnswerModes {
     const captured = new Map<string, RequestModes>();
     const session = this.ctx.sessions.get(SessionId(sessionId));
     if (session === undefined) throw new Error("No such QA session.");
+    this.persistRecovery(session);
     const id = randomUUID();
     // A recovered log prefix must contain the strategy before any queued
     // insertion. Pending ALS state alone cannot survive an interrupted command.
@@ -422,30 +442,89 @@ export class QaAnswerModes {
             : event.data.requestId === rpcId),
       );
     if (event?.type === "qa/answer-modes") return event.data.modes;
-    // Only a matching queued insertion inside an unfinished command interval
-    // may use its durable intent. Concurrent intents combine conservatively;
-    // an explicitly bound later request takes precedence above.
-    const commands = new Map<string, readonly QaAnswerMode[]>();
-    for (const entry of events) {
-      if (entry.type === "qa/answer-mode-command")
-        commands.set(entry.data.id, entry.data.modes);
-      else if (entry.type === "qa/answer-mode-command-done")
-        commands.delete(entry.data.id);
-      else if (
-        entry.type === "agent/inbox/spliced" &&
-        entry.data.inserted.some(
-          (item) => String(item.id) === String(message.id),
-        ) &&
-        commands.size > 0
-      )
-        return qaAnswerModes([...new Set([...commands.values()].flat())]);
-    }
     return QA_DEFAULT_ANSWER_MODES;
+  }
+
+  /** Read the loaded prefix once, before new admissions can inherit an old intent. */
+  private captureRecovery(session: Session): void {
+    const id = String(session.id);
+    if (this.seenSessions.has(id)) return;
+    this.seenSessions.add(id);
+    const events = session.snapshotEvents();
+    const commands = new Map<string, readonly QaAnswerMode[]>();
+    const inserted = new Map<
+      string,
+      {
+        readonly message: UserMessage;
+        readonly commands: ReadonlyMap<string, readonly QaAnswerMode[]>;
+      }
+    >();
+    for (const event of events) {
+      if (event.type === "qa/answer-mode-command")
+        commands.set(event.data.id, event.data.modes);
+      else if (event.type === "qa/answer-mode-command-done")
+        commands.delete(event.data.id);
+      else if (event.type === "agent/inbox/spliced" && commands.size > 0)
+        for (const message of event.data.inserted)
+          if (message.source.kind === "user")
+            inserted.set(String(message.id), {
+              message,
+              commands: new Map(commands),
+            });
+    }
+    if (commands.size === 0) return;
+    const writes: SessionEventInput[] = [];
+    for (const [requestId, entry] of inserted) {
+      const rpcId =
+        "rpcId" in entry.message.source
+          ? String(entry.message.source.rpcId)
+          : undefined;
+      if (
+        events.some(
+          (event) =>
+            event.type === "qa/answer-modes" &&
+            (event.data.by === "message"
+              ? event.data.requestId === requestId
+              : event.data.requestId === rpcId),
+        )
+      )
+        continue;
+      const modes = [
+        ...new Set(
+          [...entry.commands]
+            .filter(([key]) => commands.has(key))
+            .flatMap(([, modes]) => [...modes]),
+        ),
+      ];
+      if (modes.length === 0) continue;
+      const request: RequestModes = {
+        requestId,
+        by: "message",
+        modes: qaAnswerModes(modes),
+      };
+      this.pending.set(`${id}:${requestId}`, request);
+      writes.push(["qa/answer-modes", request]);
+    }
+    for (const command of commands.keys())
+      writes.push(["qa/answer-mode-command-done", { id: command }]);
+    this.recovery.set(id, writes);
+  }
+
+  private persistRecovery(session: Session): void {
+    const id = String(session.id);
+    const writes = this.recovery.get(id);
+    if (writes === undefined) return;
+    // Creation/publication callbacks are read-only. Commit the captured exact
+    // bindings and retire orphaned intents at the next safe admission boundary.
+    session.append(writes);
+    this.recovery.delete(id);
   }
 
   dispose(): void {
     for (const stop of this.stops) stop();
     this.pending.clear();
+    this.recovery.clear();
+    this.seenSessions.clear();
     this.turns.clear();
     this.carried.clear();
   }

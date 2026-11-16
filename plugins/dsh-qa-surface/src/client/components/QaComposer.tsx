@@ -503,17 +503,6 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
           )}
         </div>
       </div>
-      {props.answerModes?.includes("fast") === true ? (
-        <p
-          className="dsh-qa-composer__fast-warning"
-          data-testid="qa-composer-fast-warning"
-          role="status"
-        >
-          Fast включён для следующих сообщений. Автоматическое ревью ответов
-          пропускается: ошибки и неподтверждённые утверждения могут остаться
-          незамеченными. Проверка документов перед согласованием сохраняется.
-        </p>
-      ) : null}
     </div>
   );
 });

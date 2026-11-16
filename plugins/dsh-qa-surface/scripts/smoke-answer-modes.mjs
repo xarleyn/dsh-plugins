@@ -365,6 +365,10 @@ export async function runAnswerModesBrowserPass(page, evidenceDirectory) {
       await trigger.innerText(),
       /Fast \+ Deep Thinking \+ RAG Priority/u,
     );
+    assert.equal(
+      await page.locator(".dsh-qa-composer__fast-warning").count(),
+      0,
+    );
     const popup = page.getByRole("group", {
       name: "Режимы ответа",
       exact: true,

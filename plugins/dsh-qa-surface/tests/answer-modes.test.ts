@@ -48,7 +48,10 @@ function fixture() {
     agent: Agent;
   }) => unknown = () => undefined;
   const ctx = Object.assign(fake.context, {
-    sessions: { get: (id: string) => (id === "root" ? root : undefined) },
+    sessions: {
+      get: (id: string) => (id === "root" ? root : undefined),
+      list: () => [root],
+    },
     agents: { get: () => ({ inbox: { nextTurn: [], nextStep: [] } }) },
     tools: {
       guard: (callback: typeof guard) => {
@@ -174,6 +177,29 @@ function fixture() {
 }
 
 describe("answer modes host policy", () => {
+  it.each([false, true])(
+    "does not apply an orphaned intent to later unprepared input (inserted before recovery: %s)",
+    async (beforeRecovery) => {
+      const f = fixture();
+      const queued = f.message();
+      const later = f.message();
+      try {
+        await f.policy.withCommand("root", ["fast", "rag"], async () => {
+          f.emitInbox([queued]);
+          f.reload();
+          if (beforeRecovery) f.emitInbox([later]);
+          await f.step(1, [queued]);
+          expect(f.guard("read")).toBe(QA_RAG_BLOCKED);
+          if (!beforeRecovery) f.emitInbox([later]);
+          f.reload();
+          await f.step(2, [later]);
+          expect(f.guard("read")).toBeUndefined();
+        });
+      } finally {
+        f.dispose();
+      }
+    },
+  );
   it("keeps queued Fast+RAG work restricted after interruption before the command returns", async () => {
     const f = fixture();
     const message = f.message();

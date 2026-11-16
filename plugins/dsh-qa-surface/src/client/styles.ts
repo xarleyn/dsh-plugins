@@ -994,7 +994,6 @@ a.dsh-qa-srcref:hover,button.dsh-qa-srcref:hover{border-color:var(--dsw-alias-la
 .dsh-qa-composer__image button svg{width:9px;height:9px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round}
 .dsh-qa-composer__attachment-error{margin:0;color:var(--dsh-qa-error);font-size:12px;line-height:18px}
 ${QA_ANSWER_MODES_STYLES}
-.dsh-qa-composer__fast-warning{margin:8px 0 0;padding:8px 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px}
 .dsh-qa-composer__attach{display:grid;place-items:center;flex:none;width:30px;height:30px;padding:0;border:0;border-radius:8px;background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer}
 .dsh-qa-composer__attach:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 .dsh-qa-composer__attach:disabled{opacity:.4;cursor:default}
