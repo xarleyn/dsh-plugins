@@ -183,9 +183,6 @@ export async function runAnswerModesPass(options) {
     tools:
       dynamicActivation: false
       activationPresets: []
-- id: tools
-  config:
-    mode: native
 - id: llm-pi-ai
   config:
     providers:
