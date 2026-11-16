@@ -101,7 +101,15 @@ Chromium on localhost. The default browser suite also exercises the LAN overlay.
 - renders only user text, assistant-visible text and safe status messages;
 - supports streaming, Stop, optional New chat, safe Markdown, copy actions and
   a responsive first-party-style conversation layout;
-- offers a Fast switch beside the composer with a visible warning while on.
+- offers a multi-select answer mode menu beside the composer, with the selected
+  names in its button and explanations on hover and keyboard focus. Deep Thinking
+  is the default. RAG Priority tries LightRAG retrieval modes and reformulated
+  queries first. Other research tools and delegation remain blocked until the
+  user explicitly approves the Host's fixed deep-search question. Refusal,
+  cancellation, skipped questions and an earlier request's consent never grant
+  that permission. If interactive questions or RAG tools are unavailable, the
+  agent reports the gap and cannot silently switch to deep research;
+- keeps Fast combinable with the other modes, with a visible warning while on.
   New ordinary requests, regeneration and approved-document export requests use
   the Host's trusted `/no-review` command for an audited, request-specific waiver.
   Explicit slash commands keep their normal behavior. Fast starts off and resets

@@ -78,7 +78,9 @@ export function pressTab(shift = false): void {
   const order = tabbables();
   const index = order.indexOf(from);
   const step = shift ? -1 : 1;
-  order[(index + step + order.length) % order.length]?.focus();
+  act(() => {
+    order[(index + step + order.length) % order.length]?.focus();
+  });
 }
 
 /**

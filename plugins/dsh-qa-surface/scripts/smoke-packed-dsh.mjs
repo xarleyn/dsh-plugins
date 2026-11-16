@@ -18,6 +18,10 @@ import { runFileDropBrowserPass } from "./smoke-file-drop-browser.mjs";
 import { runFileWriteSettingsBrowserPass } from "./smoke-file-writes-browser.mjs";
 import { runSubagentModelsPass } from "./smoke-subagent-models.mjs";
 import {
+  runAnswerModesPass,
+  runAnswerModesBrowserPass,
+} from "./smoke-answer-modes.mjs";
+import {
   freePort,
   requestWithAuthority,
   rpc,
@@ -43,6 +47,7 @@ const discoverySettingsOnly = process.argv.includes(
 );
 const modelSelectionOnly = process.argv.includes("--model-selection");
 const subagentModelsOnly = process.argv.includes("--subagent-models");
+const answerModesOnly = process.argv.includes("--answer-modes");
 if (modelSelectionOnly && !withBrowser)
   throw new Error("--model-selection requires --browser");
 if (chatLayoutOnly && !withBrowser)
@@ -614,6 +619,16 @@ async function runBrowserPass({
     if (await page.getByRole("button", { name: "Новый чат" }).count()) {
       throw new Error("locked QA surface exposed session reset");
     }
+    if (answerModesOnly) {
+      await deferModelSetup();
+      await runAnswerModesBrowserPass(
+        page,
+        join(repo, "..", "..", ".private", "qa-answer-mode-evidence"),
+      );
+      if (errors.length)
+        throw new Error(`browser errors:\n${errors.join("\n")}`);
+      return;
+    }
     // Attachments in the real composer: a long paste becomes a file card
     // instead of filling the field, the picker takes a text file, and a card
     // can be removed again. The send itself is deliberately not exercised —
@@ -1052,7 +1067,7 @@ try {
     ...Object.fromEntries(
       Object.entries(process.env).filter(
         ([name]) =>
-          !(modelSelectionOnly || subagentModelsOnly) ||
+          !(modelSelectionOnly || subagentModelsOnly || answerModesOnly) ||
           !/_API_KEY$/u.test(name),
       ),
     ),
@@ -1268,11 +1283,13 @@ try {
     );
   }
 
-  const fullBrowser = withBrowser && !modelSelectionOnly && !chatLayoutOnly;
+  const fullBrowser =
+    withBrowser && !modelSelectionOnly && !chatLayoutOnly && !answerModesOnly;
   if (
     !modelSelectionOnly &&
     !subagentModelsOnly &&
     !chatLayoutOnly &&
+    !answerModesOnly &&
     !discoverySettingsOnly
   )
     await runLanPass({ dshBin, dshEnv, repo, hostLog });
@@ -1287,7 +1304,7 @@ try {
         join(temporaryRoot, "file-write-evidence"),
     });
   if (withBrowser) {
-    if (fullBrowser)
+    if (fullBrowser || answerModesOnly)
       await runBrowserPass({
         origin,
         authenticatedUrl: `${origin}/?token=${encodeURIComponent(token)}`,
@@ -1298,10 +1315,25 @@ try {
     // before seeding its durable fixture: there must be only one writer.
     await stopProcess(host);
     host = undefined;
-    await runIntegrationFolderBrowserPass({
-      modelSelection: modelSelectionOnly,
-      chatLayoutOnly,
+    if (!answerModesOnly)
+      await runIntegrationFolderBrowserPass({
+        modelSelection: modelSelectionOnly,
+        chatLayoutOnly,
+        dshBin,
+        dshEnv,
+        root: temporaryRoot,
+        workspacePath,
+        launchToken,
+        authenticateBrowser,
+        hostLog,
+      });
+  }
+  if (answerModesOnly) {
+    await stopProcess(host);
+    host = undefined;
+    await runAnswerModesPass({
       dshBin,
+      dshVersion,
       dshEnv,
       root: temporaryRoot,
       workspacePath,
