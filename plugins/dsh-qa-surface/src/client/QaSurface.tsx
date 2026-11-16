@@ -2169,13 +2169,16 @@ export function QaSurface(props: QaSurfaceProps) {
                     approvals={state.approvals}
                     onAnswer={handleAnswerApproval}
                   />
-                  <QaQuestions
-                    questions={state.questions}
-                    onAnswer={handleAnswerQuestion}
-                    onCancel={handleCancelQuestion}
-                    onStop={handleStop}
-                    canStop={state.canStop}
-                  />
+                  {(config.interaction.questions === "interactive" ||
+                    state.questions.length > 0) && (
+                    <QaQuestions
+                      questions={state.questions}
+                      onAnswer={handleAnswerQuestion}
+                      onCancel={handleCancelQuestion}
+                      onStop={handleStop}
+                      canStop={state.canStop}
+                    />
+                  )}
                   {config.forms.enabled && props.formApi && state.sessionId && (
                     <QaInputForms
                       key={`${accessPrincipal ?? "anonymous"}:${state.sessionId}`}

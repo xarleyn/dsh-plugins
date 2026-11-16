@@ -3,6 +3,7 @@ import type { Agent } from "@deepseek-ai/dsh-agent";
 import type { Context } from "@deepseek-ai/cordis";
 import type { PluginLogger } from "@yadsh/dsh-plugin-log";
 import type { QaSessionOwnership } from "./session-ownership.js";
+import { QA_QUESTION_TIMEOUT_DEFAULT_MINUTES } from "./shared/question-timing.js";
 import type {
   QaPendingQuestion,
   QaPendingQuestionItem,
@@ -43,11 +44,11 @@ export interface QaQuestionAnswer {
 
 /**
  * Why a parked request stopped waiting without an answer. The operator closing
- * the form is the only deliberate one; the rest are the harness taking the
- * question away — the turn's signal aborted, the agent stopped running, the
- * agent was disposed, or this plugin unloaded mid-wait.
+ * the form, the Host deadline, and the end of the asking turn or plugin all
+ * settle the same wait.
  */
-type QaQuestionCancelReason = "operator" | "aborted" | "idle" | "disposed";
+type QaQuestionCancelReason =
+  "operator" | "aborted" | "idle" | "disposed" | "timeout";
 
 type QaQuestionOutcome =
   | { readonly kind: "answered"; readonly answer: QaQuestionAnswer }
@@ -115,6 +116,8 @@ export class QaQuestionGate {
       answered(request: QaQuestionRequest, answer: QaQuestionAnswer): void;
       cancelled?(request: QaQuestionRequest): void;
     },
+    private readonly timeoutMinutes: () => number = () =>
+      QA_QUESTION_TIMEOUT_DEFAULT_MINUTES,
   ) {}
 
   /** Claim question requests for the chats this deployment answers. */
@@ -157,9 +160,10 @@ export class QaQuestionGate {
   /** Questions of one chat, oldest first: what the QA view renders. */
   list(sessionId: string): readonly QaPendingQuestion[] {
     if (!this.interactive()) return [];
+    const now = Date.now();
     return [...this.pending.values()]
       .map((entry) => entry.view)
-      .filter((view) => view.sessionId === sessionId)
+      .filter((view) => view.sessionId === sessionId && now < view.expiresAt)
       .sort((left, right) => left.createdAt - right.createdAt);
   }
 
@@ -179,8 +183,8 @@ export class QaQuestionGate {
     requestId: string,
     answers: readonly QaQuestionAnswerItem[],
   ): boolean {
-    const entry = this.pending.get(requestId);
-    if (entry === undefined || entry.view.sessionId !== sessionId) {
+    const entry = this.liveEntry(sessionId, requestId);
+    if (entry === undefined) {
       this.logger.debug("question.refused", { sessionId, requestId });
       return false;
     }
@@ -233,8 +237,8 @@ export class QaQuestionGate {
 
   /** Close a request without answering it. */
   cancel(sessionId: string, requestId: string): boolean {
-    const entry = this.pending.get(requestId);
-    if (entry === undefined || entry.view.sessionId !== sessionId) {
+    const entry = this.liveEntry(sessionId, requestId);
+    if (entry === undefined) {
       this.logger.debug("question.refused", { sessionId, requestId });
       return false;
     }
@@ -249,6 +253,20 @@ export class QaQuestionGate {
       entry.settle({ kind: "cancelled", reason: "disposed" });
     this.pending.clear();
     for (const dispose of this.disposers.splice(0)) dispose();
+  }
+
+  private liveEntry(
+    sessionId: string,
+    requestId: string,
+  ): PendingEntry | undefined {
+    const entry = this.pending.get(requestId);
+    if (entry?.view.sessionId !== sessionId) return undefined;
+    // An RPC can run past the deadline before Node services the timer.
+    if (Date.now() >= entry.view.expiresAt) {
+      entry.settle({ kind: "cancelled", reason: "timeout" });
+      return undefined;
+    }
+    return entry;
   }
 
   private async handle(
@@ -278,50 +296,72 @@ export class QaQuestionGate {
       throw new Error(QA_QUESTIONS_UNSUPPORTED);
     }
     request = this.policy?.prepare(request) ?? request;
-    const outcome = await this.park(sessionId, askingId, request);
+    const minutes = this.timeoutMinutes();
+    const outcome = await this.park(sessionId, askingId, request, minutes);
     if (outcome.kind === "cancelled") {
       this.policy?.cancelled?.(request);
+      if (outcome.reason === "timeout") {
+        throw new Error(
+          `The question timed out after ${minutes} minute${minutes === 1 ? "" : "s"} without a user response. No answer or approval was given. Continue with the information available, or explain what input is still needed. Do not repeat the same question automatically.`,
+        );
+      }
       throw new Error(CANCELLED_MESSAGE);
     }
     this.policy?.answered(request, outcome.answer);
     return outcome.answer;
   }
 
-  /** Park one request until the operator answers it, or the turn ends. */
+  /** Wait until the operator responds, the deadline expires, or the turn ends. */
   private park(
     sessionId: string,
     agentId: string,
     request: QaQuestionRequest,
+    timeoutMinutes: number,
   ): Promise<QaQuestionOutcome> {
     const signal = request.signal;
     if (signal?.aborted === true)
       return Promise.resolve({ kind: "cancelled", reason: "aborted" });
     return new Promise<QaQuestionOutcome>((resolve) => {
       const id = randomUUID();
+      const createdAt = Date.now();
+      const timeoutMs = timeoutMinutes * 60_000;
       const onAbort = () => finish({ kind: "cancelled", reason: "aborted" });
       const finish = (outcome: QaQuestionOutcome) => {
         if (!this.pending.has(id)) return;
         this.pending.delete(id);
+        clearTimeout(timer);
         signal?.removeEventListener("abort", onAbort);
         // The operator's own cancel is already logged where it was decided;
         // every other ending is the harness taking the question away.
         if (outcome.kind === "cancelled" && outcome.reason !== "operator") {
-          this.logger.info("question.aborted", {
-            sessionId,
-            requestId: id,
-            reason: outcome.reason,
-          });
+          this.logger.info(
+            outcome.reason === "timeout"
+              ? "question.timed-out"
+              : "question.aborted",
+            {
+              sessionId,
+              requestId: id,
+              reason: outcome.reason,
+            },
+          );
         }
         resolve(outcome);
       };
+      const questions = request.questions.map(normalizeQuestion);
+      const timer = setTimeout(
+        () => finish({ kind: "cancelled", reason: "timeout" }),
+        timeoutMs,
+      );
+      timer.unref?.();
       this.pending.set(id, {
         ownerSessionId: sessionId,
         agentId,
         view: {
           id,
           sessionId,
-          questions: request.questions.map(normalizeQuestion),
-          createdAt: Date.now(),
+          questions,
+          createdAt,
+          expiresAt: createdAt + timeoutMs,
         },
         settle: finish,
       });

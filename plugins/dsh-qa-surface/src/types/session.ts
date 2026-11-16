@@ -338,6 +338,8 @@ export interface QaPendingQuestion {
   readonly sessionId: string;
   readonly questions: readonly QaPendingQuestionItem[];
   readonly createdAt: number;
+  /** Host deadline for this request, fixed when the tool asked. */
+  readonly expiresAt: number;
 }
 
 /**

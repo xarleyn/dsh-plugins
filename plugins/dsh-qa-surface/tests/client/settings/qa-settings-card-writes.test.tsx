@@ -20,6 +20,19 @@ afterEach(async () => {
 });
 
 describe("QA Surface card", () => {
+  it("saves the wait for new assistant questions in minutes", async () => {
+    const { mutate } = await renderCard();
+    const field = within(section("qa-settings-session")).getByLabelText(
+      /Время на ответ ассистенту/u,
+    ) as HTMLInputElement;
+    expect(field.value).toBe("30");
+    fireEvent.change(field, { target: { value: "7" } });
+    fireEvent.blur(field);
+    await settle();
+    expect(mutate).toHaveBeenCalledWith([
+      { op: "set", path: ["interaction", "questionTimeoutMinutes"], value: 7 },
+    ]);
+  });
   it("writes an integration attachment count independently", async () => {
     const { mutate } = await renderCard({
       snapshot: {

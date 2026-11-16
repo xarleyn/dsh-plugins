@@ -17,12 +17,16 @@ import { runIntegrationFolderBrowserPass } from "./smoke-integration-folder-brow
 import { runFileDropBrowserPass } from "./smoke-file-drop-browser.mjs";
 import { runFileWriteSettingsBrowserPass } from "./smoke-file-writes-browser.mjs";
 import { runSubagentModelsPass } from "./smoke-subagent-models.mjs";
+import { runQuestionSoundsPass } from "./smoke-question-sounds.mjs";
 import {
   runAnswerModesPass,
   runAnswerModesBrowserPass,
 } from "./smoke-answer-modes.mjs";
 import {
+  authenticateBrowser,
+  bootGraph,
   freePort,
+  launchToken,
   requestWithAuthority,
   rpc,
   run,
@@ -51,6 +55,7 @@ const discoverySettingsOnly = process.argv.includes(
 const modelSelectionOnly = process.argv.includes("--model-selection");
 const subagentModelsOnly = process.argv.includes("--subagent-models");
 const answerModesOnly = process.argv.includes("--answer-modes");
+const questionSoundsOnly = process.argv.includes("--question-sounds");
 if (modelSelectionOnly && !withBrowser)
   throw new Error("--model-selection requires --browser");
 if (chatLayoutOnly && !withBrowser)
@@ -64,37 +69,6 @@ const toolDirectory = join(temporaryRoot, "tool");
 const dshHome = join(temporaryRoot, "home");
 const workspacePath = join(temporaryRoot, "workspace");
 const hostLog = [];
-
-function launchToken(log) {
-  const match = /https?:\/\/[^\s]+\/\?token=([^\s]+)/u.exec(log.join(""));
-  return match?.[1];
-}
-
-function bootGraph(html) {
-  const marker = 'globalThis["__DSH_BOOT__"] = ';
-  const start = html.indexOf(marker);
-  if (start === -1)
-    throw new Error("DSH index did not expose its client graph");
-  const valueStart = start + marker.length;
-  const valueEnd = html.indexOf("</script>", valueStart);
-  if (valueEnd === -1) throw new Error("DSH client graph was truncated");
-  return JSON.parse(html.slice(valueStart, valueEnd));
-}
-
-async function authenticateBrowser(port, authority, token) {
-  const response = await requestWithAuthority(
-    port,
-    authority,
-    `/?token=${encodeURIComponent(token)}`,
-  );
-  const setCookie = response.headers["set-cookie"]?.[0];
-  if (response.status !== 303 || setCookie === undefined) {
-    throw new Error(
-      `DSH browser authentication failed: ${response.status} ${response.body.slice(0, 200)}`,
-    );
-  }
-  return setCookie.split(";", 1)[0];
-}
 
 /**
  * A bad deployment preset must fail before SessionController.create. This is
@@ -1168,6 +1142,7 @@ try {
       matchChildren: true
     session:
       agentPreset: minimal
+    ${questionSoundsOnly ? "interaction: { questions: interactive }" : ""}
     ui:
       showReset: false
       showSessionList: true
@@ -1302,9 +1277,16 @@ try {
     !chatLayoutOnly &&
     !reviewDockOnly &&
     !answerModesOnly &&
-    !discoverySettingsOnly
+    !discoverySettingsOnly &&
+    !questionSoundsOnly
   )
     await runLanPass({ dshBin, dshEnv, repo, hostLog });
+  if (questionSoundsOnly)
+    await runQuestionSoundsPass({
+      origin,
+      cookie,
+      authenticatedUrl: `${origin}/?token=${encodeURIComponent(token)}`,
+    });
   if (discoverySettingsOnly || fileWriteSettingsOnly || fullBrowser)
     await runFileWriteSettingsBrowserPass({
       origin,

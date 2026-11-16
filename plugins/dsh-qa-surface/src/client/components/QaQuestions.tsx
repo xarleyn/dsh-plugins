@@ -1,4 +1,5 @@
 import { memo, useState } from "react";
+import { useQuestionSounds } from "../notifications/question-sound.js";
 import type {
   QaPendingQuestion,
   QaPendingQuestionItem,
@@ -79,6 +80,9 @@ function QaQuestionForm({
   const [busy, setBusy] = useState<"answer" | "cancel" | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const questions = request.questions;
+  const deadline = Number.isFinite(request.expiresAt)
+    ? new Date(request.expiresAt)
+    : null;
   const question = questions[Math.min(index, questions.length - 1)];
   if (question === undefined) return null;
   const draft = drafts[question.id] ?? NO_DRAFT;
@@ -133,6 +137,17 @@ function QaQuestionForm({
       <p className="dsh-qa-question__strip">
         <span className="dsh-qa-question__dot" aria-hidden="true" />
         <span data-testid="qa-question-state">Требуется ответ</span>
+        {deadline && (
+          <time dateTime={deadline.toISOString()}>
+            Ответить до{" "}
+            {deadline.toLocaleString("ru-RU", {
+              day: "numeric",
+              month: "short",
+              hour: "2-digit",
+              minute: "2-digit",
+            })}
+          </time>
+        )}
         {questions.length > 1 ? (
           <span
             className="dsh-qa-question__count"
@@ -288,6 +303,7 @@ function QaQuestionForm({
  * skipped is reported as skipped rather than answered by guesswork.
  */
 export const QaQuestions = memo(function QaQuestions(props: QaQuestionsProps) {
+  useQuestionSounds(props.questions);
   if (props.questions.length === 0) return null;
   return (
     <div

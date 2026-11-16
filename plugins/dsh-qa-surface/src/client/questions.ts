@@ -20,7 +20,7 @@ export class QaHostQuestionBridge {
   private signature = "";
   private refreshing = false;
   private answering = false;
-  /** Bumped on reset so a stale in-flight response never lands. */
+  /** A chat switch or a write invalidates any earlier poll. */
   private generation = 0;
 
   constructor(private readonly questionApi: QaQuestionApi | undefined) {}
@@ -55,7 +55,7 @@ export class QaHostQuestionBridge {
     onChanged: () => void,
   ): Promise<void> {
     const api = this.questionApi;
-    if (api === undefined || this.refreshing) return;
+    if (api === undefined || this.refreshing || this.answering) return;
     const generation = this.generation;
     this.refreshing = true;
     try {
@@ -113,9 +113,11 @@ export class QaHostQuestionBridge {
     const api = this.questionApi;
     if (api === undefined || this.answering) return;
     this.answering = true;
-    const generation = this.generation;
+    const generation = ++this.generation;
+    this.refreshing = false;
     try {
       await write(api);
+      if (generation !== this.generation) return;
       const result = await api.pendingQuestions(token, sessionId);
       if (generation !== this.generation) return;
       if (result.ok) {
@@ -132,7 +134,7 @@ export class QaHostQuestionBridge {
       // reconciles it with what the Host actually holds.
       console.error("dsh-qa-surface: question answer failed", error);
     } finally {
-      this.answering = false;
+      if (generation === this.generation) this.answering = false;
     }
   }
 }

@@ -179,6 +179,7 @@ export interface QaSurfaceConfig {
   readonly interaction?: {
     readonly approvals?: QaApprovalInteraction;
     readonly questions?: QaQuestionInteractionInput;
+    readonly questionTimeoutMinutes?: number;
   };
   /**
    * QA tool delivery. Dynamic activation keeps the QA tool schemas out of the
@@ -459,6 +460,7 @@ export interface ResolvedQaSurfaceConfig {
   readonly interaction: {
     readonly approvals: QaApprovalInteraction;
     readonly questions: QaQuestionInteraction;
+    readonly questionTimeoutMinutes: number;
   };
   readonly lockdown: {
     readonly enabled: boolean;

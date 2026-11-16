@@ -329,6 +329,9 @@ config:
     # answerable form, which owns the composer until it is answered or the
     # turn ends.
     questions: unsupported
+    # Whole minutes to answer each new interactive request. The Host enforces
+    # this even with the chat closed; an open form chimes every five minutes.
+    questionTimeoutMinutes: 30
   # Root-page entry behavior (optional; see "Serving the QA rig over the LAN").
   entry:
     # Inject the root → /qa redirect for non-loopback hostnames.

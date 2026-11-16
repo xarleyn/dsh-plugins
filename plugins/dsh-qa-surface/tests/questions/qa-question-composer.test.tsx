@@ -32,6 +32,7 @@ const PARKED = {
   id: "question-1",
   sessionId: SESSION,
   createdAt: 1,
+  expiresAt: 1_800_001,
   questions: [
     {
       id: "target",

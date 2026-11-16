@@ -7,6 +7,7 @@ const REQUEST: QaPendingQuestion = {
   id: "question-1",
   sessionId: "chat-1",
   createdAt: 1,
+  expiresAt: 1_800_001,
   questions: [
     {
       id: "target",
@@ -92,6 +93,25 @@ describe("QA host question bridge", () => {
     expect(bridge.list()).toEqual([]);
     expect(onChanged).not.toHaveBeenCalled();
     bridge.reset();
+  });
+
+  it("does not show or sound an answered question again when an older poll lands", async () => {
+    let deliver!: () => void;
+    const stale = new Promise((resolve) => {
+      deliver = () => resolve({ ok: true, value: [REQUEST] });
+    });
+    const pendingQuestions = vi
+      .fn()
+      .mockReturnValueOnce(stale)
+      .mockResolvedValue({ ok: true, value: [] });
+    const bridge = new QaHostQuestionBridge(api({ pendingQuestions }));
+    const changed = vi.fn();
+    const polling = bridge.refresh("chat-1", "token", changed);
+    await bridge.cancel("chat-1", "token", REQUEST.id);
+    deliver();
+    await polling;
+    expect(bridge.list()).toEqual([]);
+    expect(changed).not.toHaveBeenCalled();
   });
 
   it("answers a request and re-reads the list it belonged to", async () => {

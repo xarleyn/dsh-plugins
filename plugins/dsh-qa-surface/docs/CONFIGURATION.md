@@ -708,7 +708,19 @@ form the operator fills in (options, free text, explicit skip and cancel); a
 skipped question is reported as skipped, never guessed. While the form is up it
 takes the composer's place — the operator is answering a tool call that is
 already open — and the run's Stop moves into the form's header, so the turn can
-still be ended. A parked request is live only while the agent that asked is
+still be ended. The Host gives each new request `interaction.questionTimeoutMinutes`
+(default: 30 whole minutes, range: 1–35,791). Changing the setting or reloading
+the page does not reset a pending request's deadline. On expiry the agent is
+told that no answer or approval was given. The open chat shows the deadline,
+sounds a chime when the form appears and repeats it every five minutes until
+settlement, never at the deadline. The browser may require a click or keypress
+in the page before it can play sound.
+
+The setting bounds the QA form's wait. A stopped turn, or an explicitly
+configured shorter foreground wait in the Harness tool's optional `timed`
+mode, can still end the tool call sooner.
+
+A parked request is live only while the agent that asked is
 running: the tool's own abort signal settles it, the asking agent going idle
 settles it, and a settled request leaves the screen because the page keeps
 reading the Host's list while a form is visible. Enabling the mode needs the tool
