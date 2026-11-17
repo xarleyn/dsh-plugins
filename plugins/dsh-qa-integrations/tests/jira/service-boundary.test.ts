@@ -76,8 +76,8 @@ describe("Jira boundary matching", () => {
       json: {
         issues: [
           {
-            key: "DEMO-123",
-            fields: { project: { key: "DEMO", id: "10001" }, security: null },
+            key: "PROJ-456",
+            fields: { project: { key: "PROJ", id: "10001" }, security: null },
           },
         ],
       },
@@ -87,9 +87,9 @@ describe("Jira boundary matching", () => {
       provider.execute(
         { credential: plaintext, ...serviceContext({ projects: ["10001"] }) },
         "issues.search",
-        { query: "export", projectKeys: ["DEMO"] },
+        { query: "export", projectKeys: ["PROJ"] },
       ),
-    ).resolves.toMatchObject({ items: [{ key: "DEMO-123" }] });
+    ).resolves.toMatchObject({ items: [{ key: "PROJ-456" }] });
   });
 
   it("covers a listed key in any case and a listed numeric id", () => {
