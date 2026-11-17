@@ -195,6 +195,7 @@ export async function runAnswerModesPass(options) {
               : {
                   verdict: "pass",
                   summary: "Claims match the supplied evidence.",
+                  comparisons: [],
                   issues: [],
                   confidence: "high",
                 },
