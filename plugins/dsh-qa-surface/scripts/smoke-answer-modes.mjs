@@ -186,6 +186,7 @@ export async function runAnswerModesPass(options) {
             arguments: expertReview
               ? {
                   summary: "Claims match the supplied evidence.",
+                  comparisons: [],
                   findings: [],
                   conflicts: [],
                   assumptions: [],
@@ -545,11 +546,13 @@ export async function runAnswerModesPass(options) {
       assert.equal(failures.length, 0, failures[0]?.stack);
       await waitFor(
         async () =>
+          failures.length > 0 ||
           (await remote("chatList", { token: user.token })).items.find(
             (item) => item.sessionId === sessionId,
           )?.running === false,
         `mode idle ${scenario}`,
       );
+      assert.equal(failures.length, 0, failures[0]?.stack);
     }
     assert.equal(failures.length, 0, failures[0]?.message);
     assert.equal(ragQueries, 1, "A supported answer needs only one retrieval");
