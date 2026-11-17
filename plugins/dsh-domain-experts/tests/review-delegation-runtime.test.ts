@@ -124,6 +124,7 @@ async function harness(
     agent = reviewer,
     signal = new AbortController().signal,
     names = ["verify_source"],
+    parallel = 1,
   ) =>
     executeToolBatch(
       {
@@ -137,7 +138,7 @@ async function harness(
         agent,
       },
       new ToolExecutionPipeline(ctx),
-      () => 1,
+      () => parallel,
     );
   return {
     ctx,
@@ -154,6 +155,56 @@ async function harness(
 }
 
 describe("foreground reviewer delegation through the real Host pipeline", () => {
+  it("joins every parallel worker before the review can capture its verdict", async () => {
+    const h = await harness();
+    const workers = [deferred<Terminal>(), deferred<Terminal>()];
+    const disposals = [vi.fn(), vi.fn()];
+    let nextWorker = 0;
+    h.start.mockImplementation(async () => {
+      const index = nextWorker++;
+      return {
+        childId: `parallel-${index}`,
+        name: `worker-${index}`,
+        result: workers[index]!.promise,
+        dispose: disposals[index]!,
+      };
+    });
+    try {
+      const pending = h.run(
+        h.reviewer,
+        undefined,
+        ["verify_source", "verify_source", "structured_output"],
+        2,
+      );
+      await vi.waitFor(() => expect(h.start).toHaveBeenCalledTimes(2));
+      workers[0]!.resolve({
+        stopReason: "completed",
+        output: [{ type: "text", text: "First evidence." }],
+      });
+      await vi.waitFor(() => expect(disposals[0]).toHaveBeenCalledOnce());
+      expect(h.capture).not.toHaveBeenCalled();
+      expect(disposals[1]).not.toHaveBeenCalled();
+      workers[1]!.resolve({
+        stopReason: "completed",
+        output: [{ type: "text", text: "Second evidence." }],
+      });
+      const batch = await pending;
+      expect(batch.results.every(({ result }) => !result.isError)).toBe(true);
+      expect(batch.results[0]!.result.content).toContainEqual({
+        type: "text",
+        text: "First evidence.",
+      });
+      expect(batch.results[1]!.result.content).toContainEqual({
+        type: "text",
+        text: "Second evidence.",
+      });
+      expect(h.capture).toHaveBeenCalledOnce();
+      expect(disposals[1]).toHaveBeenCalledOnce();
+    } finally {
+      await h.scope.dispose();
+    }
+  });
+
   it("executes an aliased worker and waits for its answer before structured output", async () => {
     const h = await harness();
     try {
