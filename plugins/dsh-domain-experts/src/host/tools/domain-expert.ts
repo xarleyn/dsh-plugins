@@ -1,4 +1,5 @@
 import { defineTool } from "@deepseek-ai/dsh-tools";
+import { isForegroundReviewAgent } from "@yadsh/dsh-plugin-kit/review-foreground";
 import { DomainExpertsError } from "../errors.js";
 import {
   EXPERT_MODE_VALUES,
@@ -228,7 +229,10 @@ export function createDomainExpertTool(dependencies: ToolDependencies) {
         const result = await dependencies.run({
           parent: agent,
           definition,
-          request: requestOf(args),
+          request: {
+            ...requestOf(args),
+            ...(isForegroundReviewAgent(agent) ? { background: false } : {}),
+          },
           signal: exec.signal,
           callerDomain,
         });

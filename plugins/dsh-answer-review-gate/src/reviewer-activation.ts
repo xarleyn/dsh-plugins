@@ -1,13 +1,13 @@
 import { randomUUID } from "node:crypto";
 import {
-  guardReviewDelegation,
-  type ReviewToolRegistry,
-} from "@yadsh/dsh-plugin-kit";
+  installForegroundReview,
+  type ForegroundReviewContext,
+} from "@yadsh/dsh-plugin-kit/review-foreground";
 import type { GateHostContext } from "./index.js";
 import { ReviewerFailure, type SubagentsFace } from "./types.js";
 
-/** Reserve a local reviewer and install its guard before the first prompt. */
-export function nonDelegatingReviewers(
+/** Reserve a local reviewer and await its delegations from the first prompt. */
+export function foregroundReviewers(
   ctx: GateHostContext,
   face: SubagentsFace,
 ): SubagentsFace {
@@ -17,7 +17,7 @@ export function nonDelegatingReviewers(
       if (face.getProvider(spec.provider)?.prepareContinuable === undefined)
         throw new ReviewerFailure(
           "reviewer-capability-unsupported",
-          "independent reviewers require a local managed provider to enforce their delegation policy",
+          "independent reviewers require a local managed provider to await delegated work",
         );
       const childId = randomUUID();
       let applied = false;
@@ -28,11 +28,11 @@ export function nonDelegatingReviewers(
         }: {
           agent: {
             readonly id: string;
-            readonly ctx: { readonly tools: ReviewToolRegistry };
+            readonly ctx: ForegroundReviewContext;
           };
         }) => {
           if (String(agent.id) !== childId) return;
-          guardReviewDelegation(agent.ctx.tools, agent);
+          installForegroundReview(agent.ctx, agent);
           applied = true;
         },
         { global: true },
@@ -43,7 +43,7 @@ export function nonDelegatingReviewers(
           await activation.dispose();
           throw new ReviewerFailure(
             "reviewer-capability-unsupported",
-            "the provider did not apply the reserved review child's delegation policy",
+            "the provider did not apply the reserved review child's foreground policy",
           );
         }
         return activation;

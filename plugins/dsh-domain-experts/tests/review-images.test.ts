@@ -1,5 +1,8 @@
 import { Context } from "@deepseek-ai/cordis";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+vi.mock("@yadsh/dsh-plugin-kit/review-foreground", () => ({
+  installForegroundReview: vi.fn(),
+}));
 import { DomainExpertsService } from "../src/index.js";
 import type { ExpertRunInput } from "../src/host/execution.js";
 import type { DomainExpertsStorage } from "../src/host/storage.js";

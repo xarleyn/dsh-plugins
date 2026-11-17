@@ -7,6 +7,10 @@
   "main": "./lib/index.js",
   "types": "./lib/index.d.ts",
   "exports": {
+    "./review-foreground": {
+      "types": "./lib/review-foreground.d.ts",
+      "default": "./lib/review-foreground.js"
+    },
     "./code-sources": {
       "types": "./lib/code-sources.d.ts",
       "default": "./lib/code-sources.js"

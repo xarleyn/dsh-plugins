@@ -22,12 +22,15 @@ bundle, which keeps published browser bundles self-contained.
 ## Features
 
 - Configuration validation (`validateConfig`)
-- `guardReviewDelegation(tools, scope)` installs a scoped execution guard for
-  independent reviewers. It rejects domain delegation and native activation
-  receipts by their live tool output contract, so configured aliases and later
-  registrations are covered. Install it on the review child's own registry before
-  submitting its first prompt; it leaves reads, search and structured capture
-  available and returns the Host-owned guard disposer.
+- Host-only `./review-foreground`: `installForegroundReview(context, agent)`
+  makes the reviewer's delegated tool calls await completed child results and
+  return their evidence before structured completion. Local descendants inherit
+  foreground execution. Cancellation joins child cleanup; provider, route,
+  preset and depth policies still apply. Install before the first prompt; its
+  registrations and runtime bridge are released with the owning context.
+  `isForegroundReviewAgent(agent)` lets an expert tool normalize its background
+  option before selecting the execution branch. Ordinary agents keep their
+  existing delivery policy. This subpath requires Node and is not browser code.
 - `./http` subpath for host request lifetimes: `createRequestDeadline` combines
   the caller's cancellation with a timeout; always dispose it in `finally`.
   `withinDeadline` also bounds work that ignores cancellation.

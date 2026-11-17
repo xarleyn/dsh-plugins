@@ -1,7 +1,10 @@
 import { randomUUID } from "node:crypto";
 import type { Context } from "@deepseek-ai/cordis";
 import { SessionId } from "@deepseek-ai/dsh-session/types";
-import { guardReviewDelegation } from "@yadsh/dsh-plugin-kit";
+import {
+  installForegroundReview,
+  type ForegroundReviewContext,
+} from "@yadsh/dsh-plugin-kit/review-foreground";
 import type {
   SubagentActivation,
   SubagentActivationSpec,
@@ -47,7 +50,10 @@ export async function startRestrictedExpert(
     if (agent.id !== childId) return;
     try {
       if (spec.outputSchema !== undefined)
-        guardReviewDelegation(agent.ctx.tools, agent);
+        installForegroundReview(
+          agent.ctx as unknown as ForegroundReviewContext,
+          agent,
+        );
       // The Host composes the preset before this serial lifecycle event and
       // submits the initial prompt only after it. The restriction belongs to
       // the child's context, so its teardown and concurrent siblings remain
