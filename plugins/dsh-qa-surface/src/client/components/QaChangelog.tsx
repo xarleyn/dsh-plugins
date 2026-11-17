@@ -22,6 +22,18 @@ export interface QaChangelogEntry {
 
 export const QA_CHANGELOG: readonly QaChangelogEntry[] = [
   {
+    version: "0.23.3",
+    date: "2026-11-17",
+    sections: [
+      {
+        title: "Документы",
+        items: [
+          "Повторная выдача DOCX в составном запросе распознаётся и после вводной метки с двоеточием. Просьбы изменить файл продолжают создавать новую версию.",
+        ],
+      },
+    ],
+  },
+  {
     version: "0.23.2",
     date: "2026-11-17",
     sections: [
