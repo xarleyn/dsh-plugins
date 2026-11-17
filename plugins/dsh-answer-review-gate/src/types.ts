@@ -309,6 +309,8 @@ export interface SubagentCapabilitiesFace {
 
 /** The provider facts the gate needs to preflight a reviewer composition. */
 export interface SubagentProviderFace {
+  /** Local managed providers support reserved identities and scoped policies. */
+  readonly prepareContinuable?: unknown;
   readonly name: string;
   readonly capabilities: SubagentCapabilitiesFace;
   /** Whether the child sees the parent's completed-turn prefix. */
@@ -353,6 +355,8 @@ export interface SubagentRequestSpec {
 
 /** One managed child execution request (the `startActivation` argument). */
 export interface SubagentActivationSpec extends SubagentRequestSpec {
+  /** Reserved local identity, used to install policy before the first prompt. */
+  readonly childId?: string;
   /** Registered backend to use. */
   readonly provider: string;
   /** Short task label retained in cataloged child membership. */

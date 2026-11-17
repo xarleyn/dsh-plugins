@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Context } from "@deepseek-ai/cordis";
 import { SessionId } from "@deepseek-ai/dsh-session/types";
+import { guardReviewDelegation } from "@yadsh/dsh-plugin-kit";
 import type {
   SubagentActivation,
   SubagentActivationSpec,
@@ -25,7 +26,11 @@ export async function startRestrictedExpert(
   filter?: ExpertToolFilter,
   budget?: ExpertExecutionBudget,
 ): Promise<SubagentActivation> {
-  if (filter === undefined && budget === undefined)
+  if (
+    filter === undefined &&
+    budget === undefined &&
+    spec.outputSchema === undefined
+  )
     return subagents.startActivation(spec);
   // Only a local managed provider accepts a reserved child identity. A remote
   // backend cannot be constrained through this process's agent context.
@@ -41,6 +46,8 @@ export async function startRestrictedExpert(
   const unsubscribe = ctx.on("agent/created", ({ agent }) => {
     if (agent.id !== childId) return;
     try {
+      if (spec.outputSchema !== undefined)
+        guardReviewDelegation(agent.ctx.tools, agent);
       // The Host composes the preset before this serial lifecycle event and
       // submits the initial prompt only after it. The restriction belongs to
       // the child's context, so its teardown and concurrent siblings remain
