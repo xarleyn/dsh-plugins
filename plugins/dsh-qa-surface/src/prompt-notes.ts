@@ -250,7 +250,7 @@ export class QaPromptNotes {
     return [
       {
         name: QA_CODE_SOURCES_NOTE,
-        text: "Use code_sources for available ids, then code_search/code_read and dsh_git_* on the explicitly selected tree. Pass its id to docs_search and delegated work. If several sources have no default, establish which one to use. Verify branch and HEAD with dsh_git_context. Keep comparisons separate and report refusals.",
+        text: "Use code_sources to list ids. For code_search/code_read, dsh_git_* and docs_search use the requested source id: repeat it on every call and pass it to subagents. With multiple sources and no default, establish which one to use. Verify branch and HEAD with dsh_git_context. Keep comparisons separate and report refusals.",
       },
     ].map((note) => ({
       ...note,
