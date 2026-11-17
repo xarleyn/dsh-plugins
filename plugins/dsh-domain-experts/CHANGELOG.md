@@ -1,3 +1,19 @@
+## 0.6.3 (2026-11-17)
+
+### 🩹 Fixes
+
+- Keep independent structured reviewers in their own verification run by refusing ([1038c4a1](https://github.com/xarleyn/dsh-plugins/commit/1038c4a1))
+  delegation tools, including configured activation-tool aliases, before execution.
+  Preserve source reads, search and native structured result capture.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-kit to 0.8.2
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.6.2 (2026-11-17)
 
 ### 🩹 Fixes
