@@ -199,6 +199,8 @@ describe("execution: composition handed to the runtime", () => {
     );
     expect(policy).not.toContain("Finish with one fenced code block");
     expect(policy).toContain("confirmed user decisions only in summary");
+    expect(policy).toContain("Do not delegate to other experts");
+    expect(policy).not.toContain("You may ask another domain's expert");
     expect(outcome.structured).toBe(true);
     expect(outcome.summary).toBe(result.summary);
     expect(outcome.comparisons).toEqual(result.comparisons);

@@ -115,6 +115,7 @@
     "react-dom": "^18.2.0"
   },
   "devDependencies": {
+    "@deepseek-ai/dsh-scope": "catalog:dsh-dev",
     "@deepseek-ai/cordis": "catalog:dsh-dev",
     "@deepseek-ai/cordis-plugin-loader": "catalog:dsh-dev",
     "@deepseek-ai/dsh-agent": "catalog:dsh-dev",

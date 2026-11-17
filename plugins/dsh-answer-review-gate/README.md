@@ -77,6 +77,12 @@ User → primary agent → research / tools / background subagents
   bounds: a committed message cannot be edited at this seam, so a second such
   draft goes through the ordinary review path, and a request the user waived is
   settled before the guard runs.
+- Independent reviewers cannot delegate to more agents. A scoped execution guard
+  refuses domain delegation and native activation tools, including configured
+  aliases, before their bodies run. Read/search tools and `structured_output`
+  remain available. The native reviewer backend requires a local managed
+  provider so the Host can install this policy before the first prompt; a
+  provider that cannot enforce it fails explicitly.
 - The reviewer itself is exempt: it runs as a subagent child and subagents are
   never gated, so the reviewer cannot recursively review itself.
 

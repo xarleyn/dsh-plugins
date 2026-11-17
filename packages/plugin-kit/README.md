@@ -22,6 +22,12 @@ bundle, which keeps published browser bundles self-contained.
 ## Features
 
 - Configuration validation (`validateConfig`)
+- `guardReviewDelegation(tools, scope)` installs a scoped execution guard for
+  independent reviewers. It rejects domain delegation and native activation
+  receipts by their live tool output contract, so configured aliases and later
+  registrations are covered. Install it on the review child's own registry before
+  submitting its first prompt; it leaves reads, search and structured capture
+  available and returns the Host-owned guard disposer.
 - `./http` subpath for host request lifetimes: `createRequestDeadline` combines
   the caller's cancellation with a timeout; always dispose it in `finally`.
   `withinDeadline` also bounds work that ignores cancellation.

@@ -17,6 +17,7 @@ function harness(
     skipLifecycle?: boolean;
     external?: boolean;
     scoped?: boolean;
+    toolSchemas?: ReadonlyMap<string, unknown>;
   } = {},
 ) {
   const ctx = new Context();
@@ -26,6 +27,7 @@ function harness(
     (execution: { name: string }) => string | undefined
   >();
   const firstPrompts: string[] = [];
+  const firstPromptDenials: (string | undefined)[] = [];
   const dispose = vi.fn(async () => {});
   const subagents: SubagentsFace = {
     getProvider: () => ({
@@ -42,14 +44,22 @@ function harness(
           ctx: {
             tools: {
               get: (name: string) =>
-                options.scoped &&
-                ["research_code", "file_delete", "run_code"].includes(name)
-                  ? { name }
-                  : undefined,
+                options.toolSchemas?.has(name)
+                  ? { output: { schema: options.toolSchemas.get(name) } }
+                  : options.scoped &&
+                      ["research_code", "file_delete", "run_code"].includes(
+                        name,
+                      )
+                    ? { name }
+                    : undefined,
               guard: (
                 guard: (execution: { name: string }) => string | undefined,
               ) => {
-                guards.set(id, guard);
+                const previous = guards.get(id);
+                guards.set(
+                  id,
+                  (execution) => previous?.(execution) ?? guard(execution),
+                );
                 return () => guards.delete(id);
               },
               restrict: (filter: ExpertToolFilter) => {
@@ -81,6 +91,7 @@ function harness(
         });
       }
       firstPrompts.push(id);
+      firstPromptDenials.push(guards.get(id)?.({ name: "verify_source" }));
       return {
         childId: id,
         result: Promise.resolve({}),
@@ -96,7 +107,16 @@ function harness(
     signal: new AbortController().signal,
     delivery: "caller",
   };
-  return { ctx, restrictions, guards, firstPrompts, dispose, subagents, spec };
+  return {
+    ctx,
+    restrictions,
+    guards,
+    firstPrompts,
+    firstPromptDenials,
+    dispose,
+    subagents,
+    spec,
+  };
 }
 
 describe("expert tool restrictions at the Host lifecycle boundary", () => {
@@ -215,5 +235,31 @@ describe("expert tool restrictions at the Host lifecycle boundary", () => {
     await startRestrictedExpert(h.ctx, h.subagents, h.spec);
     expect(h.subagents.startActivation).toHaveBeenCalledWith(h.spec);
     expect(h.restrictions.size).toBe(0);
+  });
+
+  it("guards structured reviewers without changing ordinary expert delegations", async () => {
+    const toolSchemas = new Map([
+      ["verify_source", { properties: { kind: { const: "activation" } } }],
+    ]);
+    const h = harness({ toolSchemas });
+    const reviewer = await startRestrictedExpert(h.ctx, h.subagents, {
+      ...h.spec,
+      outputSchema: { type: "object", properties: {} },
+    });
+    const guard = h.guards.get(reviewer.childId)!;
+    expect(guard({ name: "domain_expert" })).toContain("cannot delegate");
+    expect(h.firstPromptDenials).toEqual([
+      expect.stringContaining("cannot delegate"),
+    ]);
+    expect(guard({ name: "structured_output" })).toBeUndefined();
+    expect(guard({ name: "read" })).toBeUndefined();
+    const ordinary = harness({ toolSchemas });
+    await startRestrictedExpert(
+      ordinary.ctx,
+      ordinary.subagents,
+      ordinary.spec,
+    );
+    expect(ordinary.guards.size).toBe(0);
+    expect(ordinary.firstPromptDenials).toEqual([undefined]);
   });
 });
