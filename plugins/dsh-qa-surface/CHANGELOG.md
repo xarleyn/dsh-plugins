@@ -1,3 +1,17 @@
+## 0.23.2 (2026-11-17)
+
+### 🩹 Fixes
+
+- Capture document comparison witnesses in native structured reviewer output and verify the exact source and deliverable passages against the reviewer's own reads. Report complete SHA-256 values on document producer receipts. Restore existing DOCX attachments in compound redelivery requests while preserving every other requested action and any newly created artifacts. ([4123dbda](https://github.com/xarleyn/dsh-plugins/commit/4123dbda))
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-documents to 0.9.2
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.23.1 (2026-11-17)
 
 ### 🩹 Fixes
