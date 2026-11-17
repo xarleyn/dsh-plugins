@@ -38,7 +38,7 @@ import {
   renderRevisionSteer,
   steerSummary,
 } from "./prompt.js";
-import { qaModelPolicy } from "./qa-policy.js";
+import { qaModelPolicy, withQaAnswerReview } from "./qa-policy.js";
 import { primaryReviewTools, reviewConversationContext } from "./context.js";
 import type {
   DomainExpertsFace,
@@ -454,10 +454,19 @@ export class AnswerReviewGate {
         state.observeRead = evidence?.observeRead;
         let correction = "";
         const reviewCandidate = () =>
-          backend.review(
-            evidence
-              ? { ...input, documentReview: evidence.instructions + correction }
-              : input,
+          withQaAnswerReview(
+            this.deps.qaSurface?.(),
+            sessionId,
+            round.signal,
+            () =>
+              backend.review(
+                evidence
+                  ? {
+                      ...input,
+                      documentReview: evidence.instructions + correction,
+                    }
+                  : input,
+              ),
           );
         let decision = await reviewCandidate();
         if (evidence) {

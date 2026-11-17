@@ -145,8 +145,27 @@ async function fixture(
   }
   const audit = new ReviewAudit(50);
   let calls = 0;
+  let reviewScopes = 0;
+  let reviewActive = false;
   const steers: string[] = [];
   const gate = new AnswerReviewGate({
+    qaSurface: () => ({
+      async withAnswerReview<T>(
+        sessionId: string,
+        signal: AbortSignal,
+        run: () => Promise<T>,
+      ) {
+        expect(sessionId).toBe("parent");
+        expect(signal.aborted).toBe(false);
+        reviewScopes += 1;
+        reviewActive = true;
+        try {
+          return await run();
+        } finally {
+          reviewActive = false;
+        }
+      },
+    }),
     config: () =>
       resolveAnswerReviewGateConfig({
         minCandidateChars: 1,
@@ -158,6 +177,7 @@ async function fixture(
         throw new Error("unexpected fallback");
       },
       async reviewExpertBounded(_domain, task) {
+        expect(reviewActive).toBe(true);
         calls++;
         const childId =
           typeof comparisons === "function"
@@ -223,6 +243,7 @@ async function fixture(
   return {
     stop: () => gate.handleTurnStopping(agent, 1, new AbortController().signal),
     calls: () => calls,
+    reviewScopes: () => reviewScopes,
     receipts,
     output,
     digest,
@@ -263,6 +284,7 @@ it("repairs reviewer witnesses on the unchanged candidate within the existing ro
   );
   expect(await f.stop()).toBe("pass");
   expect(f.calls()).toBe(3);
+  expect(f.reviewScopes()).toBe(3);
   expect(f.receipts.at(-1)).toMatchObject({ status: "pass", round: 3 });
   expect(f.steers).toEqual([]);
   expect(tasks[1]).toContain("REVIEWER PROTOCOL CORRECTION");

@@ -19,6 +19,7 @@ import { runFileWriteSettingsBrowserPass } from "./smoke-file-writes-browser.mjs
 import { runSubagentModelsPass } from "./smoke-subagent-models.mjs";
 import { runQuestionSoundsPass } from "./smoke-question-sounds.mjs";
 import {
+  installAnswerModePlugins,
   runAnswerModesPass,
   runAnswerModesBrowserPass,
 } from "./smoke-answer-modes.mjs";
@@ -1337,9 +1338,25 @@ try {
       });
   }
   if (answerModesOnly) {
+    const registered = await rpc(
+      origin,
+      "workspace/create",
+      {
+        args: { request: { path: workspacePath } },
+      },
+      cookie,
+    );
     await stopProcess(host);
     host = undefined;
+    await installAnswerModePlugins({
+      repo,
+      root: temporaryRoot,
+      dshBin,
+      dshEnv,
+      workspacePath,
+    });
     await runAnswerModesPass({
+      workspaceId: registered.workspace.workspaceId,
       dshBin,
       dshVersion,
       dshEnv,

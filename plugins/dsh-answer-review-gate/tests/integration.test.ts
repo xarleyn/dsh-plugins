@@ -163,6 +163,50 @@ async function runWiredGate(options: {
 }
 
 describe("plugin wiring", () => {
+  it("runs the domain reviewer within the QA surface's trusted review scope", async () => {
+    let active = false;
+    let calls = 0;
+    const { host, events } = makeHost({
+      qaSurface: {
+        async withAnswerReview<T>(
+          sessionId: string,
+          signal: AbortSignal,
+          run: () => Promise<T>,
+        ) {
+          expect(sessionId).toBe("session-9");
+          expect(signal.aborted).toBe(false);
+          calls += 1;
+          active = true;
+          try {
+            return await run();
+          } finally {
+            active = false;
+          }
+        },
+      },
+      domainExperts: {
+        async testExpert() {
+          expect(active).toBe(true);
+          return EXPERT_PASS;
+        },
+      },
+    });
+    apply(host, {
+      reviewer: { backend: "domain-expert" },
+      minCandidateChars: 10,
+    });
+    await dispatch(events, "agent/turn-stopping", {
+      agent: agentWithCandidate(
+        "session-9",
+        "A supported answer with enough text.",
+      ),
+      turn: 1,
+      signal: new AbortController().signal,
+    });
+    expect(calls).toBe(1);
+    expect(active).toBe(false);
+  });
+
   it("persists recovered review receipts through the native Session surface contract and replay", async () => {
     const session = Session.create(SessionId("native-review-demo"));
     session.append(

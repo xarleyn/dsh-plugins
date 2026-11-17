@@ -114,12 +114,18 @@ Chromium on localhost. The default browser suite also exercises the LAN overlay.
   a responsive first-party-style conversation layout;
 - offers a multi-select answer mode menu beside the composer, with the selected
   names in its button and explanations on hover and keyboard focus. Deep Thinking
-  is the default. RAG Priority tries LightRAG retrieval modes and reformulated
-  queries first. Other research tools and delegation remain blocked until the
+  is the default. RAG Priority uses LightRAG evidence first and allows loading
+  applicable skills. A substantive result supported by relevant sources can
+  answer the request directly; reformulated queries and another retrieval mode
+  address concrete gaps rather than being mandatory for every answer. Other
+  research tools and delegation remain blocked until the
   user explicitly approves the Host's fixed deep-search question. Refusal,
   cancellation, skipped questions and an earlier request's consent never grant
   that permission. If interactive questions or RAG tools are unavailable, the
-  agent reports the gap and cannot silently switch to deep research;
+  agent reports the gap and cannot silently switch to deep research. Automatic
+  answer reviewers retain their permitted verification tools and structured
+  output inside the Host's review call; this grants no research consent to the
+  primary agent;
 - keeps Fast combinable with the other modes, with a visible warning while on.
   New ordinary requests, regeneration and approved-document export requests use
   the Host's trusted `/no-review` command for an audited, request-specific waiver.

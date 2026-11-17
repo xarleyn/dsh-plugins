@@ -59,6 +59,7 @@ describe("dsh_lightrag_query", () => {
     ]);
     expect(result.truncated).toBe(false);
     expect(result.llmGenerated).toBe(true);
+    expect(result.retrievalStatus).toBe("sources-found");
     expect(stub.calls[0]?.body).toMatchObject({
       query: "what runs on the stand?",
       mode: "mix",
@@ -158,7 +159,45 @@ describe("dsh_lightrag_query", () => {
     )) as LightRagQueryResult;
     expect(result.llmGenerated).toBe(false);
     expect(result.referenceCount).toBe(0);
+    expect(result.retrievalStatus).toBe("no-context");
   });
+
+  it.each([
+    {
+      response: "A fluent but unsupported answer.",
+      references: [],
+      mode: "mix",
+      expected: "no-sources",
+    },
+    {
+      response: "A fluent but unsupported answer.",
+      references: [{ reference_id: "1", file_path: " ", content: [] }],
+      mode: "mix",
+      expected: "no-sources",
+    },
+    {
+      response: " ",
+      references: ANSWER.references,
+      mode: "mix",
+      expected: "no-context",
+    },
+    {
+      response: "Model-only answer.",
+      references: ANSWER.references,
+      mode: "bypass",
+      expected: "bypassed",
+    },
+  ] as const)(
+    "reports evidence availability: $expected ($mode)",
+    async ({ response, references, mode, expected }) => {
+      const { tool } = makeTool(() => jsonResponse({ response, references }));
+      const result = (await tool.execute(
+        { question: "What services run?", mode },
+        makeExec(),
+      )) as LightRagQueryResult;
+      expect(result.retrievalStatus).toBe(expected);
+    },
+  );
 
   it("assumes a generated answer when the server omits the flag", async () => {
     const { tool } = makeTool(() => jsonResponse({ response: "answer" }));
@@ -207,5 +246,7 @@ describe("dsh_lightrag_query", () => {
     expect(text).toContain("The stand runs three services.");
     expect(text).toContain("[1] docs/architecture.md");
     expect(text).toContain("2 reference(s)");
+    expect(text).toContain("Retrieval evidence: sources-found");
+    expect(text).toContain("not a confidence score");
   });
 });
