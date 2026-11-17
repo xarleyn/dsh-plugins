@@ -1,3 +1,13 @@
+## 0.11.4 (2026-11-17)
+
+### 🩹 Fixes
+
+- Return valid JSON on the final Confluence search page, explain permitted Jira project keys when a search names an unavailable project, and use document readers when reviewing uploaded requirements. ([4ad2ca8a](https://github.com/xarleyn/dsh-plugins/commit/4ad2ca8a))
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.11.3 (2026-11-16)
 
 ### 🩹 Fixes
