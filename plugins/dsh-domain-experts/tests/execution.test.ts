@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { assertObjectJsonSchema } from "@deepseek-ai/dsh-tools";
+import {
+  assertObjectJsonSchema,
+  validateJsonSchemaValue,
+} from "@deepseek-ai/dsh-tools";
 import type { SubagentActivationSpec } from "@deepseek-ai/dsh-subagent";
 import {
   RunTracker,
@@ -173,6 +176,7 @@ describe("execution: composition handed to the runtime", () => {
       type: "object",
       required: [
         "summary",
+        "comparisons",
         "findings",
         "conflicts",
         "assumptions",
@@ -180,6 +184,15 @@ describe("execution: composition handed to the runtime", () => {
       ],
     });
     expect(() => assertObjectJsonSchema(request.outputSchema)).not.toThrow();
+    const schema = request.outputSchema;
+    assertObjectJsonSchema(schema);
+    expect(validateJsonSchemaValue(schema, result)).toEqual([]);
+    const missing = Object.fromEntries(
+      Object.entries(result).filter(([key]) => key !== "comparisons"),
+    );
+    expect(validateJsonSchemaValue(schema, missing).join("\n")).toContain(
+      "comparisons",
+    );
     const policy = textBlockOf(harness.subagents.started[0]!, 0);
     expect(policy).toContain(
       "Finish by calling structured_output exactly once",

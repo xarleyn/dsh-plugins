@@ -27,13 +27,16 @@ const report = "The acceptance test records a thirty second cutoff";
 const explanation = "Both passages specify the same cutoff for the pump.";
 const proof = `CHECK S1 D1 | ${req} | ${report} | ${explanation}`;
 async function fixture(
-  summary: string | ((task: string) => string),
-  read = true,
+  summary: string | ((task: string) => string | Promise<string>),
+  read: boolean | ((attempt: number) => boolean) = true,
   reader = "review-child",
   textFollowup = false,
   withSource = true,
   deliverable = report,
-  comparisons?: ExpertRunResult["comparisons"],
+  comparisons?:
+    | ExpertRunResult["comparisons"]
+    | ((attempt: number) => ExpertRunResult["comparisons"]),
+  maxReviewRounds = 3,
 ) {
   const cwd = await mkdtemp(path.join(os.tmpdir(), "document-gate-"));
   dirs.push(cwd);
@@ -142,11 +145,13 @@ async function fixture(
   }
   const audit = new ReviewAudit(50);
   let calls = 0;
+  const steers: string[] = [];
   const gate = new AnswerReviewGate({
     config: () =>
       resolveAnswerReviewGateConfig({
         minCandidateChars: 1,
         maxToolCallsPerRound: 360,
+        maxReviewRounds,
       }),
     domainExperts: () => ({
       async testExpert() {
@@ -154,23 +159,38 @@ async function fixture(
       },
       async reviewExpertBounded(_domain, task) {
         calls++;
+        const childId =
+          typeof comparisons === "function"
+            ? `review-child-${calls}`
+            : "review-child";
         if (task.includes("DOCUMENT REVIEW")) {
           if (withSource) expect(task).toContain(JSON.stringify(src));
           expect(task).toContain(JSON.stringify(markdownPath));
-          if (read)
+          if (typeof read === "function" ? read(calls) : read)
             for (const file of [src, markdownPath])
-              gate.observeReviewerRead("parent", reader, file, [
-                await readFile(file, "utf8"),
-              ]);
+              gate.observeReviewerRead(
+                "parent",
+                reader === "review-child" ? childId : reader,
+                file,
+                [await readFile(file, "utf8")],
+              );
         }
         const result: ExpertRunResult = {
-          childSessionId: "review-child",
+          childSessionId: childId,
           status: "completed",
           structured: true,
           findings: [],
           conflicts: [],
-          summary: typeof summary === "function" ? summary(task) : summary,
-          ...(comparisons === undefined ? {} : { comparisons }),
+          summary:
+            typeof summary === "function" ? await summary(task) : summary,
+          ...(comparisons === undefined
+            ? {}
+            : {
+                comparisons:
+                  typeof comparisons === "function"
+                    ? comparisons(calls)
+                    : comparisons,
+              }),
         };
         return { ok: true, code: "OK", message: "", result };
       },
@@ -181,7 +201,9 @@ async function fixture(
     audit,
     now: Date.now,
     logger: { info() {}, warn() {}, error() {} },
-    steerMessage() {},
+    steerMessage(_agent, text) {
+      steers.push(text);
+    },
     publishStatus: (_, r) => receipts.push(r),
   });
   const agent = {
@@ -205,6 +227,7 @@ async function fixture(
     output,
     digest,
     audit,
+    steers,
     followup(text = "Please send your comments.") {
       events.push(
         { type: "user/message", seq: 4, data: user("Show the comments") },
@@ -217,6 +240,97 @@ async function fixture(
     },
   };
 }
+it("repairs reviewer witnesses on the unchanged candidate within the existing round budget", async () => {
+  const tasks: string[] = [];
+  const valid = {
+    source: "S1",
+    target: "D1",
+    sourceQuote: req,
+    targetQuote: report,
+    explanation,
+  };
+  const f = await fixture(
+    (task) => {
+      tasks.push(task);
+      return "Verified the preserved cutoff.";
+    },
+    true,
+    "review-child",
+    false,
+    true,
+    report,
+    (attempt) => (attempt < 3 ? [] : [valid]),
+  );
+  expect(await f.stop()).toBe("pass");
+  expect(f.calls()).toBe(3);
+  expect(f.receipts.at(-1)).toMatchObject({ status: "pass", round: 3 });
+  expect(f.steers).toEqual([]);
+  expect(tasks[1]).toContain("REVIEWER PROTOCOL CORRECTION");
+  expect(tasks[2]).toContain("S1 D1");
+  const hash = f.receipts[0]!.candidateHash;
+  expect(f.receipts.every((receipt) => receipt.candidateHash === hash)).toBe(
+    true,
+  );
+});
+it("fails closed when reviewer corrections exhaust the original activation budget", async () => {
+  const f = await fixture(
+    "Verified.",
+    true,
+    "review-child",
+    false,
+    true,
+    report,
+    () => [],
+    2,
+  );
+  expect(await f.stop()).toBe("failure");
+  expect(f.calls()).toBe(2);
+  expect(f.receipts.at(-1)).toMatchObject({ status: "failure", round: 2 });
+  expect(f.receipts.some((r) => r.status === "pass")).toBe(false);
+  expect(f.steers).toHaveLength(1);
+});
+it("requires the corrective reviewer to perform its own reads", async () => {
+  const valid = {
+    source: "S1",
+    target: "D1",
+    sourceQuote: req,
+    targetQuote: report,
+    explanation,
+  };
+  const f = await fixture(
+    "Verified.",
+    (attempt) => attempt === 1,
+    "review-child",
+    false,
+    true,
+    report,
+    (attempt) => (attempt === 1 ? [] : [valid]),
+  );
+  expect(await f.stop()).toBe("failure");
+  expect(f.calls()).toBe(2);
+  expect(f.receipts.at(-1)?.status).toBe("failure");
+  expect(f.steers.join("\n")).toContain("review-document-not-read");
+});
+it("keeps the original document fingerprint across reviewer protocol correction", async () => {
+  let target = "";
+  const f = await fixture(
+    async () => {
+      await writeFile(target, "changed after the review read");
+      return "Verified.";
+    },
+    true,
+    "review-child",
+    false,
+    true,
+    report,
+    () => [],
+  );
+  target = f.output;
+  expect(await f.stop()).toBe("failure");
+  expect(f.calls()).toBe(1);
+  expect(f.receipts.at(-1)).toMatchObject({ status: "failure", round: 1 });
+  expect(f.receipts.some((r) => r.status === "pass")).toBe(false);
+});
 it("accepts witnessed native comparisons without a CHECK-formatted summary", async () => {
   const f = await fixture(
     "Verified the preserved cutoff.",

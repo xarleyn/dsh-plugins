@@ -432,6 +432,7 @@ export class AnswerReviewGate {
       candidateHash: hash,
     });
     let verdict: ReviewVerdict;
+    let protocolAttemptCounted = false;
     this.publishReceipt(agent, state, hash, "reviewing");
     try {
       state.documentSubjects = undefined;
@@ -451,11 +452,14 @@ export class AnswerReviewGate {
           : undefined;
         round.signal.throwIfAborted();
         state.observeRead = evidence?.observeRead;
-        let decision = await backend.review(
-          evidence
-            ? { ...input, documentReview: evidence.instructions }
-            : input,
-        );
+        let correction = "";
+        const reviewCandidate = () =>
+          backend.review(
+            evidence
+              ? { ...input, documentReview: evidence.instructions + correction }
+              : input,
+          );
+        let decision = await reviewCandidate();
         if (evidence) {
           const misnamed = targets.filter((t) => t.filenameMismatch);
           if (decision.verdict === "pass" && misnamed.length) {
@@ -473,12 +477,54 @@ export class AnswerReviewGate {
               })),
             };
           }
-          if (decision.verdict === "pass")
-            await evidence.verify(
-              decision.summary,
-              decision.reviewerSessionId,
-              decision.comparisons,
-            );
+          while (decision.verdict === "pass") {
+            try {
+              await evidence.verify(
+                decision.summary,
+                decision.reviewerSessionId,
+                decision.comparisons,
+              );
+              break;
+            } catch (error) {
+              if (
+                !(error instanceof ReviewerFailure) ||
+                error.reason !== "review-document-comparison-missing" ||
+                state.round + 1 >= config.maxReviewRounds
+              )
+                throw error;
+              // Repair the reviewer's protocol, not the author's correct file.
+              // Every activation consumes the existing review-round budget;
+              // the outer deadline and original file fingerprints stay pinned.
+              state.round += 1;
+              protocolAttemptCounted = true;
+              this.record(config, {
+                time: this.deps.now(),
+                sessionId,
+                turn,
+                candidateHash: hash,
+                round: state.round - 1,
+                backend: backend.name,
+                reviewer: backend.reviewer,
+                durationMs: this.deps.now() - startedAt,
+                outcome: "failure",
+                failureReason: error.reason + " (" + error.detail + ")",
+              });
+              await evidence.verifyOriginals(round.signal);
+              correction =
+                "\nREVIEWER PROTOCOL CORRECTION: Your preceding review omitted or altered the verbatim comparison for required pair " +
+                JSON.stringify(error.detail) +
+                ". The candidate and its files are unchanged. Personally read the exact evidence files, then return comparisons with one contiguous quote from each, preserving all Markdown pipes. Do not ask the primary author to repair reviewer evidence.\n";
+              this.deps.logger.warn("gate.reviewer-evidence-retry", {
+                sessionId,
+                turn,
+                round: state.round,
+                reason: error.reason,
+              });
+              this.publishReceipt(agent, state, hash, "recovering");
+              protocolAttemptCounted = false;
+              decision = await reviewCandidate();
+            }
+          }
           await evidence.verifyOriginals(round.signal);
           round.signal.throwIfAborted();
           state.documentSubjects = evidence.subjects;
@@ -503,7 +549,7 @@ export class AnswerReviewGate {
               "reviewer-crashed",
               error instanceof Error ? error.message : String(error),
             );
-      state.round += 1;
+      if (!protocolAttemptCounted) state.round += 1;
       if (signal.aborted) {
         this.publishReceipt(agent, state, hash, "cancelled");
         return "failure";

@@ -326,7 +326,7 @@ export const ANSWER_FORMAT = [
 export const NATIVE_REVIEW_ANSWER_FORMAT = [
   "Finish by calling structured_output exactly once with the final result matching its schema. A text answer or fenced JSON block does not deliver this run's result.",
   "Put successful checks, source-backed definitions and confirmed user decisions only in summary.",
-  "When document review requests comparisons, put its verbatim source/target witnesses in comparisons, separate from the summary and objection arrays.",
+  "Always include comparisons in structured_output: [] when no document evidence pairs were requested, otherwise one entry per required pair. Copy a contiguous verbatim passage from each exact file you read, preserving Markdown pipes and line breaks. Never assemble abbreviated table rows. Keep these witnesses separate from the summary and objection arrays.",
   "findings contains only objections requiring a correction; conflicts only unresolved contradictions; assumptions only unsupported assumptions; followUps only blocking corrections or verification gaps.",
   "Do not invent a blocker or ask for additional scope. An accepted limitation, confirmed exclusion or explicitly unpriced document is not an unsupported assumption.",
   "When no material blocker remains, call structured_output with a verification summary and findings: [], conflicts: [], assumptions: [], followUps: []. Unsupported claims and unavailable required evidence remain blockers.",

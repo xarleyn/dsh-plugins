@@ -1,4 +1,5 @@
 import type { Context } from "@deepseek-ai/cordis";
+import type { Agent } from "@deepseek-ai/dsh-agent";
 import type { MessageSource } from "@deepseek-ai/dsh-llm";
 import { SessionId } from "@deepseek-ai/dsh-session/types";
 import type {
@@ -36,6 +37,7 @@ import {
 import {
   requestedDocument,
   requestedDocumentAttachment,
+  type QaDocumentDelivery,
 } from "../shared/document-redelivery.js";
 
 /** Durable access is checked before and after asynchronous reads and per frame. */
@@ -49,6 +51,12 @@ export class QaChatTransport {
       userId: string,
       id: string,
     ) => Promise<unknown>,
+    private readonly verifyDelivery?: (
+      token: string,
+      sessionId: string,
+      file: QaDocumentDelivery,
+    ) => Promise<QaDocumentDelivery>,
+    private readonly resumeForDelivery?: (id: string) => Promise<Agent>,
   ) {}
 
   async list(token: string, signal: AbortSignal): Promise<SessionListValue> {
@@ -275,7 +283,26 @@ export class QaChatTransport {
         await this.participantPolicy?.(access.actorId, access.sessionId);
       signal.throwIfAborted();
       this.store().revalidate(token, access);
-      const session = this.ctx.sessions?.get(SessionId(access.sessionId));
+      const id = SessionId(access.sessionId);
+      const requestText = request.content.every((part) => part.type === "text")
+        ? request.content.map((part) => part.text).join(" ")
+        : undefined;
+      const target =
+        requestText === undefined ? undefined : requestedDocument(requestText);
+      const attachmentTarget =
+        requestText === undefined
+          ? undefined
+          : requestedDocumentAttachment(requestText);
+      // Admission already attests the resumed Agent. Take its actual Session,
+      // rather than a missing or stale registry snapshot of a saved chat.
+      // Resuming composes the recorded preset; it never submits a model turn.
+      const agent =
+        attachmentTarget !== undefined && this.resumeForDelivery
+          ? await this.resumeForDelivery(access.sessionId)
+          : this.ctx.agents?.get(id);
+      signal.throwIfAborted();
+      this.store().revalidate(token, access);
+      const session = agent?.session ?? this.ctx.sessions?.get(id);
       const historicalRequest = session
         ?.snapshotEvents()
         .find(
@@ -284,7 +311,6 @@ export class QaChatTransport {
             "rpcId" in event.data.source &&
             String(event.data.source.rpcId) === String(request.requestId),
         );
-      const agent = this.ctx.agents?.get(SessionId(access.sessionId));
       const pendingRequest = [
         ...(agent?.inbox.nextTurn ?? []),
         ...(agent?.inbox.nextStep ?? []),
@@ -310,40 +336,50 @@ export class QaChatTransport {
         session &&
         !historicalRequest &&
         !pendingRequest &&
-        request.content.every((part) => part.type === "text")
+        requestText !== undefined
       ) {
-        const requestText = request.content.map((part) => part.text).join(" ");
-        const target = requestedDocument(requestText);
         if (target !== undefined) {
           const file = originalDocument(session, Infinity, target) ?? null;
+          const verified =
+            file && this.verifyDelivery
+              ? await this.verifyDelivery(token, access.sessionId, file)
+              : file;
+          signal.throwIfAborted();
+          this.store().revalidate(token, access);
           recordDocumentDelivery(
             session,
             String(request.requestId),
             requestText,
-            file,
+            verified,
           );
           return { accepted: true };
         }
-        const compoundTarget = requestedDocumentAttachment(requestText);
-        if (compoundTarget !== undefined) {
-          const file = originalDocument(session, Infinity, compoundTarget);
-          const deliveryId = String(request.requestId) + ":attachment";
-          const recorded = session
-            .snapshotEvents()
-            .some(
-              (event) =>
-                event.type === "user/message" &&
-                event.data.source.kind === "qa-document-redelivery" &&
-                event.data.source.rpcId === deliveryId,
-            );
-          if (file && !recorded)
-            recordDocumentDelivery(
-              session,
-              deliveryId,
-              requestText,
-              file,
-              true,
-            );
+        const deliveryId = String(request.requestId) + ":attachment";
+        const recorded = session
+          .snapshotEvents()
+          .some(
+            (event) =>
+              event.type === "user/message" &&
+              event.data.source.kind === "qa-document-redelivery" &&
+              event.data.source.rpcId === deliveryId,
+          );
+        const file =
+          recorded || attachmentTarget === undefined
+            ? undefined
+            : originalDocument(session, Infinity, attachmentTarget);
+        if (file) {
+          const verified = this.verifyDelivery
+            ? await this.verifyDelivery(token, access.sessionId, file)
+            : file;
+          signal.throwIfAborted();
+          this.store().revalidate(token, access);
+          recordDocumentDelivery(
+            session,
+            deliveryId,
+            requestText!,
+            verified,
+            true,
+          );
         }
       }
       const value = await this.ctx.sessionController.prompt(request, signal);
@@ -511,7 +547,8 @@ export class QaChatTransport {
       target !== undefined &&
       address.kind === "session" &&
       String(address.sessionId) === access.sessionId
-        ? this.ctx.sessions?.get(address.sessionId)
+        ? (this.ctx.agents?.get(address.sessionId)?.session ??
+          this.ctx.sessions?.get(address.sessionId))
         : undefined;
     const delivery =
       session && target !== undefined

@@ -221,7 +221,7 @@ export function renderFiles(files: readonly DocumentFileResult[]): string[] {
     if (file.status === "failed") {
       return `${file.format}: failed (${file.error ?? "unknown error"})`;
     }
-    return `${file.format}: ${file.path} (${formatBytes(file.size)}, sha256 ${file.sha256})`;
+    return `${file.format}: ${file.path} (${file.size} B, sha256 ${file.sha256})`;
   });
 }
 

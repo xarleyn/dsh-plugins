@@ -188,6 +188,13 @@ describe("document_create tool", () => {
     expect(digest).toMatch(/^[a-f0-9]{64}$/u);
     expect(rendered[0]?.text).toContain(`sha256 ${digest})`);
     expect(rendered[0]?.text).not.toContain(`sha256 ${digest.slice(0, 16)}…`);
+    const file = (value["files"] as Record<string, unknown>[])[0]!;
+    const large = render(definition, {
+      ...value,
+      files: [{ ...file, size: 6_085_275 }],
+    });
+    expect(large[0]?.text).toContain(`(6085275 B, sha256 ${digest})`);
+    expect(large[0]?.text).not.toContain("5.8 MiB");
   });
 
   test("reports a created file inside the workspace, never by its absolute path", async () => {

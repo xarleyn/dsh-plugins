@@ -22,6 +22,18 @@ export interface QaChangelogEntry {
 
 export const QA_CHANGELOG: readonly QaChangelogEntry[] = [
   {
+    version: "0.23.4",
+    date: "2026-11-17",
+    sections: [
+      {
+        title: "Документы",
+        items: [
+          "Повторная выдача DOCX восстанавливается и в ранее сохранённом чате после загрузки сессии. Передача проверяет контрольную сумму исходного файла и показывает его точный размер.",
+        ],
+      },
+    ],
+  },
+  {
     version: "0.23.3",
     date: "2026-11-17",
     sections: [

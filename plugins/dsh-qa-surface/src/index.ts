@@ -645,6 +645,24 @@ export class QaSurface extends TypertRemoteService {
       () => this.sharing(),
       (token, id) => this.secureSession(token, id),
       (userId, id) => this.access.participantPolicy(userId, id),
+      async (token, id, file) => {
+        const chunk = await this.readWorkspaceFileChunk(
+          token,
+          id,
+          file.path,
+          0,
+          null,
+          file.sha256Prefix,
+        );
+        return { ...file, bytes: chunk.size };
+      },
+      async (id) => {
+        const resolved = await ctx.sessionController.resolveAgent(
+          SessionId(id),
+        );
+        if ("error" in resolved) throw resolved.error;
+        return resolved.agent;
+      },
     );
     this.chatTurnGuard = new QaChatTurnGuard(
       ctx,

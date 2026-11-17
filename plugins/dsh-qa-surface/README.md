@@ -30,6 +30,9 @@ Newly generated files remain attached alongside it. Modification requests do
 not substitute an old file for the edited output, and ambiguous names require
 clarification. Explicit standalone resend requests retain the direct transfer
 path without starting a writer or reviewer.
+Restored chats resolve their recorded Agent before selecting the file. The
+transfer verifies the original digest and exact byte size through the normal
+workspace download fence and is appended before the native prompt is dispatched.
 
 Chat history supports virtual folders and a separate pinned section. Create,
 rename, collapse and delete folders; drag chats into folders, out to the root,
