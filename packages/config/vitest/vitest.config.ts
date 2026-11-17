@@ -1,4 +1,5 @@
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import {
   mergeConfig,
@@ -200,6 +201,8 @@ export const baseConfig: ViteUserConfig = {
   test: {
     globals: true,
     environment: "node",
+    globalSetup: [fileURLToPath(new URL("./temp-global.ts", import.meta.url))],
+    setupFiles: [fileURLToPath(new URL("./temp-worker.ts", import.meta.url))],
     coverage: {
       provider: "v8",
       reporter: ["text", "json-summary"],
