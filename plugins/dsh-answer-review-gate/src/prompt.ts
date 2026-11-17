@@ -36,8 +36,8 @@ const ATTACHMENT_PROTOCOL =
  * enforces: read, report, never repair.
  */
 const REVIEW_TOOL_BOUNDARY =
-  "Do not delegate to other agents or start background work: delegation tools are refused for independent reviewers. " +
-  "Inspect sources yourself and finish this run with structured_output; a waiting message does not complete a review. " +
+  "You may delegate verification to available experts. Delegated calls run in the foreground and wait for the child's result. " +
+  "Use their completed results before calling structured_output; do not end with a waiting message. " +
   "You review and do not change: no tool you hold can delete, write or otherwise alter the workspace or an " +
   "external system, and a call that would is refused at once. When the candidate seems to hinge on something in " +
   "the way, that is a finding about the candidate — report it, and never try to clear it yourself.";

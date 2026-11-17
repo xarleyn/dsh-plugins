@@ -25,6 +25,7 @@ await runVerifyPackage({
     "./http",
     "./post-execute",
     "./code-sources",
+    "./review-foreground",
   ],
   exportDefaults: {
     "./code-sources": "./lib/code-sources.js",
@@ -33,6 +34,7 @@ await runVerifyPackage({
     "./sqlite": "./lib/sqlite.js",
     "./http": "./lib/http.js",
     "./post-execute": "./lib/post-execute.js",
+    "./review-foreground": "./lib/review-foreground.js",
   },
   exportsBuilt: true,
   mainTypesMatchRootExport: true,

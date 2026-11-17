@@ -4,6 +4,10 @@ import type {
   SubagentActivationSpec,
 } from "@deepseek-ai/dsh-subagent";
 import { describe, expect, it, vi } from "vitest";
+import { installForegroundReview } from "@yadsh/dsh-plugin-kit/review-foreground";
+vi.mock("@yadsh/dsh-plugin-kit/review-foreground", () => ({
+  installForegroundReview: vi.fn(),
+}));
 import type { SubagentsFace } from "../src/host/execution.js";
 import {
   startRestrictedExpert,
@@ -246,13 +250,11 @@ describe("expert tool restrictions at the Host lifecycle boundary", () => {
       ...h.spec,
       outputSchema: { type: "object", properties: {} },
     });
-    const guard = h.guards.get(reviewer.childId)!;
-    expect(guard({ name: "domain_expert" })).toContain("cannot delegate");
-    expect(h.firstPromptDenials).toEqual([
-      expect.stringContaining("cannot delegate"),
-    ]);
-    expect(guard({ name: "structured_output" })).toBeUndefined();
-    expect(guard({ name: "read" })).toBeUndefined();
+    expect(installForegroundReview).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ id: reviewer.childId }),
+    );
+    expect(h.firstPromptDenials).toEqual([undefined]);
     const ordinary = harness({ toolSchemas });
     await startRestrictedExpert(
       ordinary.ctx,
