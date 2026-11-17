@@ -415,6 +415,8 @@ assert.match(client, /settings\.onboarding/u);
 assert.match(client, /["'`]welcome-notice["'`]/u);
 assert.match(client, /priority:\s*-1e3|priority:\s*-1000/u);
 assert.match(client, /Перед началом тестирования/u);
+assert.match(client, /Как работать с агентом/u);
+assert.match(client, /Ознакомился и все понял/u);
 // A question the stand has no room for is answered with the queue dialog, and
 // the dialog has to say where the question is: a visitor who cannot tell asks
 // it twice, which is the load the ceiling exists to prevent.
@@ -431,6 +433,7 @@ assert.match(client, /\.dsh-qa-request-queue__notice\{/u);
 assert.doesNotMatch(client, /\.dsh-qa-queue__notice\{/u);
 assert.match(client, /maxActiveRequests/u);
 assert.match(client, /2026-10-11\.1/u);
+assert.match(client, /usageGuideMarkdown/u);
 assert.match(client, /dsh-qa-onboarding/u);
 assert.match(client, /require\("react-dom"\)/u);
 assert.match(client, /\.prompt\(/u);

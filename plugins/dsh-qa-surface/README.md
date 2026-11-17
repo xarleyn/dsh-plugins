@@ -1344,13 +1344,17 @@ changelog dialog with a curated per-version summary (features and fixes);
 Escape or a backdrop click closes it.
 
 On `/qa`, the plugin shadows DSH's stock `welcome-notice` onboarding entry and
-renders a route-owned Russian testing disclosure. Keeping the visible dialog
-in the QA overlay prevents DSH's blank-session onboarding lifecycle from
-dismissing it when a question is submitted. It explains the DeepSeek Harness
-preview foundation, QA review of questions and answers, the work-related
-scope, and local in-contour model processing. Explicit acknowledgement is
-stored as a versioned browser-local flag; changing the disclosure version
-shows it again. Other DSH routes retain the stock onboarding entry.
+shows the Russian testing disclosure. Once the reader accepts it, a separate
+Markdown guide covers prompts, files, answer modes, approvals and checking
+results. The reader checks **Ознакомился и все понял** and selects
+**Продолжить**. The two acknowledgements are saved independently for the current
+browser and QA route. **Памятка** below the composer reopens the guide.
+
+To edit the guide, open the QA Surface plugin's configuration card, find
+**Оформление**, and edit **Инструкция по работе с агентом (Markdown)**
+(`branding.usageGuideMarkdown`). Leave the field to save. Level-two Markdown
+headings form expandable sections. Blank text restores the built-in guide.
+Changing the effective text requires readers to acknowledge the revised guide.
 
 The default locked mode requires a deployment permission preset named
 `qa-read-only`. Per-user writable mode uses a separate preset such as

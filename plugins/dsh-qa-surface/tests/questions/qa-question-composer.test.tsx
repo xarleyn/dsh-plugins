@@ -8,8 +8,7 @@ import { QaSurfacePanelRegistry } from "../../src/client/panels/registry.js";
 import { resolveConfig } from "../../src/resolve-config.js";
 import type { QaAccountsController } from "../../src/client/QaAccountsController.js";
 import type { QaAccessApi } from "../../src/client/types.js";
-import { QA_WELCOME_NOTICE_VERSION } from "../../src/client/components/QaWelcomeNotice.js";
-import { qaStorageNamespace } from "../../src/shared/session-key.js";
+import { acknowledgeOnboarding } from "../helpers/onboarding.js";
 import { harness } from "../helpers/session-fakes.js";
 
 // jsdom has no ResizeObserver; the chat surface's width handles observe it.
@@ -126,10 +125,7 @@ describe("the composer while a question is parked", () => {
       accounts: { enabled: true },
       interaction: { questions: "interactive" },
     });
-    window.localStorage.setItem(
-      `${qaStorageNamespace(config)}:welcome-notice`,
-      QA_WELCOME_NOTICE_VERSION,
-    );
+    acknowledgeOnboarding(config);
     route = new QaRouteController();
     route.configure(config, true);
     const world = harness([SESSION]);

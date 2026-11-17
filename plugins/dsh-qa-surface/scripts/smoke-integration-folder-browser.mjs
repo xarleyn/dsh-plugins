@@ -216,13 +216,15 @@ ${
     const { chromium } = await import("playwright");
     const { QA_WELCOME_NOTICE_VERSION } =
       await import("../lib/client/components/QaWelcomeNotice.js");
+    const { DEFAULT_USAGE_GUIDE } =
+      await import("../lib/shared/usage-guide.js");
     browser = await chromium.launch({ headless: true });
     const context = await browser.newContext({
       viewport: { width: 1280, height: 800 },
     });
     let page = await context.newPage();
     await context.addInitScript(
-      ({ token, noticeVersion, formSession }) => {
+      ({ token, noticeVersion, guide, formSession }) => {
         // Seed the form only on first entry. Later reloads must reopen the
         // chat the UI persisted, including one created by model selection.
         const sessionKey = "dsh-qa-surface.session:v1:/qa:session";
@@ -236,10 +238,15 @@ ${
           "dsh-qa-surface.session:v1:/qa:welcome-notice",
           noticeVersion,
         );
+        globalThis.localStorage.setItem(
+          "dsh-qa-surface.session:v1:/qa:usage-guide",
+          guide,
+        );
       },
       {
         token: session.token,
         noticeVersion: QA_WELCOME_NOTICE_VERSION,
+        guide: DEFAULT_USAGE_GUIDE,
         formSession,
       },
     );

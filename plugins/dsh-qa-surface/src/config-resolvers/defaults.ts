@@ -8,6 +8,7 @@ import {
   QA_SKILL_FILE_MAX_BYTES,
 } from "../personal-skills/skill-format.js";
 import { DEFAULT_THINKING_PHRASES } from "../thinking-phrases.js";
+import { DEFAULT_USAGE_GUIDE } from "../shared/usage-guide.js";
 import { DEFAULT_QA_FILE_WRITE_POLICY } from "../shared/file-write-policy.js";
 import { QA_QUESTION_TIMEOUT_DEFAULT_MINUTES } from "../shared/question-timing.js";
 import type { ResolvedQaSurfaceConfig } from "../types.js";
@@ -23,6 +24,7 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
       title: "Помощник",
       subtitle: "",
       welcomeMessage: "Чем могу помочь?",
+      usageGuideMarkdown: DEFAULT_USAGE_GUIDE,
       placeholder: "Задайте вопрос…",
       logoUrl: null,
       disclaimer:

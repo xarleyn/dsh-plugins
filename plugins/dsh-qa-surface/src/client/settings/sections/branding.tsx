@@ -4,6 +4,7 @@
  */
 
 import { Notice, Section, TextField } from "../fields.js";
+import { DEFAULT_USAGE_GUIDE } from "../../../shared/usage-guide.js";
 import {
   overriddenAny,
   resetAside,
@@ -78,6 +79,22 @@ export function BrandingSection(props: ConfigProps) {
           }}
         />
       </div>
+      <TextField
+        label="Инструкция по работе с агентом (Markdown)"
+        value={
+          config?.branding?.usageGuideMarkdown ??
+          props.effective?.branding.usageGuideMarkdown ??
+          DEFAULT_USAGE_GUIDE
+        }
+        disabled={disabled}
+        multiline
+        rows={12}
+        hint="Открывается после приветствия. Изменения сохраняются при выходе из поля. Обновлённый текст нужно подтвердить снова. Пустое поле возвращает стандартную инструкцию."
+        testId="qa-settings-branding-usage-guide"
+        onChange={(value) =>
+          props.write(["branding", "usageGuideMarkdown"], value)
+        }
+      />
       <TextField
         label="Плашка о данных"
         value={config?.branding?.disclaimer ?? ""}

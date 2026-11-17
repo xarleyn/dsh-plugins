@@ -153,6 +153,7 @@ const configSchema = z.object({
       title: z.string().default(D.branding.title),
       subtitle: z.string().default(D.branding.subtitle),
       welcomeMessage: z.string().default(D.branding.welcomeMessage),
+      usageGuideMarkdown: z.string().default(D.branding.usageGuideMarkdown),
       placeholder: z.string().default(D.branding.placeholder),
       logoUrl: nullableString.default(D.branding.logoUrl),
       disclaimer: nullableString.default(D.branding.disclaimer),

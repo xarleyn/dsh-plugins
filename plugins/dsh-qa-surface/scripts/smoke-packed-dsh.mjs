@@ -13,6 +13,7 @@ import { networkInterfaces, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runHistoryBrowserPass } from "./smoke-history-browser.mjs";
+import { runUsageGuidePass } from "./smoke-usage-guide-browser.mjs";
 import { runIntegrationFolderBrowserPass } from "./smoke-integration-folder-browser.mjs";
 import { runFileDropBrowserPass } from "./smoke-file-drop-browser.mjs";
 import { runFileWriteSettingsBrowserPass } from "./smoke-file-writes-browser.mjs";
@@ -45,6 +46,9 @@ const dshVersion =
   process.env.DSH_QA_SMOKE_VERSION ??
   compatibility.deepseekHarness.testedReleases.at(-1);
 const withBrowser = process.argv.includes("--browser");
+const usageGuideOnly = process.argv.includes("--usage-guide");
+if (usageGuideOnly && !withBrowser)
+  throw new Error("--usage-guide requires --browser");
 const chatLayoutOnly = process.argv.includes("--chat-layout");
 const reviewDockOnly = process.argv.includes("--review-dock");
 if (reviewDockOnly && !withBrowser)
@@ -352,13 +356,12 @@ async function runBrowserPass({
   presetScopedTool: scopedTool,
 }) {
   const { chromium } = await import("playwright");
-  const { QA_WELCOME_NOTICE_VERSION } =
-    await import("../lib/client/components/QaWelcomeNotice.js");
   const browser = await chromium.launch({ headless: true });
   try {
-    const page = await browser.newPage({
+    const context = await browser.newContext({
       viewport: { width: 375, height: 720 },
     });
+    const page = await context.newPage();
     const incompatibleSession = await rpc(
       origin,
       "session/create",
@@ -412,57 +415,11 @@ async function runBrowserPass({
         { cause: error },
       );
     }
-    const welcomeStorageKey = "dsh-qa-surface.session:v1:/qa:welcome-notice";
-    const welcome = page.getByRole("dialog", {
-      name: "Перед началом тестирования",
-    });
-    // The oldest supported DSH composition declares the slot contract but
-    // does not always seat the product welcome step. When it is seated, prove
-    // that the QA entry shadows it and that browser acknowledgement survives
-    // a reload; when no onboarding step exists, there is nothing to replace.
-    const welcomeVisible = await welcome
-      .waitFor({ timeout: 3_000 })
-      .then(() => true)
-      .catch(() => false);
-    console.log(
-      welcomeVisible
-        ? "packed DSH QA smoke: QA welcome replacement observed"
-        : "packed DSH QA smoke: host welcome step was not seated",
+    await runUsageGuidePass(
+      page,
+      usageGuideOnly ? { origin, cookie } : undefined,
     );
-    if (
-      (await page
-        .getByRole("dialog", { name: "Internal Testing Notice" })
-        .count()) !== 0
-    ) {
-      throw new Error("stock DSH welcome notice was not shadowed on /qa");
-    }
-    if (welcomeVisible) {
-      await welcome
-        .getByRole("button", { name: "Понятно, продолжить" })
-        .click();
-      if (
-        (await page.evaluate(
-          (key) => globalThis.localStorage.getItem(key),
-          welcomeStorageKey,
-        )) !== QA_WELCOME_NOTICE_VERSION
-      ) {
-        throw new Error("QA welcome acknowledgement was not persisted");
-      }
-      await page.reload();
-      await page.locator("main.dsh-qa-surface").waitFor({ timeout: 30_000 });
-      if (
-        (await page
-          .getByRole("dialog", { name: "Перед началом тестирования" })
-          .count()) !== 0 ||
-        (await page
-          .getByRole("dialog", { name: "Internal Testing Notice" })
-          .count()) !== 0
-      ) {
-        throw new Error(
-          "welcome notice returned after browser acknowledgement",
-        );
-      }
-    }
+    if (usageGuideOnly) return;
     const qaUrl = new URL(page.url());
     if (qaUrl.pathname !== "/qa" || qaUrl.search !== "") {
       throw new Error(`QA navigation was not restored: ${qaUrl.href}`);
@@ -1047,6 +1004,7 @@ try {
         ([name]) =>
           !(
             modelSelectionOnly ||
+            usageGuideOnly ||
             subagentModelsOnly ||
             answerModesOnly ||
             reviewDockOnly
@@ -1268,11 +1226,13 @@ try {
 
   const fullBrowser =
     withBrowser &&
+    !usageGuideOnly &&
     !modelSelectionOnly &&
     !chatLayoutOnly &&
     !answerModesOnly &&
     !reviewDockOnly;
   if (
+    !usageGuideOnly &&
     !modelSelectionOnly &&
     !subagentModelsOnly &&
     !chatLayoutOnly &&
@@ -1299,7 +1259,7 @@ try {
         join(temporaryRoot, "file-write-evidence"),
     });
   if (withBrowser) {
-    if (fullBrowser || answerModesOnly)
+    if (fullBrowser || answerModesOnly || usageGuideOnly)
       await runBrowserPass({
         origin,
         authenticatedUrl: `${origin}/?token=${encodeURIComponent(token)}`,
@@ -1323,7 +1283,7 @@ try {
         { cwd: workspacePath, env: dshEnv },
       );
     }
-    if (!answerModesOnly)
+    if (!answerModesOnly && !usageGuideOnly)
       await runIntegrationFolderBrowserPass({
         modelSelection: modelSelectionOnly,
         chatLayoutOnly,

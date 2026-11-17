@@ -20,6 +20,20 @@ afterEach(async () => {
 });
 
 describe("QA Surface card", () => {
+  it("shows the editable default guide and saves the entire Markdown on blur", async () => {
+    const { mutate } = await renderCard();
+    const field = screen.getByTestId<HTMLTextAreaElement>(
+      "qa-settings-branding-usage-guide",
+    );
+    expect(field.value).toBe(BASE.branding.usageGuideMarkdown);
+    const value = "## Источники\n\nПроверьте **расчёт**.";
+    fireEvent.change(field, { target: { value } });
+    fireEvent.blur(field);
+    await settle();
+    expect(mutate).toHaveBeenCalledWith([
+      { op: "set", path: ["branding", "usageGuideMarkdown"], value },
+    ]);
+  });
   it("saves the wait for new assistant questions in minutes", async () => {
     const { mutate } = await renderCard();
     const field = within(section("qa-settings-session")).getByLabelText(
