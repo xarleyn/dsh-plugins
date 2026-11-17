@@ -26,6 +26,11 @@ it.each([
   ["send report.docx; summarize it", "report.docx"],
   ["send report.docx and create summary.docx", "report.docx"],
   [
+    "QA DOCS: Пришли ещё раз существующий файл Summary-v4.docx по полному имени. Не изменяй, не пересоздавай и не редактируй его: повторно приложи прежний артефакт. В ответе укажи полный SHA-256 и вычисли 17 × 23. Не создавай новый DOCX.",
+    "summary-v4.docx",
+  ],
+  ["QA: Resend report.docx; state its SHA-256", "report.docx"],
+  [
     'Summarize the result and resend "Report and Summary.docx".',
     "report and summary.docx",
   ],
@@ -40,6 +45,9 @@ it.each([
 it.each([
   "Edit report.docx then resend report.docx",
   "QA — Edit report.docx; then resend report.docx",
+  "QA: Edit report.docx; then resend report.docx",
+  "QA: Отредактируй report.docx и пришли report.docx",
+  "QA: Do not send report.docx; summarize the result",
   "Отредактируй report.docx и пришли report.docx",
   "Поправь report.docx и пришли report.docx",
   "пришли report.docx и исправь значения",

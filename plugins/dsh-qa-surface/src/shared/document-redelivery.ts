@@ -53,7 +53,7 @@ export function requestedDocumentAttachment(text: string): string | undefined {
   if (standalone !== undefined) return standalone;
   const request = normalize(text);
   if (
-    /(?:^|[.;!?\n—–]\s*|(?:^|[^\p{L}\p{N}_])(?:and|then|и|затем|потом)\s+)(?:(?:please|пожалуйста)[,\s]+)?(?:edit|revise|update|modify|change|rewrite|regenerate|исправ\p{L}*|измен\p{L}*|обнов\p{L}*|добав\p{L}*|удал\p{L}*|поправ\p{L}*|отредактир\p{L}*|перепиш\p{L}*)(?=$|[^\p{L}\p{N}_])/u.test(
+    /(?:^|[.;:!?\n—–]\s*|(?:^|[^\p{L}\p{N}_])(?:and|then|и|затем|потом)\s+)(?:(?:please|пожалуйста)[,\s]+)?(?:edit|revise|update|modify|change|rewrite|regenerate|исправ\p{L}*|измен\p{L}*|обнов\p{L}*|добав\p{L}*|удал\p{L}*|поправ\p{L}*|отредактир\p{L}*|перепиш\p{L}*)(?=$|[^\p{L}\p{N}_])/u.test(
       request,
     ) ||
     /\bwith changes\b|с изменениями/u.test(request)
@@ -61,7 +61,7 @@ export function requestedDocumentAttachment(text: string): string | undefined {
     return;
   const names: string[] = [];
   const verbs =
-    /(?:^|[.!?;\n—–]\s*|(?:^|[^\p{L}\p{N}_])(?:and|then|и|затем|потом)\s+)(?:(?:please|пожалуйста)[,\s]+)?(?:resend|redeliver|send|attach|пришли(?:те)?|отправь(?:те)?|перешли(?:те)?|скинь(?:те)?|прикрепи(?:те)?)[,\s]+(?=([^\n]+))/gu;
+    /(?:^|[.!?;:\n—–]\s*|(?:^|[^\p{L}\p{N}_])(?:and|then|и|затем|потом)\s+)(?:(?:please|пожалуйста)[,\s]+)?(?:resend|redeliver|send|attach|пришли(?:те)?|отправь(?:те)?|перешли(?:те)?|скинь(?:те)?|прикрепи(?:те)?)[,\s]+(?=([^\n]+))/gu;
   for (const match of request.matchAll(verbs)) {
     const tail = match[1]!
       .replace(

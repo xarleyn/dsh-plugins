@@ -187,67 +187,73 @@ describe("authenticated QA chat transport", () => {
     });
     expect(f.native.prompt).not.toHaveBeenCalled();
   });
-  it("durably attaches a compound resend once while forwarding the entire request", async () => {
-    const events = [
-      {
-        seq: 1,
-        type: "tool/call",
-        data: { callId: "create", name: "document_create" },
-      },
-      {
-        seq: 2,
-        type: "tool/result",
-        data: {
-          message: {
-            source: { callId: "create" },
-            content: [
-              {
-                type: "text",
-                text: "docx: .qa/report.docx (1 KiB, sha256 abcdef0123456789…)",
-              },
-            ],
+  it.each([
+    "send report.docx; state its SHA-256 and summarize the result",
+    "QA DOCS: Пришли ещё раз существующий файл report.docx по полному имени. Не изменяй его. Укажи SHA-256 и вычисли 17 × 23.",
+  ])(
+    "durably attaches a compound resend once while forwarding: %s",
+    async (text) => {
+      const events = [
+        {
+          seq: 1,
+          type: "tool/call",
+          data: { callId: "create", name: "document_create" },
+        },
+        {
+          seq: 2,
+          type: "tool/result",
+          data: {
+            message: {
+              source: { callId: "create" },
+              content: [
+                {
+                  type: "text",
+                  text: "docx: .qa/report.docx (1 KiB, sha256 abcdef0123456789…)",
+                },
+              ],
+            },
           },
         },
-      },
-    ] as { seq: number; type: string; data: unknown }[];
-    const session = {
-      surface: { nodes: [2] },
-      snapshotEvents: () => events,
-      eventAt: (seq: number) => events.find((e) => e.seq === seq),
-      append: vi.fn((type: string, data: unknown) =>
-        events.push({ seq: events.length + 1, type, data }),
-      ),
-    };
-    const f = fixture(session);
-    const input = {
-      ...request("compound"),
-      content: [
-        {
-          type: "text" as const,
-          text: "send report.docx; state its SHA-256 and summarize the result",
-        },
-      ],
-    };
-    await f.transport.prompt(f.owner.token, input, signal());
-    await f.transport.prompt(f.owner.token, input, signal());
-    expect(session.append).toHaveBeenCalledOnce();
-    expect(session.append).toHaveBeenCalledWith(
-      "user/message",
-      expect.objectContaining({
-        source: expect.objectContaining({
-          kind: "qa-document-redelivery",
-          compound: true,
-          rpcId: "compound:attachment",
-          file: expect.objectContaining({ path: ".qa/report.docx" }),
+      ] as { seq: number; type: string; data: unknown }[];
+      const session = {
+        surface: { nodes: [2] },
+        snapshotEvents: () => events,
+        eventAt: (seq: number) => events.find((e) => e.seq === seq),
+        append: vi.fn((type: string, data: unknown) =>
+          events.push({ seq: events.length + 1, type, data }),
+        ),
+      };
+      const f = fixture(session);
+      const input = {
+        ...request("compound"),
+        content: [
+          {
+            type: "text" as const,
+            text,
+          },
+        ],
+      };
+      await f.transport.prompt(f.owner.token, input, signal());
+      await f.transport.prompt(f.owner.token, input, signal());
+      expect(session.append).toHaveBeenCalledOnce();
+      expect(session.append).toHaveBeenCalledWith(
+        "user/message",
+        expect.objectContaining({
+          source: expect.objectContaining({
+            kind: "qa-document-redelivery",
+            compound: true,
+            rpcId: "compound:attachment",
+            file: expect.objectContaining({ path: ".qa/report.docx" }),
+          }),
         }),
-      }),
-      { surfaceOp: "append" },
-    );
-    expect(f.native.prompt).toHaveBeenCalledWith(
-      input,
-      expect.any(AbortSignal),
-    );
-  });
+        { surfaceOp: "append" },
+      );
+      expect(f.native.prompt).toHaveBeenCalledWith(
+        input,
+        expect.any(AbortSignal),
+      );
+    },
+  );
   it("rechecks current grants as one synchronous batch immediately before a control frame", async () => {
     const f = fixture();
     f.native.list.mockResolvedValue({
