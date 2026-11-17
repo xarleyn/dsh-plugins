@@ -1,3 +1,17 @@
+## 0.3.9 (2026-11-17)
+
+### 🩹 Fixes
+
+- Preserve the plugin kit's legacy root exports for existing consumers while current reviewers use foreground delegation. Verify the compatibility exports in the packed package contract and align the reviewer packages with the compatible kit release. ([1c71805c](https://github.com/xarleyn/dsh-plugins/commit/1c71805c))
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-kit to 0.8.4
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.3.8 (2026-11-17)
 
 ### 🩹 Fixes
