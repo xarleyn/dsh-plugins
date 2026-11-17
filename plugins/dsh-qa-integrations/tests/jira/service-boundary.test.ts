@@ -15,6 +15,83 @@ import {
 } from "./service.helpers.js";
 
 describe("Jira boundary matching", () => {
+  it("refuses an unavailable search project with the connection's allowed keys", async () => {
+    const { fetcher, calls } = stub(() => ({ json: { issues: [] } }));
+    const { provider, plaintext } = credential(fetcher);
+    await expect(
+      provider.execute(
+        {
+          credential: plaintext,
+          ...serviceContext({ projects: ["PROJ", "DEMO"] }),
+        },
+        "issues.search",
+        { query: "export", projectKeys: ["PROJ", "UNKNOWN"] },
+      ),
+    ).rejects.toMatchObject({
+      code: "ServiceResourceNotAllowed",
+      message: expect.stringContaining("Allowed project keys: DEMO, PROJ"),
+    });
+    expect(calls).toHaveLength(0);
+  });
+
+  it("does not reveal projects excluded from the current connection's selection", async () => {
+    const { fetcher, calls } = stub(() => ({ json: { issues: [] } }));
+    const { provider, plaintext } = credential(fetcher);
+    await expect(
+      provider.execute(
+        { credential: plaintext, ...serviceContext({ projects: ["proj"] }) },
+        "issues.search",
+        { query: "export", projectKeys: ["DEMO"] },
+      ),
+    ).rejects.toMatchObject({
+      code: "ServiceResourceNotAllowed",
+      message: expect.stringContaining("Allowed project keys: PROJ"),
+    });
+    expect(calls).toHaveLength(0);
+  });
+
+  it("keeps case-insensitive permitted search keys and personal searches working", async () => {
+    const { fetcher, calls } = stub(() => ({ json: { issues: [] } }));
+    const { provider, plaintext } = credential(fetcher);
+    await provider.execute(
+      { credential: plaintext, ...serviceContext() },
+      "issues.search",
+      { query: "export", projectKeys: ["proj"] },
+    );
+    await provider.execute({ credential: plaintext }, "issues.search", {
+      query: "export",
+      projectKeys: ["DEMO"],
+    });
+    expect(calls).toHaveLength(2);
+    expect(calls[0]?.url.searchParams.get("jql")).toContain(
+      'project in ("PROJ")',
+    );
+    expect(calls[1]?.url.searchParams.get("jql")).toContain(
+      'project in ("DEMO")',
+    );
+  });
+
+  it("retains key-to-id matching for a boundary configured with numeric project ids", async () => {
+    const { fetcher } = stub(() => ({
+      json: {
+        issues: [
+          {
+            key: "DEMO-123",
+            fields: { project: { key: "DEMO", id: "10001" }, security: null },
+          },
+        ],
+      },
+    }));
+    const { provider, plaintext } = credential(fetcher);
+    await expect(
+      provider.execute(
+        { credential: plaintext, ...serviceContext({ projects: ["10001"] }) },
+        "issues.search",
+        { query: "export", projectKeys: ["DEMO"] },
+      ),
+    ).resolves.toMatchObject({ items: [{ key: "DEMO-123" }] });
+  });
+
   it("covers a listed key in any case and a listed numeric id", () => {
     expect(projectAllowed(BOUNDARY, "PROJ")).toBe(true);
     expect(projectAllowed(BOUNDARY, "proj")).toBe(true);

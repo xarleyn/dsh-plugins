@@ -3,6 +3,7 @@ import {
   type CredentialHelp,
 } from "@yadsh/dsh-plugin-kit";
 import type { ResolvedQaIntegrationsConfig } from "../../config.js";
+import { requiredStringList } from "../../coerce.js";
 import { IntegrationError } from "../../errors.js";
 import { boundaryHas } from "../../service-credentials/policy.js";
 import { operationCapabilityServiceState } from "../../service-credentials/state.js";
@@ -50,6 +51,7 @@ import {
   identifierName,
   issueKey as issueKeyOf,
   needsUserLookup,
+  projectKey,
 } from "./jql.js";
 import {
   JIRA_HANDLERS,
@@ -483,15 +485,41 @@ export class JiraProvider implements IntegrationProvider {
    * Hold one call inside the deployment's boundary. A single-resource read
    * names its project — a project key, or the key an issue key embeds — and
    * must stay inside it, or nothing is read. A search names none by default, so
-   * it is not refused here but answered with the hits filtered to the boundary
-   * instead.
+   * its hits are filtered to the boundary instead. Explicit keys outside a
+   * key-based boundary are refused with the keys this connection may use.
    */
   private assertInsideBoundary(
     operation: string,
     input: Readonly<Record<string, unknown>>,
     boundary: ServiceResourceBoundary,
   ): void {
-    if (operation === "issues.search") return;
+    if (operation === "issues.search") {
+      const projects = boundary[JIRA_RESOURCE_KIND] ?? [];
+      // A numeric boundary entry can cover a requested key through the id Jira
+      // returns on a hit. Preserve that matching without reading a site-wide
+      // directory; the result filter still checks every hit's key and id.
+      if (
+        input["projectKeys"] === undefined ||
+        projects.some((ref) => /^\d+$/u.test(ref))
+      )
+        return;
+      const requested = requiredStringList(
+        input["projectKeys"],
+        "projectKeys",
+        20,
+        100,
+      ).map((key) => projectKey(key));
+      if (requested.some((key) => !projectAllowed(boundary, key))) {
+        const allowed = [
+          ...new Set(projects.map((key) => key.trim().toUpperCase())),
+        ].sort();
+        throw new IntegrationError(
+          "ServiceResourceNotAllowed",
+          `One or more projectKeys are unavailable through this connection. Allowed project keys: ${allowed.join(", ") || "none"}. Use a listed key, or omit projectKeys to search within this connection's permitted projects.`,
+        );
+      }
+      return;
+    }
     if (operation === "projects.get") {
       const ref =
         typeof input["projectKey"] === "string"

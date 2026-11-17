@@ -5,6 +5,17 @@ import {
 import { call, config, stub } from "./shared.js";
 
 describe("confluence search", () => {
+  it.each([
+    { results: [], totalSize: 0 },
+    { results: [] },
+    { results: [{ content: { id: "1", type: "page" } }], totalSize: 1 },
+    { results: [{ content: { id: "1", type: "page" } }], totalSize: 2 },
+  ])("returns lossless JSON for a search page: %j", async (page) => {
+    const { fetcher } = stub(() => ({ json: page }));
+    const answer = await call("search.run", {}, { fetcher });
+    expect(answer).toStrictEqual(JSON.parse(JSON.stringify(answer)));
+  });
+
   it("builds the CQL from typed filters and never takes raw CQL", async () => {
     const { calls, fetcher } = stub(() => ({
       json: { results: [], start: 0, limit: 20, size: 0, totalSize: 0 },

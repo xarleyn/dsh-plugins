@@ -152,10 +152,15 @@ describe("reviewer tool boundary", () => {
   it("names every read-only default tool as a read or a search", () => {
     // The list is the contract: an entry that neither reads nor searches has
     // no business being the reviewer's default.
-    const readOnlyShape = /^(?:read|glob|grep|docs_|view|list|search)/u;
+    const readOnlyShape =
+      /^(?:read|glob|grep|docs_|view|list|search|document_(?:inspect|to_markdown)$)/u;
     for (const name of REVIEWER_READ_ONLY_TOOLS) {
       expect(name, name).toMatch(readOnlyShape);
     }
+    expect(REVIEWER_READ_ONLY_TOOLS).toContain("document_inspect");
+    expect(REVIEWER_READ_ONLY_TOOLS).toContain("document_to_markdown");
+    expect(REVIEWER_READ_ONLY_TOOLS).not.toContain("document_create");
+    expect(REVIEWER_READ_ONLY_TOOLS).not.toContain("document_workflow_export");
   });
 
   it("drops excluded names from a requested list and keeps the rest", () => {
