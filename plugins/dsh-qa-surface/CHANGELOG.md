@@ -1,3 +1,17 @@
+## 0.23.4 (2026-11-17)
+
+### 🩹 Fixes
+
+- Require structured document comparison witnesses and repair reviewer protocol failures against the unchanged candidate within the existing activation and deadline budgets. Preserve exact file fingerprints and independent read checks. Restore compound DOCX attachments after a saved session resumes and report exact artifact byte sizes. ([4d31b01e](https://github.com/xarleyn/dsh-plugins/commit/4d31b01e))
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-documents to 0.9.3
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.23.3 (2026-11-17)
 
 ### 🩹 Fixes
