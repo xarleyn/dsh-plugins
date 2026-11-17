@@ -1010,9 +1010,14 @@ qa-repair-sessions
 qa-repair-sessions --write
 ```
 
-The repair only marks legacy `safety-gate/*` and `qa/sources` records as
-ignorable; it does not delete them. Each changed session file is backed up as
+The repair only marks legacy `safety-gate/*`, `qa/sources`, and QA answer-mode
+metadata records as ignorable; it does not delete them or change their payloads.
+Current answer modes use native plugin records and preserve their exact request
+and consent state on restore. Each changed session file is backed up as
 `*.pre-plugin-event-repair.bak` before atomic replacement.
+Use `qa-repair-sessions --answer-modes-only` to preview only answer-mode
+metadata, then add `--write` while DSH is stopped. This narrower repair creates
+`*.pre-answer-mode-repair.bak`, preserving backups from earlier general repairs.
 
 Local file cards open a source-scoped, read-only preview after Host-side real
 path validation against the roots the QA read policy opens: the chat's own

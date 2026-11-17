@@ -21,12 +21,19 @@ import {
   zstdDecompressSync,
 } from "node:zlib";
 
+export const ANSWER_MODE_EVENT_TYPES = new Set([
+  "qa/answer-modes",
+  "qa/answer-mode-turn",
+  "qa/answer-mode-command",
+  "qa/answer-mode-command-done",
+]);
 export const REPAIRABLE_EVENT_TYPES = new Set([
   "safety-gate/check",
   "safety-gate/block",
   "safety-gate/warn",
   "safety-gate/classifier-error",
   "qa/sources",
+  ...ANSWER_MODE_EVENT_TYPES,
 ]);
 
 const ZSTD_MAGIC = 0xfd2fb528;
@@ -140,6 +147,10 @@ function parseRows(filePath, plain) {
 /** Repair one offline session log; dry-run is the default. */
 export function repairSessionFile(filePath, options = {}) {
   const write = options.write === true;
+  const repairable =
+    options.answerModesOnly === true
+      ? ANSWER_MODE_EVENT_TYPES
+      : REPAIRABLE_EVENT_TYPES;
   const before = statSync(filePath);
   const original = readFileSync(filePath);
   const rows = parseRows(filePath, decodeArtifact(filePath, original));
@@ -147,8 +158,7 @@ export function repairSessionFile(filePath, options = {}) {
   const types = new Map();
   for (let index = 1; index < rows.length; index += 1) {
     const row = rows[index];
-    if (!REPAIRABLE_EVENT_TYPES.has(row.type) || row.ignorable === true)
-      continue;
+    if (!repairable.has(row.type) || row.ignorable === true) continue;
     row.ignorable = true;
     changed += 1;
     types.set(row.type, (types.get(row.type) ?? 0) + 1);
@@ -168,7 +178,7 @@ export function repairSessionFile(filePath, options = {}) {
       `${filePath}: changed while being inspected; stop DSH and retry`,
     );
   }
-  const backup = `${filePath}.pre-plugin-event-repair.bak`;
+  const backup = `${filePath}.${options.answerModesOnly === true ? "pre-answer-mode-repair" : "pre-plugin-event-repair"}.bak`;
   copyFileSync(filePath, backup, fsConstants.COPYFILE_EXCL);
   const repaired = encodeArtifact(filePath, rows);
   // Decode before publishing so a bad generated frame cannot replace the log.
@@ -202,14 +212,15 @@ function sessionFiles(target) {
 }
 
 function usage() {
-  return `Usage: qa-repair-sessions [--write] [session-file-or-directory ...]
+  return `Usage: qa-repair-sessions [--write] [--answer-modes-only] [session-file-or-directory ...]
 
 Dry-run is the default. With no target, scans $DSH_HOME/sessions (or
 ~/.dsh/sessions when DSH_HOME is unset). Stop DSH before using --write.
 
-The command only adds ignorable:true to legacy safety-gate/* and qa/sources
-events. Before each changed file is replaced atomically, an exclusive
-*.pre-plugin-event-repair.bak backup is created.`;
+The command only adds ignorable:true to legacy safety-gate/*, qa/sources and
+QA answer-mode metadata. Before each changed file is replaced atomically, an exclusive
+*.pre-plugin-event-repair.bak backup is created. --answer-modes-only limits the
+repair to QA answer-mode metadata and uses *.pre-answer-mode-repair.bak.`;
 }
 
 export function main(argv = process.argv.slice(2)) {
@@ -218,8 +229,10 @@ export function main(argv = process.argv.slice(2)) {
     return 0;
   }
   const write = argv.includes("--write");
+  const answerModesOnly = argv.includes("--answer-modes-only");
   const unknown = argv.filter(
-    (arg) => arg.startsWith("-") && arg !== "--write",
+    (arg) =>
+      arg.startsWith("-") && arg !== "--write" && arg !== "--answer-modes-only",
   );
   if (unknown.length > 0) throw new Error(`unknown option: ${unknown[0]}`);
   const targets = argv.filter((arg) => !arg.startsWith("-"));
@@ -233,7 +246,7 @@ export function main(argv = process.argv.slice(2)) {
   let candidates = 0;
   let events = 0;
   for (const file of files) {
-    const result = repairSessionFile(file, { write });
+    const result = repairSessionFile(file, { write, answerModesOnly });
     if (result.changed === 0) continue;
     candidates += 1;
     events += result.changed;

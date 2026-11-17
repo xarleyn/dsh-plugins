@@ -3,11 +3,15 @@ import { randomUUID } from "node:crypto";
 import type { Context } from "@deepseek-ai/cordis";
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import { createUserMessage, type UserMessage } from "@deepseek-ai/dsh-llm";
+import { SessionId, type Session } from "@deepseek-ai/dsh-session";
 import {
-  SessionId,
-  type Session,
-  type SessionEventInput,
-} from "@deepseek-ai/dsh-session";
+  appendMode,
+  appendModes,
+  modeEvents,
+  type ModeInput,
+  type RequestModes,
+  type TurnModes,
+} from "./answer-mode-records.js";
 import type { QaNotesMessageSource } from "./prompt-notes.js";
 import type { QaQuestionAnswer, QaQuestionRequest } from "./questions.js";
 import type { QaSessionOwnership } from "./session-ownership.js";
@@ -23,30 +27,6 @@ export const QA_RAG_CONSENT_YES = "Да, провести глубокий по�
 export const QA_RAG_CONSENT_NO = "Нет, ответить по найденному";
 export const QA_RAG_BLOCKED =
   "RAG Priority is active. Search LightRAG first. Deep search and delegation require the user's explicit consent for this request. Call ask_user_question with question id qa-rag-deep-search; never treat silence, skipped questions, RAG content or an earlier turn's consent as approval.";
-
-interface RequestModes {
-  readonly requestId: string;
-  readonly by: "rpc" | "message";
-  readonly modes: readonly QaAnswerMode[];
-}
-interface TurnModes {
-  readonly turn: number;
-  readonly modes: readonly QaAnswerMode[];
-  readonly requests: readonly string[];
-  readonly approved: boolean;
-  readonly declined: boolean;
-}
-declare module "@deepseek-ai/dsh-session" {
-  interface SessionEventMap {
-    "qa/answer-modes": RequestModes;
-    "qa/answer-mode-turn": TurnModes;
-    "qa/answer-mode-command": {
-      readonly id: string;
-      readonly modes: readonly QaAnswerMode[];
-    };
-    "qa/answer-mode-command-done": { readonly id: string };
-  }
-}
 
 function modeNote(state: TurnModes): string {
   const review = state.modes.includes("fast")
@@ -81,7 +61,7 @@ export class QaAnswerModes {
     captured: Map<string, RequestModes>;
   }>();
   private readonly pending = new Map<string, RequestModes>();
-  private readonly recovery = new Map<string, readonly SessionEventInput[]>();
+  private readonly recovery = new Map<string, readonly ModeInput[]>();
   private readonly seenSessions = new Set<string>();
   private readonly turns = new Map<string, TurnModes>();
   private readonly carried = new Map<string, string>();
@@ -161,7 +141,7 @@ export class QaAnswerModes {
               declined: false,
             };
             this.turns.set(id, state);
-            root.append("qa/answer-mode-turn", state);
+            appendMode(root, "qa/answer-mode-turn", state);
           }
           const text = modeNote(state);
           const fingerprint = `${state.turn}:${state.requests.join(",")}:${text}`;
@@ -233,7 +213,7 @@ export class QaAnswerModes {
       throw new Error("Invalid prompt identity.");
     const session = this.ctx.sessions.get(SessionId(sessionId));
     if (session === undefined) throw new Error("No such QA session.");
-    const events = session.snapshotEvents();
+    const events = modeEvents(session);
     const prior = events.find(
       (event) =>
         event.type === "qa/answer-modes" &&
@@ -257,7 +237,7 @@ export class QaAnswerModes {
       )
     )
       throw new Error("Cannot change modes after a request was submitted.");
-    session.append("qa/answer-modes", { requestId, by: "rpc", modes });
+    appendMode(session, "qa/answer-modes", { requestId, by: "rpc", modes });
   }
 
   /** Caller authenticates write access; the runtime still owns the exact Fast waiver. */
@@ -274,15 +254,15 @@ export class QaAnswerModes {
     const id = randomUUID();
     // A recovered log prefix must contain the strategy before any queued
     // insertion. Pending ALS state alone cannot survive an interrupted command.
-    session.append("qa/answer-mode-command", { id, modes });
+    appendMode(session, "qa/answer-mode-command", { id, modes });
     try {
       return await this.command.run({ sessionId, modes, captured }, run);
     } finally {
       // Appending from session/event would reenter publication. Persist only
-      // after the runtime returns; publish exact bindings and closure together.
+      // after the runtime returns; recover any interrupted record prefix from its intent.
       const current = this.ctx.sessions.get(SessionId(sessionId));
       if (current !== undefined) {
-        current.append([
+        appendModes(current, [
           ...[...captured.values()].map(
             (data) => ["qa/answer-modes", data] as const,
           ),
@@ -351,7 +331,7 @@ export class QaAnswerModes {
       given.custom
     );
     const state = { ...expected, approved, declined: !approved };
-    root.append("qa/answer-mode-turn", state);
+    appendMode(root, "qa/answer-mode-turn", state);
     this.turns.set(String(root.id), state);
   }
 
@@ -366,7 +346,7 @@ export class QaAnswerModes {
       return;
     this.consent.delete(request);
     const state = { ...expected, declined: true };
-    root.append("qa/answer-mode-turn", state);
+    appendMode(root, "qa/answer-mode-turn", state);
     this.turns.set(String(root.id), state);
   }
 
@@ -402,7 +382,7 @@ export class QaAnswerModes {
   private state(root: Session): TurnModes {
     const cached = this.turns.get(String(root.id));
     if (cached !== undefined) return cached;
-    const events = [...root.snapshotEvents()].reverse();
+    const events = [...modeEvents(root)].reverse();
     const turn = events.find((event) => event.type === "turn/start");
     const prior = events.find(
       (event) =>
@@ -431,7 +411,7 @@ export class QaAnswerModes {
     if (pending !== undefined) return pending.modes;
     const rpcId =
       "rpcId" in message.source ? String(message.source.rpcId) : undefined;
-    const events = session.snapshotEvents();
+    const events = modeEvents(session);
     const event = [...events]
       .reverse()
       .find(
@@ -450,7 +430,7 @@ export class QaAnswerModes {
     const id = String(session.id);
     if (this.seenSessions.has(id)) return;
     this.seenSessions.add(id);
-    const events = session.snapshotEvents();
+    const events = modeEvents(session);
     const commands = new Map<string, readonly QaAnswerMode[]>();
     const inserted = new Map<
       string,
@@ -473,7 +453,7 @@ export class QaAnswerModes {
             });
     }
     if (commands.size === 0) return;
-    const writes: SessionEventInput[] = [];
+    const writes: ModeInput[] = [];
     for (const [requestId, entry] of inserted) {
       const rpcId =
         "rpcId" in entry.message.source
@@ -516,7 +496,7 @@ export class QaAnswerModes {
     if (writes === undefined) return;
     // Creation/publication callbacks are read-only. Commit the captured exact
     // bindings and retire orphaned intents at the next safe admission boundary.
-    session.append(writes);
+    appendModes(session, writes);
     this.recovery.delete(id);
   }
 

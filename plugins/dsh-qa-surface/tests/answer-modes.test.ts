@@ -14,9 +14,20 @@ import { QaQuestionGate, type QaQuestionRequest } from "../src/questions.js";
 import type { QaSessionOwnership } from "../src/session-ownership.js";
 import { fakeContext } from "./helpers/context-fakes.js";
 
+// These policy tests use an in-memory Session double. Native record envelopes
+// are exercised without this mock in answer-mode-records.test.ts.
+vi.mock("@deepseek-ai/dsh-session", async (original) => ({
+  ...(await original<typeof import("@deepseek-ai/dsh-session")>()),
+  appendPluginRecord: (
+    session: { append(type: string, data: unknown, metadata: object): void },
+    type: string,
+    data: unknown,
+  ) => session.append(type, data, { ignorable: true }),
+}));
+
 function fixture() {
   const fake = fakeContext();
-  const events: { type: string; data: unknown }[] = [];
+  const events: { type: string; data: unknown; ignorable?: true }[] = [];
   const root = {
     id: "root",
     header: {},
@@ -24,10 +35,11 @@ function fixture() {
     append: (
       type: string | readonly (readonly [string, unknown])[],
       data: unknown,
+      metadata?: { ignorable?: true },
     ) => {
       events.push(
         ...(typeof type === "string"
-          ? [{ type, data }]
+          ? [{ type, data, ...metadata }]
           : type.map(([type, data]) => ({ type, data }))),
       );
     },
@@ -394,9 +406,13 @@ describe("answer modes host policy", () => {
     });
     f.reload();
     expect(f.guard("read")).toBe(QA_RAG_BLOCKED);
-    expect(f.events.some((event) => event.type === "qa/answer-modes")).toBe(
-      true,
-    );
+    expect(
+      f.events.some(
+        (event) =>
+          event.type === "plugin:dsh-qa-surface/answer-modes" &&
+          event.ignorable === true,
+      ),
+    ).toBe(true);
     f.dispose();
   });
 
