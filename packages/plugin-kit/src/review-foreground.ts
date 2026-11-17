@@ -192,6 +192,17 @@ export function installForegroundReview(
   const adapter = retainAdapter(runtime);
   const completed = new WeakMap<Execution, Frame["completed"]>();
   reviewers.add(agent);
+  context.effect(() => () => {
+    reviewers.delete(agent);
+    if (--adapter.users > 0) return;
+    const target = (Reflect.get(runtime, originalKey) ?? runtime) as Runtime;
+    if (target.startActivation === adapter.wrapped) {
+      if (adapter.original === undefined)
+        Reflect.deleteProperty(target, "startActivation");
+      else Object.defineProperty(target, "startActivation", adapter.original);
+    }
+    Reflect.deleteProperty(target, adapterKey);
+  });
   const prompt = context.get("systemPrompt") as
     | {
         context?: (section: {
@@ -246,16 +257,5 @@ export function installForegroundReview(
         ]),
       ],
     };
-  });
-  context.effect(() => () => {
-    reviewers.delete(agent);
-    if (--adapter.users > 0) return;
-    const target = (Reflect.get(runtime, originalKey) ?? runtime) as Runtime;
-    if (target.startActivation === adapter.wrapped) {
-      if (adapter.original === undefined)
-        Reflect.deleteProperty(target, "startActivation");
-      else Object.defineProperty(target, "startActivation", adapter.original);
-    }
-    Reflect.deleteProperty(target, adapterKey);
   });
 }
