@@ -479,14 +479,21 @@ describe("plugin wiring: subagent backend", () => {
             depthLimit: true,
           },
           inheritsParentContext: true,
+          prepareContinuable: () => {},
         };
       },
-      startActivation(
+      async startActivation(
         spec: SubagentActivationSpec,
       ): Promise<SubagentActivation> {
         started.push(spec);
+        await dispatch(events, "agent/created", {
+          agent: {
+            id: spec.childId,
+            ctx: { tools: { get: () => undefined, guard: () => () => {} } },
+          },
+        });
         return Promise.resolve({
-          childId: "child-session",
+          childId: spec.childId!,
           result: Promise.resolve({
             stopReason: "completed",
             output: [],

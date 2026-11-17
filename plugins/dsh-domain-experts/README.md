@@ -4,6 +4,12 @@ Give a part of your product its own expert agent: one persona, one scope, one
 memory namespace, one tool policy — configured in the DSH Web UI and executed
 as an ordinary DeepSeek Harness subagent.
 
+Structured review runs cannot delegate to other agents. Before the first prompt,
+the Host installs an execution guard on the review child's registry: it refuses
+domain delegation and native activation tools, including deployment-owned aliases.
+The reviewer verifies sources with its own read/search tools and completes with
+`structured_output`. Ordinary expert runs retain their configured delegation policy.
+
 Native structured review output requires a `comparisons` array independently
 of its prose summary. Each document witness names its `source` and `target`
 evidence keys, verbatim `sourceQuote` and `targetQuote` passages, and an

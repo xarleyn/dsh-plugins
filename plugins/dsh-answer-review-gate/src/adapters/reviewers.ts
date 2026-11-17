@@ -350,6 +350,7 @@ export function createSubagentBackend(deps: {
             delivery: "caller",
           });
         } catch (error) {
+          if (error instanceof ReviewerFailure) throw error;
           // The runtime refuses an unsupported composition before an
           // activation exists; an unknown tool or option names surface here too.
           if (

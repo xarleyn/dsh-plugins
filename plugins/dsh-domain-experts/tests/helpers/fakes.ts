@@ -183,7 +183,13 @@ export function fakeSubagents(
         await options.context.serial("agent/created", {
           agent: {
             ...agentOf({ id: childId }),
-            ctx: { tools: { restrict: () => () => {} } },
+            ctx: {
+              tools: {
+                restrict: () => () => {},
+                guard: () => () => {},
+                get: () => undefined,
+              },
+            },
           } as unknown as Agent,
           source: "create" as never,
         });

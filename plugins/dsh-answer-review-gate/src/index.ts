@@ -30,6 +30,7 @@ import {
 import { AnswerReviewGate, type GateAgent, type GateLogSink } from "./gate.js";
 import type { DomainExpertsFace, SubagentsFace } from "./types.js";
 import { reviewStatusNotice } from "./receipt.js";
+import { nonDelegatingReviewers } from "./reviewer-activation.js";
 import type { DocumentsReader, FileReference } from "./document-evidence.js";
 import {
   registerReviewWaiverCommand,
@@ -184,7 +185,10 @@ export function apply(
     // plugin was running right next to this one.
     domainExperts: () =>
       ctx.get("domainExperts") as DomainExpertsFace | undefined,
-    subagents: () => ctx.get("subagents") as SubagentsFace | undefined,
+    subagents: () => {
+      const face = ctx.get("subagents") as SubagentsFace | undefined;
+      return face === undefined ? undefined : nonDelegatingReviewers(ctx, face);
+    },
     // The QA surface is read structurally and per call: an installation
     // without it simply has no model policy to follow.
     qaSurface: () => ctx.get("qaSurface"),

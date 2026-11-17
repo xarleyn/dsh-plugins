@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-domain-experts",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "Configurable domain-scoped expert agents for DeepSeek Harness",
   "repository": {
     "type": "git",
@@ -115,6 +115,7 @@
     "react-dom": "^18.2.0"
   },
   "devDependencies": {
+    "@deepseek-ai/dsh-scope": "catalog:dsh-dev",
     "@deepseek-ai/cordis": "catalog:dsh-dev",
     "@deepseek-ai/cordis-plugin-loader": "catalog:dsh-dev",
     "@deepseek-ai/dsh-agent": "catalog:dsh-dev",
@@ -122,6 +123,7 @@
     "@deepseek-ai/dsh-client-ui-renderer": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-ui-plugin-manager": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-ui-settings": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-llm": "catalog:dsh-dev",
     "@deepseek-ai/dsh-session": "catalog:dsh-dev",
     "@deepseek-ai/dsh-settings": "catalog:dsh-dev",
     "@deepseek-ai/dsh-storage-domain": "catalog:dsh-dev",
