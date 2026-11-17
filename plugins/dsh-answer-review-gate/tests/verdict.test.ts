@@ -8,6 +8,28 @@ import {
 import { ReviewerFailure } from "../src/types.js";
 
 describe("validateReviewerVerdict", () => {
+  it("keeps complete native comparison fields and refuses malformed witnesses", () => {
+    const c = {
+      source: "S1",
+      target: "D1",
+      sourceQuote: "A source passage",
+      targetQuote: "A target passage",
+      explanation: "Unchanged requirement",
+    };
+    expect(
+      validateReviewerVerdict({ verdict: "pass", comparisons: [c] })
+        .comparisons,
+    ).toEqual([c]);
+    expect(() =>
+      validateReviewerVerdict({
+        verdict: "pass",
+        comparisons: [{ ...c, targetQuote: null }],
+      }),
+    ).toThrow("comparison fields");
+    expect(() =>
+      validateReviewerVerdict({ verdict: "pass", comparisons: "CHECK S1 D1" }),
+    ).toThrow("comparisons must be an array");
+  });
   it("accepts a valid verdict", () => {
     expect(
       validateReviewerVerdict({

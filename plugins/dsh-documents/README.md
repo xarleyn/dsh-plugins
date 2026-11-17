@@ -16,6 +16,10 @@ semantic tools. An agent never calls `pandoc`, LibreOffice, Docling or a
 converter flag directly, so a deployment can replace a backend without touching
 a prompt, a skill or a workflow.
 
+Document producer receipts report the complete SHA-256 of every output. Copy
+that value exactly when a user requests a fingerprint; a shortened prefix from
+an older receipt cannot establish the remaining characters.
+
 It is deliberately not part of `@yadsh/dsh-qa-surface`: it reads the calling
 session's working directory, registers plain agent tools, and asks the
 deployment's web provider for online sources. Any agent composition can use it,

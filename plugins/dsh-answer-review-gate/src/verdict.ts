@@ -13,6 +13,7 @@ import type {
   ReviewIssue,
   ReviewSeverity,
   ReviewVerdict,
+  DocumentComparison,
 } from "./types.js";
 
 const SEVERITIES: readonly ReviewSeverity[] = ["critical", "major", "minor"];
@@ -54,7 +55,53 @@ export function validateReviewerVerdict(value: unknown): ReviewVerdict {
     ? (raw["confidence"] as ReviewVerdict["confidence"])
     : "medium";
   const summary = typeof raw["summary"] === "string" ? raw["summary"] : "";
-  return { verdict, summary, issues, confidence };
+  return {
+    verdict,
+    summary,
+    issues,
+    confidence,
+    ...comparisonResult(raw["comparisons"]),
+  };
+}
+
+function comparisonResult(value: unknown): {
+  comparisons?: readonly DocumentComparison[];
+} {
+  if (value === undefined) return {};
+  if (!Array.isArray(value))
+    throw new ReviewerFailure(
+      "malformed-verdict",
+      "comparisons must be an array",
+    );
+  const fields = [
+    "source",
+    "target",
+    "sourceQuote",
+    "targetQuote",
+    "explanation",
+  ] as const;
+  if (
+    value.some(
+      (item) =>
+        !item ||
+        typeof item !== "object" ||
+        !fields.every(
+          (key) => typeof item[key] === "string" && item[key].trim(),
+        ),
+    )
+  )
+    throw new ReviewerFailure(
+      "malformed-verdict",
+      "comparison fields must be nonempty strings",
+    );
+  return {
+    comparisons: value.map(
+      (item) =>
+        Object.fromEntries(
+          fields.map((key) => [key, item[key]]),
+        ) as unknown as DocumentComparison,
+    ),
+  };
 }
 
 /**
@@ -188,6 +235,7 @@ export function deriveVerdictFromExpertResult(
   return {
     verdict: issues.length === 0 ? "pass" : "revise",
     summary: result.summary,
+    ...comparisonResult(result.comparisons),
     issues,
     confidence: "medium",
   };

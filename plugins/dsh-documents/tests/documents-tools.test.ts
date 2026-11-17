@@ -184,6 +184,10 @@ describe("document_create tool", () => {
     );
     expect(rendered[0]?.text).toContain("docx:");
     expect(rendered[0]?.text).toContain("manifest:");
+    const digest = (value["files"] as { sha256: string }[])[0]!.sha256;
+    expect(digest).toMatch(/^[a-f0-9]{64}$/u);
+    expect(rendered[0]?.text).toContain(`sha256 ${digest})`);
+    expect(rendered[0]?.text).not.toContain(`sha256 ${digest.slice(0, 16)}…`);
   });
 
   test("reports a created file inside the workspace, never by its absolute path", async () => {

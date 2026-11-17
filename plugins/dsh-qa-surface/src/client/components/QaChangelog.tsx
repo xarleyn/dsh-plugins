@@ -22,6 +22,18 @@ export interface QaChangelogEntry {
 
 export const QA_CHANGELOG: readonly QaChangelogEntry[] = [
   {
+    version: "0.23.2",
+    date: "2026-11-17",
+    sections: [
+      {
+        title: "Документы",
+        items: [
+          "Повторная выдача ранее созданного DOCX работает внутри составного запроса. Карточка исходного файла сохраняется вместе с ответом и новыми документами, остальные действия запроса выполняются полностью.",
+        ],
+      },
+    ],
+  },
+  {
     version: "0.23.1",
     date: "2026-11-17",
     sections: [

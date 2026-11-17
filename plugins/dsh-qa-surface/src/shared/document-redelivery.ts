@@ -46,6 +46,48 @@ export function requestedDocument(text: string): string | undefined {
   if (/^[^/\\<>:"`|?*\n]+\.docx$/u.test(name)) return name;
 }
 
+/** Select an explicit existing file for the answer without consuming any of
+ * the user's other instructions. Modification requests keep their new output. */
+export function requestedDocumentAttachment(text: string): string | undefined {
+  const standalone = requestedDocument(text);
+  if (standalone !== undefined) return standalone;
+  const request = normalize(text);
+  if (
+    /(?:^|[.;!?\n—–]\s*|(?:^|[^\p{L}\p{N}_])(?:and|then|и|затем|потом)\s+)(?:(?:please|пожалуйста)[,\s]+)?(?:edit|revise|update|modify|change|rewrite|regenerate|исправ\p{L}*|измен\p{L}*|обнов\p{L}*|добав\p{L}*|удал\p{L}*|поправ\p{L}*|отредактир\p{L}*|перепиш\p{L}*)(?=$|[^\p{L}\p{N}_])/u.test(
+      request,
+    ) ||
+    /\bwith changes\b|с изменениями/u.test(request)
+  )
+    return;
+  const names: string[] = [];
+  const verbs =
+    /(?:^|[.!?;\n—–]\s*|(?:^|[^\p{L}\p{N}_])(?:and|then|и|затем|потом)\s+)(?:(?:please|пожалуйста)[,\s]+)?(?:resend|redeliver|send|attach|пришли(?:те)?|отправь(?:те)?|перешли(?:те)?|скинь(?:те)?|прикрепи(?:те)?)[,\s]+(?=([^\n]+))/gu;
+  for (const match of request.matchAll(verbs)) {
+    const tail = match[1]!
+      .replace(
+        /^(?:(?:again|ещ[её]\s+раз|повторно|снова|мне|сюда|me)[,\s]+)*/u,
+        "",
+      )
+      .replace(
+        /^(?:(?:the\s+)?(?:existing|same|готовый|существующий|тот же)\s+)?(?:(?:file|document|файл|документ)\s+)?/u,
+        "",
+      )
+      .replace(
+        /^(?:by (?:its |the )?(?:full )?(?:exact )?name|по (?:полному )?(?:точному )?имени)\s*:\s*/u,
+        "",
+      );
+    const quoted =
+      /^(?:«([^»]+\.docx)»|"([^"]+\.docx)"|`([^`]+\.docx)`)(?=$|[\s,;.!?])/u.exec(
+        tail,
+      );
+    const bare = /^([^:;!?\n]+?\.docx)(?=$|[\s,;.!?])/u.exec(tail);
+    const name = quoted ? (quoted[1] ?? quoted[2] ?? quoted[3]) : bare?.[1];
+    if (name && /^[^/\\<>:"`|?*\n]+\.docx$/u.test(name))
+      names.push(name.trim());
+  }
+  return names.length === 1 ? names[0] : undefined;
+}
+
 /** Names in prose never introduce paths or hashes into a download. */
 export function deliveredDocuments(
   tool: string,

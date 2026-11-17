@@ -211,11 +211,20 @@ export type DomainExpertStatus =
   | "preview";
 
 /** Structured cross-domain answer (design §19). */
+export interface DocumentComparison {
+  readonly source: string;
+  readonly target: string;
+  readonly sourceQuote: string;
+  readonly targetQuote: string;
+  readonly explanation: string;
+}
+
 export interface DomainExpertResult {
   readonly domainId: string;
   readonly expert: string;
   readonly status: DomainExpertStatus;
   readonly summary: string;
+  readonly comparisons?: readonly DocumentComparison[];
   readonly findings: readonly DomainExpertFinding[];
   readonly conflicts: readonly string[];
   readonly assumptions: readonly string[];

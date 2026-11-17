@@ -16,6 +16,7 @@ declare module "@deepseek-ai/dsh-llm" {
       readonly rpcId: string;
       readonly requestText: string;
       readonly file: QaDocumentDelivery | null;
+      readonly compound?: true;
     };
   }
 }
@@ -27,6 +28,7 @@ export function recordDocumentDelivery(
   rpcId: string,
   requestText: string,
   file: QaDocumentDelivery | null,
+  compound = false,
 ) {
   const summary = file
     ? `Повторно прикреплён файл ${file.name}.`
@@ -42,6 +44,7 @@ export function recordDocumentDelivery(
         rpcId,
         requestText,
         file,
+        ...(compound ? { compound: true as const } : {}),
       },
     }),
     { surfaceOp: "append" },

@@ -400,6 +400,9 @@ async function executeExpert(
       expert: definition.name,
       status,
       summary: parsed.summary,
+      ...(parsed.comparisons === undefined
+        ? {}
+        : { comparisons: parsed.comparisons }),
       findings: parsed.findings,
       conflicts: parsed.conflicts,
       assumptions: parsed.assumptions,

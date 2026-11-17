@@ -70,12 +70,21 @@ export interface ReviewIssue {
 }
 
 /** Result of one completed review pass. */
+export interface DocumentComparison {
+  readonly source: string;
+  readonly target: string;
+  readonly sourceQuote: string;
+  readonly targetQuote: string;
+  readonly explanation: string;
+}
+
 export interface ReviewVerdict {
   /** Set by the backend from its native activation, never from model output. */
   readonly reviewerSessionId?: string;
   readonly verdict: "pass" | "revise";
   /** Reviewer's one-paragraph diagnosis. */
   readonly summary: string;
+  readonly comparisons?: readonly DocumentComparison[];
   readonly issues: readonly ReviewIssue[];
   readonly confidence: "low" | "medium" | "high";
 }
@@ -258,6 +267,7 @@ export interface ExpertRunOutcome {
 
 /** The part of a domain-expert run result the verdict derivation reads. */
 export interface ExpertRunResult {
+  readonly comparisons?: readonly DocumentComparison[];
   readonly childSessionId?: string;
   readonly status: string;
   /** False explicitly means the requested native result was not captured. */

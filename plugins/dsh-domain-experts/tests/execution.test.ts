@@ -149,6 +149,15 @@ describe("execution: composition handed to the runtime", () => {
   it("uses validated native capture rather than malformed prose for a structured review", async () => {
     const result = {
       summary: 'Verified the "quoted" requirement',
+      comparisons: [
+        {
+          source: "S1",
+          target: "D1",
+          sourceQuote: "The cutoff is thirty seconds",
+          targetQuote: "The cutoff remains thirty seconds",
+          explanation: "The limit is unchanged",
+        },
+      ],
       findings: [],
       conflicts: [],
       assumptions: [],
@@ -179,6 +188,23 @@ describe("execution: composition handed to the runtime", () => {
     expect(policy).toContain("confirmed user decisions only in summary");
     expect(outcome.structured).toBe(true);
     expect(outcome.summary).toBe(result.summary);
+    expect(outcome.comparisons).toEqual(result.comparisons);
+    expect(request.outputSchema).toMatchObject({
+      properties: {
+        comparisons: {
+          type: "array",
+          items: {
+            required: [
+              "source",
+              "target",
+              "sourceQuote",
+              "targetQuote",
+              "explanation",
+            ],
+          },
+        },
+      },
+    });
   });
 
   it("does not accept a prose PASS when structured capture was required", async () => {

@@ -76,6 +76,66 @@ function answerOf(messages: readonly QaMessage[]) {
 }
 
 describe("transcript artifacts", () => {
+  it("shows a durable compound transfer on a short cold page without duplicating the user prompt", () => {
+    const file = {
+      format: "docx",
+      name: "report.docx",
+      path: BUNDLE + "/report.docx",
+      sha256Prefix: "9f2c1d0a4b5e6f70",
+    };
+    const nodes = [
+      {
+        kind: "user",
+        seq: 20,
+        time: 20,
+        source: { qaDeliveryReply: true, qaDocumentDelivery: file },
+        content: [],
+      },
+    ] as ConversationNode[];
+    const rows = projectTranscript(snapshot(legacy({ nodes })));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ role: "assistant", artifacts: [file] });
+  });
+  it("redelivers an exact previous DOCX in a compound request and keeps the new output", () => {
+    const original = created("Original report.", CREATED);
+    const newOutput = created(
+      "Additional summary.",
+      CREATED.replaceAll("report.docx", "summary.docx"),
+    );
+    const nodes = [
+      ...original,
+      {
+        ...original[0],
+        seq: 5,
+        content: [
+          { type: "text", text: "send report.docx and create summary.docx" },
+        ],
+      },
+      {
+        ...newOutput[1],
+        seq: 6,
+        turn: 2,
+        blocks: [
+          {
+            kind: "tool-call",
+            callId: "new-summary",
+            name: "document_create",
+            argsRaw: "{}",
+          },
+        ],
+      },
+      { ...newOutput[2], seq: 7, callId: "new-summary" },
+      { ...newOutput[3], seq: 8, turn: 2 },
+    ] as ConversationNode[];
+    const last = projectTranscript(snapshot(legacy({ nodes })))
+      .filter((m) => m.role === "assistant")
+      .at(-1);
+    expect(last?.text).toContain("Additional summary");
+    expect(last?.artifacts?.map((f) => f.name)).toEqual([
+      "report.docx",
+      "summary.docx",
+    ]);
+  });
   it.each([
     ["Исправь документ и пришли исправленную версию", true],
     ["Пришли report.docx ещё раз", false],

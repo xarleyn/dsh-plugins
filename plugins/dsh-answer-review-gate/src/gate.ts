@@ -474,7 +474,11 @@ export class AnswerReviewGate {
             };
           }
           if (decision.verdict === "pass")
-            await evidence.verify(decision.summary, decision.reviewerSessionId);
+            await evidence.verify(
+              decision.summary,
+              decision.reviewerSessionId,
+              decision.comparisons,
+            );
           await evidence.verifyOriginals(round.signal);
           round.signal.throwIfAborted();
           state.documentSubjects = evidence.subjects;
