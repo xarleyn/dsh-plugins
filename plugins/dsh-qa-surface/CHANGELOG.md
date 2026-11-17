@@ -1,3 +1,13 @@
+## 0.23.1 (2026-11-17)
+
+### 🩹 Fixes
+
+- Persist answer strategies as native plugin records and repair legacy mode metadata for portable history reads. ([ceb8893e](https://github.com/xarleyn/dsh-plugins/commit/ceb8893e))
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.23.0 (2026-11-16)
 
 ### 🚀 Features
