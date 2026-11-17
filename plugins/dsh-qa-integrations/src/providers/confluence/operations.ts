@@ -752,12 +752,12 @@ export const CONFLUENCE_PROJECTIONS: Readonly<
       start + items.length < totalSize
         ? String(start + items.length)
         : undefined;
-    return {
+    return compact({
       source: confluenceSource(context.instance),
       items,
       nextCursor,
       totalSize,
-    };
+    });
   },
 
   "spaces.list": (data, context) => ({

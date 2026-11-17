@@ -24,6 +24,8 @@ export const REVIEWER_READ_ONLY_TOOLS: readonly string[] = Object.freeze([
   "grep",
   "docs_read",
   "docs_search",
+  "document_inspect",
+  "document_to_markdown",
 ]);
 
 /**

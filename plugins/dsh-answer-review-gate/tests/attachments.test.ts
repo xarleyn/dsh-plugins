@@ -269,6 +269,11 @@ describe("reviewer sees uploaded attachments", () => {
       // The added protocol line, in both shipped prompt renderers.
       expect(prompt).toContain("cannot open");
       expect(prompt).toContain("could not verify");
+      expect(prompt).toContain("document_inspect or document_to_markdown");
+      expect(prompt).toContain("Do not send binary attachments to code_read");
+      expect(prompt).toContain(
+        "a project-specific requirement does not need to appear in the product manual",
+      );
     }
   });
 

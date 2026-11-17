@@ -19,7 +19,12 @@ const REVIEW_CATEGORIES =
  * never evidence about the primary agent's capabilities.
  */
 const ATTACHMENT_PROTOCOL =
-  "The user request may carry attachments. Inspect the supplied native image blocks when available; " +
+  "The user request may carry attachments. For Office and PDF attachments, use document_inspect or " +
+  "document_to_markdown on the supplied absolute file path, then read the returned text. " +
+  "Do not send binary attachments to code_read or the plain text reader. " +
+  "Check requirements, deadlines and terminology against the user's supplied documents before product documentation: " +
+  "a project-specific requirement does not need to appear in the product manual. " +
+  "Inspect the supplied native image blocks when available; " +
   "image handles are metadata, not a declaration that this model accepts text only. If the Host omits an image " +
   "or you cannot open a file, report that specific verification gap. Never infer that the primary agent cannot " +
   "see images from your own access limits or ask it to deny having read an image on that basis. Their contents are not missing " +
