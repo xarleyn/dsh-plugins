@@ -136,12 +136,18 @@ by name.
 
 | Tool | Arguments | Returns |
 | --- | --- | --- |
-| `dsh_lightrag_query` | `question` (required), `mode`, `topK`, `withContent` | Answer text (bounded), `referenceCount`, `llmGenerated`, `truncated`, and one entry per cited source: `referenceId`, `filePath`, `content` (chunk text when `withContent` is true). |
+| `dsh_lightrag_query` | `question` (required), `mode`, `topK`, `withContent` | Answer text (bounded), `referenceCount`, `llmGenerated`, `retrievalStatus`, `truncated`, and one entry per cited source: `referenceId`, `filePath`, `content` (chunk text when `withContent` is true). |
 | `dsh_lightrag_documents` | `status`, `limit` | One entry per document: `id`, `filePath`, `status`, `chunksCount`, `contentLength`, `updatedAt`, `errorMessage`; plus `count`, `totalCount`, `truncated` and `statusCounts` for the whole knowledge base. |
 | `dsh_lightrag_status` | — | `status`, `coreVersion`, `apiVersion`, `authMode`, `pipelineBusy`, `statusCounts`. |
 | `dsh_lightrag_insert` | `text` (required), `source` | `trackId`, `status`, `message`. Ingestion is asynchronous. |
 | `dsh_lightrag_scan` | — | `trackId`, `status`, `message`. |
 | `dsh_lightrag_delete` | `documentId` (required) | `status`, `message`, `docId`. |
+
+`retrievalStatus` distinguishes `sources-found`, `no-sources`, `no-context` and
+`bypassed`. It describes available evidence, not relevance or correctness.
+Assess the answer and cited chunks against the question; use a supported answer
+directly and retry retrieval for material gaps. `llmGenerated` alone does not
+prove that retrieval found evidence.
 
 ## Compatibility
 

@@ -2,12 +2,42 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { freePort, rpc, run, stopProcess, waitFor } from "./smoke-helpers.mjs";
 
 const YES = "Да, провести глубокий поиск";
 const NO = "Нет, ответить по найденному";
+
+/** Install the packed review/retrieval collaborators into this disposable Host. */
+export async function installAnswerModePlugins({
+  repo,
+  root,
+  dshBin,
+  dshEnv,
+  workspacePath,
+}) {
+  for (const name of [
+    "dsh-answer-review-gate",
+    "dsh-lightrag",
+    "dsh-domain-experts",
+  ]) {
+    const packed = join(root, name);
+    await mkdir(packed);
+    await run("pnpm", ["pack", "--pack-destination", packed], {
+      cwd: join(repo, "..", name),
+    });
+    const [tarball] = await readdir(packed);
+    await run(
+      process.execPath,
+      [dshBin, "plugin", "--profile", "web", "add", join(packed, tarball)],
+      {
+        cwd: workspacePath,
+        env: dshEnv,
+      },
+    );
+  }
+}
 
 /** Packed Host, native tool guard and actual QA question RPC; scripted local LLM. */
 export async function runAnswerModesPass(options) {
@@ -16,11 +46,17 @@ export async function runAnswerModesPass(options) {
     dshEnv,
     root,
     workspacePath,
+    workspaceId,
     launchToken,
     authenticateBrowser,
     hostLog,
     dshVersion,
   } = options;
+  assert.equal(
+    typeof workspaceId,
+    "string",
+    "The fixture needs a registered workspace identity",
+  );
   await run(
     process.execPath,
     [
@@ -46,22 +82,154 @@ export async function runAnswerModesPass(options) {
     { cwd: workspacePath, env: dshEnv },
   );
   const phases = new Map();
+  const expertReview =
+    process.env.DSH_QA_RAG_REVIEW_BACKEND === "domain-expert";
+  if (expertReview) {
+    // Every Host using this disposable home is stopped at this boundary. Seed
+    // the deployment record before boot: native operator RPCs are correctly
+    // unavailable through the account-only browser connection.
+    const { emptyDomainDraft } =
+      await import("../../dsh-domain-experts/lib/types.js");
+    const draft = emptyDomainDraft("demo-answer-reviewer", Date.now());
+    const definition = {
+      ...draft,
+      enabled: true,
+      name: "Demo answer reviewer",
+      description: "Review the synthetic answer.",
+      tools: { allow: ["qa_list_subagent_models"], deny: [] },
+      model: {
+        ...draft.model,
+        inherit: false,
+        provider: "qa-modes-demo",
+        model: "review-demo",
+      },
+    };
+    const storage = join(dshEnv.DSH_HOME, "storages");
+    await mkdir(storage, { recursive: true });
+    await writeFile(
+      join(storage, "domain_experts.json"),
+      JSON.stringify({
+        unit: { name: "domain_experts", version: 1 },
+        global: {},
+        tables: { domains: { [definition.id]: definition }, memory: {} },
+      }) + "\n",
+    );
+  }
   const completed = new Set();
   const failures = [];
+  const reviews = new Set();
+  let ragQueries = 0;
   const server = createServer(async (request, response) => {
     try {
       const chunks = [];
       for await (const chunk of request) chunks.push(chunk);
       const body = JSON.parse(Buffer.concat(chunks).toString());
+      if (request.url === "/query") {
+        assert.equal(body.mode, "hybrid");
+        assert.equal(body.include_chunk_content, true);
+        ragQueries += 1;
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(
+          JSON.stringify({
+            response:
+              "The demo system provides Overview and Reports dashboards.",
+            llm_generated: true,
+            references: [
+              {
+                reference_id: "1",
+                file_path: "docs/dashboards.md",
+                content: [
+                  "The demo system provides Overview and Reports dashboards.",
+                ],
+              },
+            ],
+          }),
+        );
+        return;
+      }
       const serialized = JSON.stringify(body.messages);
       const scenarios = [
-        ...serialized.matchAll(/MODE_(ALLOW|DENY|SKIP|AFTER|DEEP)_DEMO/gu),
+        ...serialized.matchAll(
+          /MODE_(ALLOW|DENY|SKIP|AFTER|DEEP|EVIDENCE)_DEMO/gu,
+        ),
       ];
       const scenario = scenarios.at(-1)?.[1];
       const phase = phases.get(scenario) ?? 0;
       let text = "Demo research";
       let tool;
-      if (
+      if (body.model === "review-demo") {
+        const key = `review-${scenario}`;
+        const reviewPhase = phases.get(key) ?? 0;
+        if (reviewPhase === 0) {
+          if (scenario === "EVIDENCE") {
+            assert.ok(
+              serialized.includes(
+                "independent answer reviewer for a RAG Priority request",
+              ),
+            );
+            assert.ok(!serialized.includes("RAG Priority is active"));
+          }
+          tool = { name: "qa_list_subagent_models", arguments: {} };
+        } else {
+          const last =
+            body.messages.filter((message) => message.role === "tool").at(-1)
+              ?.content ?? "";
+          assert.match(last, /models/u);
+          assert.ok(!last.includes("RAG Priority is active"));
+          assert.equal(
+            reviewPhase,
+            1,
+            "The review must finish after structured output",
+          );
+          tool = {
+            name: "structured_output",
+            arguments: expertReview
+              ? {
+                  summary: "Claims match the supplied evidence.",
+                  findings: [],
+                  conflicts: [],
+                  assumptions: [],
+                  followUps: [],
+                }
+              : {
+                  verdict: "pass",
+                  summary: "Claims match the supplied evidence.",
+                  issues: [],
+                  confidence: "high",
+                },
+          };
+          reviews.add(scenario);
+        }
+        phases.set(key, reviewPhase + 1);
+      } else if (scenario === "EVIDENCE") {
+        const last =
+          body.messages.filter((message) => message.role === "tool").at(-1)
+            ?.content ?? "";
+        if (phase === 0) {
+          assert.ok(serialized.includes("not used a second retrieval mode"));
+          tool = { name: "skill", arguments: { name: "demo-glossary" } };
+        } else if (phase === 1) {
+          assert.match(last, /Demo glossary loaded/u);
+          tool = {
+            name: "dsh_lightrag_query",
+            arguments: {
+              question: "Which dashboards does the demo system provide?",
+              mode: "hybrid",
+              withContent: true,
+            },
+          };
+        } else if (phase === 2) {
+          assert.match(last, /Retrieval evidence: sources-found/u);
+          assert.match(last, /Overview and Reports/u);
+          tool = { name: "qa_list_subagent_models", arguments: {} };
+        } else {
+          assert.match(last, /RAG Priority is active/u);
+          text =
+            "MODE_EVIDENCE_DEMO: Overview and Reports dashboards are available [docs/dashboards.md].";
+          completed.add(scenario);
+        }
+        phases.set(scenario, phase + 1);
+      } else if (
         scenario &&
         body.tools?.some(
           (entry) => entry.function.name === "qa_list_subagent_models",
@@ -167,6 +335,12 @@ export async function runAnswerModesPass(options) {
   const port = await freePort();
   const origin = `http://127.0.0.1:${port}`;
   const patch = join(root, "answer-modes.patch.yml");
+  const seedRoot = join(root, "rag-skills");
+  await mkdir(join(seedRoot, "demo-glossary"), { recursive: true });
+  await writeFile(
+    join(seedRoot, "demo-glossary", "SKILL.md"),
+    "---\nname: demo-glossary\ndescription: Synthetic dashboard terminology.\nmetadata:\n  qa-surface:\n    version: 1\n    audience:\n      type: common\n---\n\nDemo glossary loaded. Use the retrieved source names in your answer.\n",
+  );
   await writeFile(
     patch,
     `- id: dsh-qa-surface
@@ -174,7 +348,14 @@ export async function runAnswerModesPass(options) {
     accounts:
       enabled: true
       allowRegistration: true
+      perUserWorkspace: true
+      skills:
+        enabled: true
+        sharedSeed:
+          root: ${JSON.stringify(seedRoot.replaceAll("\\", "/"))}
+          names: [demo-glossary]
     session:
+      workspaceId: ${workspaceId}
       agentPreset: standard
       provider: qa-modes-demo
       model: mode-demo
@@ -183,6 +364,16 @@ export async function runAnswerModesPass(options) {
     tools:
       dynamicActivation: false
       activationPresets: []
+    lockdown:
+      sandboxMode: workspace-write
+      permissionPreset: qa-workspace-write
+- id: permission
+  config:
+    defaultPreset: qa-workspace-write
+    presets:
+      qa-workspace-write:
+        sandbox: workspace-write
+        approval: never
 - id: llm-pi-ai
   config:
     providers:
@@ -194,6 +385,20 @@ export async function runAnswerModesPass(options) {
         models:
           - id: mode-demo
             name: Mode demo
+          - id: review-demo
+            name: Review demo
+- id: dsh-lightrag
+  config:
+    endpoint: http://127.0.0.1:${server.address().port}
+- id: dsh-answer-review-gate
+  config:
+    failMode: closed
+    reviewer:
+      backend: ${expertReview ? "domain-expert" : "subagent"}
+      domain: demo-answer-reviewer
+      provider: spawn
+      route: qa-modes-demo
+      model: review-demo
 `,
   );
   let host;
@@ -215,11 +420,14 @@ export async function runAnswerModesPass(options) {
     const cookie = await authenticateBrowser(port, `127.0.0.1:${port}`, launch);
     const remote = (name, args) =>
       rpc(origin, `qaSurface/${name}`, { args }, cookie);
-    const admin = await remote("accountsRegister", {
+    const accountMethod = options.reuseAccounts
+      ? "accountsLogin"
+      : "accountsRegister";
+    const admin = await remote(accountMethod, {
       email: "modes-admin@example.test",
       password: "demo-password-admin",
     });
-    const user = await remote("accountsRegister", {
+    const user = await remote(accountMethod, {
       email: "modes-user@example.test",
       password: "demo-password-user",
     });
@@ -237,9 +445,15 @@ export async function runAnswerModesPass(options) {
         ...general,
         capabilities: {
           ...general.capabilities,
+          skills: ["demo-glossary"],
           tools: {
             ...general.capabilities.tools,
-            always: ["ask_user_question", "qa_list_subagent_models"],
+            always: [
+              "ask_user_question",
+              "qa_list_subagent_models",
+              "skill",
+              "dsh_lightrag_query",
+            ],
           },
         },
       },
@@ -275,7 +489,14 @@ export async function runAnswerModesPass(options) {
       modes: ["fast", "rag"],
     });
     assert.equal(refused.kind, "refused");
-    for (const scenario of ["ALLOW", "AFTER", "DENY", "SKIP", "DEEP"]) {
+    for (const scenario of [
+      "ALLOW",
+      "AFTER",
+      "DENY",
+      "SKIP",
+      "DEEP",
+      "EVIDENCE",
+    ]) {
       const requestId = randomUUID();
       await remote("prepareAnswerModes", {
         token: user.token,
@@ -292,7 +513,7 @@ export async function runAnswerModesPass(options) {
           content: [{ type: "text", text: `MODE_${scenario}_DEMO` }],
         },
       });
-      if (scenario !== "DEEP") {
+      if (scenario !== "DEEP" && scenario !== "EVIDENCE") {
         const pending = await waitFor(async () => {
           if (failures.length) return { fixtureError: failures[0].message };
           return (
@@ -331,8 +552,22 @@ export async function runAnswerModesPass(options) {
       );
     }
     assert.equal(failures.length, 0, failures[0]?.message);
+    assert.equal(ragQueries, 1, "A supported answer needs only one retrieval");
+    assert.ok(
+      reviews.has("EVIDENCE"),
+      "The RAG-backed answer must pass independent review",
+    );
+    const page = await remote("chatPage", {
+      token: user.token,
+      request: { address: { kind: "session", sessionId }, maxMessages: 100 },
+    });
+    assert.match(
+      JSON.stringify(page),
+      /"status":"pass"/u,
+      "The Host must publish a successful review receipt",
+    );
     console.log(
-      "packed QA answer modes: request metadata, authenticated preparation, blocked deep tools, canonical consent, allow/deny/skip, next-turn consent expiry and default deep tools passed",
+      `packed QA answer modes: request metadata, consent allow/deny/skip, expiry, skill loading, one supported RAG retrieval, restricted primary tools and independent ${expertReview ? "domain-expert" : "subagent"} reviewer tools/structured output passed`,
     );
   } catch (error) {
     hostLog.push(...log);

@@ -80,6 +80,12 @@ User → primary agent → research / tools / background subagents
 - The reviewer itself is exempt: it runs as a subagent child and subagents are
   never gated, so the reviewer cannot recursively review itself.
 
+With a QA surface that supports review scoping, an automatic review also keeps
+its permitted verification tools when the primary request uses RAG Priority.
+The Host marks the reviewer only during that exact review call; this does not
+grant deep-search consent to the primary agent or to ordinary delegated agents.
+The reviewer's own tool policy and the deployment's permissions still apply.
+
 ## Explicit one-request waiver
 
 When deployment policy permits it, a user can send one request without the

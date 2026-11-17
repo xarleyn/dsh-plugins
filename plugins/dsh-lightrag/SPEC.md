@@ -181,7 +181,7 @@ clamped in the resolver (the `dsh-git-readonly/src/config.ts` pattern: schema +
 
 | Tool | Arguments | Returns |
 | --- | --- | --- |
-| `dsh_lightrag_query` | `question` (required), `mode` (optional, overrides the default), `topK` (optional), `withContent` (optional boolean → `include_chunk_content`) | answer text (bounded), reference list of `{file_path, reference_id}` and, when asked, content chunks; `referenceCount`, `truncated` |
+| `dsh_lightrag_query` | `question` (required), `mode` (optional, overrides the default), `topK` (optional), `withContent` (optional boolean → `include_chunk_content`) | answer text (bounded), reference list of `{file_path, reference_id}` and, when asked, content chunks; `referenceCount`, `llmGenerated`, `retrievalStatus`, `truncated` |
 | `dsh_lightrag_documents` | `status` (optional filter), `limit` (optional) | documents with `id`, `file_path`, `status`, `chunks_count`, `content_length`, `updated_at`, `error_msg`; plus `totalCount`, `statusCounts`, `truncated` |
 | `dsh_lightrag_status` | — | `status`, `coreVersion`, `apiVersion`, `authMode`, `pipelineBusy`, `statusCounts` |
 | `dsh_lightrag_insert` (writes) | `text` (required), `source` (optional `file_source`) | `track_id`, `status`, `message` |
@@ -374,3 +374,7 @@ the built plugin's own tool definitions:
   `llmGenerated`, because the server's canned "no relevant context" reply is
   otherwise indistinguishable from an answer the model ignored the context for.
   It is the API's own flag (`llm_generated`, default true), not an inference.
+  `retrievalStatus` separately reports `sources-found`, `no-sources`,
+  `no-context` (empty answer or the server's canned result), or `bypassed`.
+  This classifies source availability only; relevance and coverage remain the
+  caller's judgement against the question and the returned evidence.

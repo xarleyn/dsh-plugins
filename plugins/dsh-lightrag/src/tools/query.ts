@@ -37,6 +37,9 @@ export interface LightRagQueryResult {
    * — typically the canned "no relevant context" reply.
    */
   readonly llmGenerated: boolean;
+  /** Retrieval evidence availability, not a score of relevance or correctness. */
+  readonly retrievalStatus:
+    "sources-found" | "no-sources" | "no-context" | "bypassed";
   /** Array mutability follows the output schema's inferred type. */
   readonly references: LightRagQueryReference[];
 }
@@ -48,7 +51,7 @@ export function createLightRagQueryTool(deps: LightRagToolDeps) {
     description: [
       "Answer a question from this deployment's LightRAG knowledge base and return the source documents the answer was built from.",
       "Use it to find what the indexed corpus says about a topic; the knowledge base is a graph-RAG index, so a question phrased in words rather than file names works.",
-      "Returns the generated answer, the reference list (file paths, and chunk contents when withContent is true) and whether the answer was truncated.",
+      "Returns the generated answer, the reference list (file paths, and chunk contents when withContent is true), retrievalStatus and whether the answer was truncated. sources-found means retrieval returned sources, not that every claim is proven; judge relevance and coverage against the question. A substantive answer supported by relevant sources can be used directly; retry retrieval for concrete gaps rather than rejecting a useful result merely because other tools are unavailable.",
       "Retrieval mode defaults to the deployment's configured mode; local, global, hybrid and naive trade graph structure against plain vector search, mix uses both, and bypass skips retrieval entirely and answers from the model alone.",
       `Read-only. ${SERVICE_NOTE} ${UNTRUSTED_NOTE}`,
     ].join(" "),
@@ -102,6 +105,13 @@ export function createLightRagQueryTool(deps: LightRagToolDeps) {
             description:
               "False when the server returned canned text without calling its model — usually 'no relevant context'.",
           },
+          retrievalStatus: {
+            type: "string",
+            required: true,
+            enum: ["sources-found", "no-sources", "no-context", "bypassed"],
+            description:
+              "Whether retrieval returned sources, no sources, no answer/context, or was bypassed. Source availability only; assess relevance, coverage and contradictions yourself.",
+          },
           references: {
             type: "array",
             required: true,
@@ -134,6 +144,7 @@ export function createLightRagQueryTool(deps: LightRagToolDeps) {
           text: [
             value.answer,
             "",
+            `Retrieval evidence: ${value.retrievalStatus}. Assess relevance and coverage against the question; this is not a confidence score.`,
             `${value.referenceCount} reference(s)${
               value.truncated ? " — answer truncated at the byte cap" : ""
             }${value.llmGenerated ? "" : " — not generated from the index"}`,
@@ -169,6 +180,18 @@ export function createLightRagQueryTool(deps: LightRagToolDeps) {
         truncated: bounded.truncated,
         referenceCount: answer.references.length,
         llmGenerated: answer.llmGenerated ?? true,
+        retrievalStatus:
+          mode === "bypass"
+            ? "bypassed"
+            : answer.llmGenerated === false || answer.answer.trim() === ""
+              ? "no-context"
+              : answer.references.some(
+                    (reference) =>
+                      reference.filePath.trim() !== "" ||
+                      reference.content.some((chunk) => chunk.trim() !== ""),
+                  )
+                ? "sources-found"
+                : "no-sources",
         references: answer.references.map((reference) => ({
           referenceId: reference.referenceId,
           filePath: reference.filePath,

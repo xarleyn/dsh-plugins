@@ -3058,6 +3058,15 @@ export class QaSurface extends TypertRemoteService {
     return this.answerModes.withCommand(sessionId, modes, execute);
   }
 
+  /** Trusted server-side review scope; intentionally absent from the RPC API. */
+  withAnswerReview<T>(
+    sessionId: string,
+    signal: AbortSignal,
+    run: () => Promise<T>,
+  ): Promise<T> {
+    return this.answerModes.withAnswerReview(sessionId, signal, run);
+  }
+
   @Remote("prepareAnswerModes")
   async prepareAnswerModes(
     token: string,

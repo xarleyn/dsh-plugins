@@ -173,6 +173,9 @@ function fixture() {
     },
     guard: (name: string, args: unknown = {}, current = agent) =>
       guard({ name, arguments: args, agent: current }),
+    created(current: Agent) {
+      fake.handler("agent/created")({ agent: current });
+    },
     emitInbox(messages: UserMessage[]) {
       const event = {
         type: "agent/inbox/spliced",
@@ -189,6 +192,88 @@ function fixture() {
 }
 
 describe("answer modes host policy", () => {
+  it("loads skills without authorizing their non-RAG research instructions", async () => {
+    const f = fixture();
+    f.policy.prepare("root", "request", ["rag"]);
+    const decision = await f.step(1, [f.message("request")]);
+    expect(f.guard("skill", { name: "demo-glossary" })).toBeUndefined();
+    expect(
+      f.guard("skill", { name: "demo-glossary" }, f.child),
+    ).toBeUndefined();
+    for (const name of ["docs_search", "code_search", "domain_expert", "read"])
+      expect(f.guard(name)).toBe(QA_RAG_BLOCKED);
+    const note = JSON.stringify(decision);
+    expect(note).toContain("relevant, substantive answer supported by sources");
+    expect(note).toContain("concrete remaining gap");
+    expect(note).toContain("not used a second retrieval mode");
+    f.dispose();
+  });
+
+  it("exempts only the Host-created reviewer during the exact review call", async () => {
+    const f = fixture();
+    f.policy.prepare("root", "request", ["rag"]);
+    await f.step(1, [f.message("request")]);
+    // A child with a reviewer-looking prompt/label, created outside the trusted
+    // call, has the same restrictions as every ordinary delegated agent.
+    const ordinary = {
+      id: "ordinary",
+      session: {
+        id: "ordinary",
+        header: {
+          origin: "subagent",
+          parentSession: "root",
+          label: "answer-review",
+        },
+      },
+    } as unknown as Agent;
+    f.created(ordinary);
+    await f.policy.withAnswerReview(
+      "root",
+      new AbortController().signal,
+      async () => {
+        f.created(f.child);
+        for (const name of [
+          "read",
+          "docs_search",
+          "code_search",
+          "structured_output",
+        ])
+          expect(f.guard(name, {}, f.child)).toBeUndefined();
+        expect(f.guard("docs_search")).toBe(QA_RAG_BLOCKED);
+        expect(f.guard("docs_search", {}, ordinary)).toBe(QA_RAG_BLOCKED);
+        const decision = await f.step(1, [], f.child);
+        expect(JSON.stringify(decision)).toContain(
+          "independent answer reviewer",
+        );
+        expect(JSON.stringify(decision)).not.toContain(QA_RAG_BLOCKED);
+      },
+    );
+    expect(f.guard("docs_search", {}, f.child)).toBe(QA_RAG_BLOCKED);
+    expect(f.guard("docs_search")).toBe(QA_RAG_BLOCKED);
+    f.dispose();
+  });
+
+  it("revokes reviewer access on cancellation and does not exempt another chat's child", async () => {
+    const f = fixture();
+    f.policy.prepare("root", "request", ["rag"]);
+    await f.step(1, [f.message("request")]);
+    const controller = new AbortController();
+    await expect(
+      f.policy.withAnswerReview("another-root", controller.signal, async () => {
+        f.created(f.child);
+        expect(f.guard("read", {}, f.child)).toBe(QA_RAG_BLOCKED);
+        throw new Error("review failed");
+      }),
+    ).rejects.toThrow("review failed");
+    await f.policy.withAnswerReview("root", controller.signal, async () => {
+      f.created(f.child);
+      expect(f.guard("read", {}, f.child)).toBeUndefined();
+      controller.abort();
+      expect(f.guard("read", {}, f.child)).toBe(QA_RAG_BLOCKED);
+    });
+    f.dispose();
+  });
+
   it.each([false, true])(
     "does not apply an orphaned intent to later unprepared input (inserted before recovery: %s)",
     async (beforeRecovery) => {

@@ -20,6 +20,27 @@ interface QaModelPolicySurface {
   modelPolicyForSession?(sessionId: string): QaModelPolicyPair | undefined;
 }
 
+interface QaReviewSurface {
+  withAnswerReview?<T>(
+    sessionId: string,
+    signal: AbortSignal,
+    run: () => Promise<T>,
+  ): Promise<T>;
+}
+
+/** Keep automatic verification independent from the primary's research mode. */
+export function withQaAnswerReview<T>(
+  surface: unknown,
+  sessionId: string,
+  signal: AbortSignal,
+  run: () => Promise<T>,
+): Promise<T> {
+  const candidate = surface as QaReviewSurface | null | undefined;
+  return typeof candidate?.withAnswerReview === "function"
+    ? candidate.withAnswerReview(sessionId, signal, run)
+    : run();
+}
+
 /**
  * The pair the QA policy fixes for one chat, or `undefined`.
  *
