@@ -42,6 +42,9 @@ await runVerifyPackage({
   files: ["lib", "README.md", "LICENSE"],
   requiredFiles: ["README.md", "LICENSE"],
   extra: async ({ readFile }) => {
+    const root = await import("../lib/index.js");
+    assert.equal(typeof root.guardReviewDelegation, "function");
+    assert.equal(typeof root.REVIEW_DELEGATION_DENIED, "string");
     const sources = await import("../lib/code-sources.js");
     const catalog = sources.resolveCodeSources({
       entries: [

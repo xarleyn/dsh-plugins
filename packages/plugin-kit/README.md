@@ -31,6 +31,9 @@ bundle, which keeps published browser bundles self-contained.
   `isForegroundReviewAgent(agent)` lets an expert tool normalize its background
   option before selecting the execution branch. Ordinary agents keep their
   existing delivery policy. This subpath requires Node and is not browser code.
+- The deprecated `guardReviewDelegation`, `REVIEW_DELEGATION_DENIED` and
+  `ReviewToolRegistry` root exports remain available for older consumers.
+  Current reviewer plugins use `./review-foreground` and allow delegation.
 - `./http` subpath for host request lifetimes: `createRequestDeadline` combines
   the caller's cancellation with a timeout; always dispose it in `finally`.
   `withinDeadline` also bounds work that ignores cancellation.
