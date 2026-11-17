@@ -5,7 +5,7 @@ final answer is allowed to complete its turn, an independent reviewer checks it
 and can send it back for correction. The review is a **lifecycle requirement**
 enforced at the turn boundary — not a line in the system prompt.
 
-Document reviewers can return comparison witnesses in native structured
+Document reviewers must return comparison witnesses in native structured
 `comparisons` fields: exact evidence keys, verbatim source and deliverable
 passages, and an explanation. Each required pair is checked against the
 original fingerprints and that reviewer's successful read windows. Summary
@@ -13,6 +13,14 @@ formatting cannot replace these checks. Domain Experts 0.6.1 and later carries
 this field through native capture; older backends retain the witnessed CHECK
 summary format. An unread file, invented quotation or missing pair still fails
 closed.
+
+Native review capture requires a `comparisons` array (`[]` when no document
+pairs were requested). Each quotation is one contiguous passage copied from
+the read file, including Markdown table pipes. A missing or altered witness is
+returned to the reviewer against the unchanged candidate, without asking its
+author to repair reviewer evidence. Every corrective activation consumes the
+existing `maxReviewRounds` budget, shares the original deadline and fingerprints,
+and must perform its own reads. Exhaustion still fails closed.
 
 ## What it does
 
@@ -36,7 +44,8 @@ User → primary agent → research / tools / background subagents
 - A review PASS applies to the exact candidate content (SHA-256 over the
   normalized text). Any later edit invalidates the PASS and the new candidate
   is reviewed again; the receipt follows the user request, so an unchanged
-  candidate is never reviewed twice.
+  passed candidate is never reviewed twice. Reviewer protocol correction may
+  recheck a candidate that has not yet passed.
 - Review rounds are bounded per user turn (`maxReviewRounds`, default 3). The
   budget belongs to the user request the candidate answers — the agent turns
   and revisions that request takes share one budget, and no agent turn hands

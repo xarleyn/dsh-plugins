@@ -5,7 +5,7 @@ export const EXPERT_REVIEW_OUTPUT_SCHEMA = {
     comparisons: {
       type: "array" as const,
       description:
-        "When document review requests evidence pairs, provide one entry per required pair. Copy substantive verbatim passages from the source and target you personally read; do not paraphrase. Summary prose does not replace these witnesses.",
+        "Required array; use [] only when no document evidence pairs were requested. Otherwise provide one entry per required pair. Copy one contiguous verbatim passage from each exact file you personally read, including Markdown table pipes; never reconstruct or combine abbreviated rows. Summary prose does not replace these witnesses.",
       items: {
         type: "object" as const,
         properties: {
@@ -75,6 +75,13 @@ export const EXPERT_REVIEW_OUTPUT_SCHEMA = {
       items: { type: "string" as const },
     },
   },
-  required: ["summary", "findings", "conflicts", "assumptions", "followUps"],
+  required: [
+    "summary",
+    "comparisons",
+    "findings",
+    "conflicts",
+    "assumptions",
+    "followUps",
+  ],
   additionalProperties: false,
 };

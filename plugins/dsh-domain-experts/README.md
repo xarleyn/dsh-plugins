@@ -4,11 +4,13 @@ Give a part of your product its own expert agent: one persona, one scope, one
 memory namespace, one tool policy — configured in the DSH Web UI and executed
 as an ordinary DeepSeek Harness subagent.
 
-Native structured review output can carry a `comparisons` array independently
+Native structured review output requires a `comparisons` array independently
 of its prose summary. Each document witness names its `source` and `target`
 evidence keys, verbatim `sourceQuote` and `targetQuote` passages, and an
 `explanation`. Consumers must validate these model-supplied witnesses against
 the exact files and this reviewer's reads before approving a document.
+Use `[]` when no document pairs were requested. Quotes must preserve a contiguous
+passage, including Markdown pipes; abbreviated rows are not verbatim evidence.
 
 ```text
 Main agent

@@ -13,7 +13,11 @@ afterEach(() => {
   for (const dispose of close.splice(0)) dispose();
   vi.useRealTimers();
 });
-function fixture(session?: unknown) {
+function fixture(
+  session?: unknown,
+  verifyDelivery?: ConstructorParameters<typeof QaChatTransport>[4],
+  resumeForDelivery?: ConstructorParameters<typeof QaChatTransport>[5],
+) {
   const f = sharingFixture();
   close.push(() => f.store.storage.close());
   const native = {
@@ -86,6 +90,9 @@ function fixture(session?: unknown) {
     } as unknown as Context,
     () => f.store,
     admit,
+    undefined,
+    verifyDelivery,
+    resumeForDelivery,
   );
   return { ...f, native, admit, agents, transport };
 }
@@ -188,11 +195,22 @@ describe("authenticated QA chat transport", () => {
     expect(f.native.prompt).not.toHaveBeenCalled();
   });
   it.each([
-    "send report.docx; state its SHA-256 and summarize the result",
-    "QA DOCS: Пришли ещё раз существующий файл report.docx по полному имени. Не изменяй его. Укажи SHA-256 и вычисли 17 × 23.",
+    {
+      mode: "warm",
+      text: "send report.docx; state its SHA-256 and summarize the result",
+    },
+    {
+      mode: "warm",
+      text: "QA DOCS: Пришли ещё раз существующий файл report.docx по полному имени. Не изменяй его. Укажи SHA-256 и вычисли 17 × 23.",
+    },
+    {
+      mode: "cold",
+      text: "QA DOCS: Пришли ещё раз существующий файл report.docx по полному имени. Не изменяй его. Укажи SHA-256 и вычисли 17 × 23.",
+    },
+    { mode: "stale", text: "send report.docx; state its SHA-256" },
   ])(
-    "durably attaches a compound resend once while forwarding: %s",
-    async (text) => {
+    "durably attaches a $mode resend once while forwarding: $text",
+    async ({ text, mode }) => {
       const events = [
         {
           seq: 1,
@@ -216,6 +234,7 @@ describe("authenticated QA chat transport", () => {
         },
       ] as { seq: number; type: string; data: unknown }[];
       const session = {
+        header: { id: "chat-a" },
         surface: { nodes: [2] },
         snapshotEvents: () => events,
         eventAt: (seq: number) => events.find((e) => e.seq === seq),
@@ -223,7 +242,78 @@ describe("authenticated QA chat transport", () => {
           events.push({ seq: events.length + 1, type, data }),
         ),
       };
-      const f = fixture(session);
+      const verify = vi.fn<
+        NonNullable<ConstructorParameters<typeof QaChatTransport>[4]>
+      >(async (_token, _id, file) => ({ ...file, bytes: 6_085_275 }));
+      const stale = { ...session, snapshotEvents: () => [] };
+      const resumedAgent = {
+        session,
+        status: "idle",
+        inbox: { nextTurn: [], nextStep: [] },
+        cancel: vi.fn(),
+      };
+      const resume = vi.fn<
+        NonNullable<ConstructorParameters<typeof QaChatTransport>[5]>
+      >(async () => {
+        if (
+          mode === "cold" &&
+          !f.agents.some((a) => a.session.header.id === "chat-a")
+        )
+          f.agents.push(resumedAgent as unknown as (typeof f.agents)[number]);
+        return resumedAgent as unknown as Awaited<
+          ReturnType<
+            NonNullable<ConstructorParameters<typeof QaChatTransport>[5]>
+          >
+        >;
+      });
+      const f = fixture(
+        mode === "cold" ? undefined : mode === "stale" ? stale : session,
+        verify,
+        resume,
+      );
+      const attach = () =>
+        f.agents.push({
+          session,
+          status: "idle",
+          inbox: { nextTurn: [], nextStep: [] },
+          cancel: vi.fn(),
+        } as unknown as (typeof f.agents)[number]);
+      if (mode === "stale") attach();
+      if (mode === "cold")
+        f.native.prompt.mockImplementation(async () => {
+          // The file action must precede this model-context/dispatch boundary.
+          expect(session.append).toHaveBeenCalledOnce();
+          if (
+            !events.some(
+              (event) => event.type === "tool/call" && event.seq === 4,
+            )
+          ) {
+            events.push(
+              {
+                seq: 4,
+                type: "tool/call",
+                data: { callId: "future", name: "document_create" },
+              },
+              {
+                seq: 5,
+                type: "tool/result",
+                data: {
+                  message: {
+                    source: { callId: "future" },
+                    content: [
+                      {
+                        type: "text",
+                        text: "docx: .qa/new/report.docx (3 B, sha256 0123456789abcdef…)",
+                      },
+                    ],
+                  },
+                },
+              },
+            );
+            session.surface.nodes.push(5);
+          }
+          return { accepted: true };
+        });
       const input = {
         ...request("compound"),
         content: [
@@ -233,6 +323,11 @@ describe("authenticated QA chat transport", () => {
           },
         ],
       };
+      f.native.projections.mockResolvedValue({
+        kind: "sequenced",
+        asOfSeq: 2,
+        values: {},
+      });
       await f.transport.prompt(f.owner.token, input, signal());
       await f.transport.prompt(f.owner.token, input, signal());
       expect(session.append).toHaveBeenCalledOnce();
@@ -243,7 +338,10 @@ describe("authenticated QA chat transport", () => {
             kind: "qa-document-redelivery",
             compound: true,
             rpcId: "compound:attachment",
-            file: expect.objectContaining({ path: ".qa/report.docx" }),
+            file: expect.objectContaining({
+              path: ".qa/report.docx",
+              bytes: 6_085_275,
+            }),
           }),
         }),
         { surfaceOp: "append" },
@@ -251,6 +349,10 @@ describe("authenticated QA chat transport", () => {
       expect(f.native.prompt).toHaveBeenCalledWith(
         input,
         expect.any(AbortSignal),
+      );
+      expect(verify).toHaveBeenCalledOnce();
+      expect(session.append.mock.invocationCallOrder[0]).toBeLessThan(
+        f.native.prompt.mock.invocationCallOrder[0]!,
       );
     },
   );
