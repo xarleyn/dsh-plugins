@@ -170,9 +170,8 @@ function parseIssues(value: unknown): readonly ReviewIssue[] {
 
 /**
  * Derive a verdict from a domain-expert run (`SPEC.md`, "Domain Experts
- * integration"). The expert speaks its own structured protocol (findings,
- * conflicts); findings and conflicts ARE the review objections, so an empty
- * set passes and anything else demands revision.
+ * integration"). Every blocking field in the native review schema contributes
+ * an issue. Older expert implementations omit the two optional lists.
  */
 export function deriveVerdictFromExpertResult(
   result: ExpertRunResult,
@@ -230,6 +229,20 @@ export function deriveVerdictFromExpertResult(
       claim: conflict,
       problem: "Reviewer recorded conflicting sources for this point.",
       requiredFix: "",
+    })),
+    ...(result.assumptions ?? []).map((claim) => ({
+      severity: "major" as const,
+      category: "unsupported" as const,
+      claim,
+      problem: "The reviewer could not verify this assumption.",
+      requiredFix: "Verify the assumption or qualify the affected claim.",
+    })),
+    ...(result.followUps ?? []).map((requiredFix) => ({
+      severity: "major" as const,
+      category: "search-incomplete" as const,
+      claim: requiredFix,
+      problem: "The reviewer requires a correction or additional evidence.",
+      requiredFix,
     })),
   ];
   return {

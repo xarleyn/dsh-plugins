@@ -127,6 +127,23 @@ describe("parseReviewerVerdict", () => {
 });
 
 describe("deriveVerdictFromExpertResult", () => {
+  it.each(["assumptions", "followUps"] as const)(
+    "preserves a blocker reported only in %s",
+    (field) => {
+      const verdict = deriveVerdictFromExpertResult({
+        status: "completed",
+        structured: true,
+        summary: "Checked the available evidence.",
+        findings: [],
+        conflicts: [],
+        [field]: ["Missing verification for the claimed date."],
+      });
+      expect(verdict.verdict).toBe("revise");
+      expect(verdict.issues.map((issue) => issue.claim)).toContain(
+        "Missing verification for the claimed date.",
+      );
+    },
+  );
   it.each([
     ["expert execution stopped: review-timeout", "review-timeout"],
     ["expert execution stopped: max-tool-calls", "review-tool-limit"],

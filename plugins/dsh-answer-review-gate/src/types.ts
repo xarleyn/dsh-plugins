@@ -280,6 +280,8 @@ export interface ExpertRunResult {
     readonly confidence: string;
   }[];
   readonly conflicts: readonly string[];
+  readonly assumptions?: readonly string[];
+  readonly followUps?: readonly string[];
 }
 
 /**

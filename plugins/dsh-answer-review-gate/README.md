@@ -126,8 +126,8 @@ Runs the reviewer domain configured in [dsh-domain-experts](https://github.com/x
 by **stable domain id** (`reviewer.domain`, default `answer-reviewer`), so the
 reviewer persona, policy, tools and model are tuned in the domain-experts UI,
 not here. The verdict is derived from the expert's own structured protocol:
-findings and conflicts are the review objections; a run with no findings and no
-conflicts passes. The legacy domain-experts test entry owns its lifecycle: a running
+findings, conflicts, unsupported assumptions and blocking follow-ups all require
+revision. A run passes when all four lists are empty. The legacy domain-experts test entry owns its lifecycle: a running
 child cannot be interrupted through this face. The gate checks cancellation
 before and after each attempt, refuses a late verdict, and starts no recovery
 attempt after cancellation.
