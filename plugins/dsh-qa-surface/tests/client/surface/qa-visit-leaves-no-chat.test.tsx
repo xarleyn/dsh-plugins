@@ -16,10 +16,9 @@ import {
   QaSurface,
   type QaSurfaceProps,
 } from "../../../src/client/QaSurface.js";
-import { QA_WELCOME_NOTICE_VERSION } from "../../../src/client/components/QaWelcomeNotice.js";
+import { acknowledgeOnboarding } from "../../helpers/onboarding.js";
 import { QaModal } from "../../../src/client/components/QaModal.js";
 import { QaSurfacePanelRegistry } from "../../../src/client/panels/registry.js";
-import { qaStorageNamespace } from "../../../src/shared/session-key.js";
 import type { QaAccessApi } from "../../../src/client/types.js";
 import {
   harness,
@@ -71,10 +70,7 @@ function mount(world: QaSessionTestWorld): ResolvedQaSurfaceConfig {
     ui: { showReset: true, showSessionList: true },
     lockdown: { allowSessionReset: true },
   });
-  window.localStorage.setItem(
-    `${qaStorageNamespace(config)}:welcome-notice`,
-    QA_WELCOME_NOTICE_VERSION,
-  );
+  acknowledgeOnboarding(config);
   route = new QaRouteController();
   route.configure(config, true);
   const access = accessApi();

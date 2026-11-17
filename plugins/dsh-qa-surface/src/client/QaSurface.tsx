@@ -109,7 +109,7 @@ import {
 } from "./components/QaTurnRail.js";
 import { QaChatColumn } from "./components/QaChatColumn.js";
 import { VariantSwitcher } from "./components/VariantSwitcher.js";
-import { QaWelcomeNotice } from "./components/QaWelcomeNotice.js";
+import { QaOnboarding } from "./components/QaUsageGuide.js";
 import { statusText, titleFromMessages } from "./components/surface-utils.js";
 import { useThinkingPhrase } from "./components/thinking-phrases.js";
 import {
@@ -719,6 +719,10 @@ export function QaSurface(props: QaSurfaceProps) {
   // deployment config, the account and the skill namespace, while the sidebar
   // only offers the button that opens it.
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [guideOpener, setGuideOpener] = useState<HTMLButtonElement | null>(
+    null,
+  );
+  const closeGuide = useCallback(() => setGuideOpener(null), []);
 
   const state = useSyncExternalStore(
     controller?.subscribe ?? noopSubscribe,
@@ -1588,10 +1592,13 @@ export function QaSurface(props: QaSurfaceProps) {
   // disclosure in this route-owned overlay so sending a prompt cannot dismiss
   // it; the shadow step registered in index.tsx only suppresses the stock copy.
   const welcomeNotice = (
-    <QaWelcomeNotice
+    <QaOnboarding
       key={stateKey}
       storage={window.localStorage}
-      storageKey={`${stateKey}:welcome-notice`}
+      namespace={stateKey}
+      markdown={config.branding.usageGuideMarkdown}
+      opener={guideOpener}
+      onClose={closeGuide}
     />
   );
 
@@ -2327,15 +2334,26 @@ export function QaSurface(props: QaSurfaceProps) {
                       onStop={handleComposerStop}
                     />
                   </div>
-                  {config.branding.disclaimer === "" ? null : (
-                    <p className="dsh-qa-footer__disclaimer">
-                      <svg viewBox="0 0 16 16" aria-hidden="true">
-                        <circle cx="8" cy="8" r="5.75" />
-                        <path d="M8 7.25v3.5m0-5.25v.5" />
-                      </svg>
-                      {config.branding.disclaimer}
-                    </p>
-                  )}
+                  <div className="dsh-qa-footer__notes">
+                    {config.branding.disclaimer === "" ? null : (
+                      <p className="dsh-qa-footer__disclaimer">
+                        <svg viewBox="0 0 16 16" aria-hidden="true">
+                          <circle cx="8" cy="8" r="5.75" />
+                          <path d="M8 7.25v3.5m0-5.25v.5" />
+                        </svg>
+                        {config.branding.disclaimer}
+                      </p>
+                    )}
+                    <button
+                      type="button"
+                      className="dsh-qa-footer__guide"
+                      data-testid="qa-guide-open"
+                      aria-haspopup="dialog"
+                      onClick={(event) => setGuideOpener(event.currentTarget)}
+                    >
+                      Памятка
+                    </button>
+                  </div>
                 </div>
               </footer>
             </QaChatColumn>

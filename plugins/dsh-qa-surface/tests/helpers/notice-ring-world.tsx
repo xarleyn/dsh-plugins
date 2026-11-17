@@ -17,7 +17,7 @@ import { QaSurfacePanelRegistry } from "../../src/client/panels/registry.js";
 import type { ResolvedQaSurfaceConfig } from "../../src/types.js";
 import { focusable } from "../../src/client/focus-ring.js";
 import { resolveConfig } from "../../src/resolve-config.js";
-import { QA_WELCOME_NOTICE_VERSION } from "../../src/client/components/QaWelcomeNotice.js";
+import { acknowledgeOnboarding } from "./onboarding.js";
 import { qaStorageNamespace } from "../../src/shared/session-key.js";
 import { harness, type QaSessionTestWorld } from "./session-fakes.js";
 import { settle } from "./act.js";
@@ -319,10 +319,7 @@ export async function mount(
   );
   const ns = qaStorageNamespace(config);
   if (options.withWelcome !== true) {
-    window.localStorage.setItem(
-      `${ns}:welcome-notice`,
-      QA_WELCOME_NOTICE_VERSION,
-    );
+    acknowledgeOnboarding(config);
   }
   window.localStorage.setItem(`${ns}:session`, ACTIVE);
   window.localStorage.setItem(

@@ -25,6 +25,18 @@ describe("ConfigSchema defaults", () => {
     ).toEqual(["Точу"]);
   });
 
+  it("preserves the operator's Markdown and uses the built-in guide for blank text", () => {
+    const guide = (usageGuideMarkdown: string) =>
+      resolveConfig(schemaParse({ branding: { usageGuideMarkdown } })).branding
+        .usageGuideMarkdown;
+    expect(guide("    пример\r\n\r\n## Проверка")).toBe(
+      "    пример\n\n## Проверка",
+    );
+    expect(guide(" \n ")).toBe(
+      DEFAULT_QA_SURFACE_CONFIG.branding.usageGuideMarkdown,
+    );
+  });
+
   it("keeps reported-source validation on until the deployment turns it off", () => {
     expect(resolveConfig().sources.subagents.validateReportedSources).toBe(
       true,

@@ -75,6 +75,9 @@ export function resolveBasics(input: QaSurfaceConfig): BasicsSlice {
       welcomeMessage:
         input.branding?.welcomeMessage?.trim() ??
         DEFAULT_QA_SURFACE_CONFIG.branding.welcomeMessage,
+      usageGuideMarkdown: input.branding?.usageGuideMarkdown?.trim()
+        ? input.branding.usageGuideMarkdown.replace(/\r\n?/gu, "\n")
+        : DEFAULT_QA_SURFACE_CONFIG.branding.usageGuideMarkdown,
       placeholder:
         input.branding?.placeholder?.trim() ||
         DEFAULT_QA_SURFACE_CONFIG.branding.placeholder,

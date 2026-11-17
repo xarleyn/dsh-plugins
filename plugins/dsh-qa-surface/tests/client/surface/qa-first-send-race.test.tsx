@@ -20,10 +20,9 @@ import {
   QaSurface,
   type QaSurfaceProps,
 } from "../../../src/client/QaSurface.js";
-import { QA_WELCOME_NOTICE_VERSION } from "../../../src/client/components/QaWelcomeNotice.js";
+import { acknowledgeOnboarding } from "../../helpers/onboarding.js";
 import { QaSurfacePanelRegistry } from "../../../src/client/panels/registry.js";
 import type { QaAccessApi } from "../../../src/client/types.js";
-import { qaStorageNamespace } from "../../../src/shared/session-key.js";
 import { harness, landDurableUserRow } from "../../helpers/session-fakes.js";
 
 globalThis.ResizeObserver ??= class {
@@ -145,10 +144,7 @@ async function mountSurface(
     ui: { showReset: true },
     lockdown: { allowSessionReset: true },
   });
-  window.localStorage.setItem(
-    `${qaStorageNamespace(config)}:welcome-notice`,
-    QA_WELCOME_NOTICE_VERSION,
-  );
+  acknowledgeOnboarding(config);
   window.localStorage.setItem(
     "dsh-qa-surface.session:v1:/qa:session",
     SAVED_SESSION,

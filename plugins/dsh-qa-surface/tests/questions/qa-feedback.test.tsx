@@ -11,8 +11,7 @@ import type { QaAccountsController } from "../../src/client/QaAccountsController
 import type { ConversationNode } from "@deepseek-ai/dsh-client-ui-conversation/client";
 import { harness } from "../helpers/session-fakes.js";
 import { legacy, snapshot } from "../helpers/conversation-fakes.js";
-import { qaStorageNamespace } from "../../src/shared/session-key.js";
-import { QA_WELCOME_NOTICE_VERSION } from "../../src/client/components/QaWelcomeNotice.js";
+import { acknowledgeOnboarding } from "../helpers/onboarding.js";
 
 // jsdom has no ResizeObserver; the chat surface's width handles observe it.
 globalThis.ResizeObserver ??= class {
@@ -171,10 +170,7 @@ describe("rating an answer from the chat surface", () => {
       const config = resolveConfig({ accounts: { enabled: true } });
       // The welcome disclosure is once per browser; this test is about the
       // message footer, not the overlay in front of it.
-      window.localStorage.setItem(
-        `${qaStorageNamespace(config)}:welcome-notice`,
-        QA_WELCOME_NOTICE_VERSION,
-      );
+      acknowledgeOnboarding(config);
       route = new QaRouteController();
       route.configure(config, true);
       const world = harness([SESSION]);

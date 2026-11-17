@@ -126,6 +126,8 @@ export interface QaSurfaceConfig {
     readonly title?: string;
     readonly subtitle?: string;
     readonly welcomeMessage?: string;
+    /** Markdown shown in the separate usage guide after the welcome notice. */
+    readonly usageGuideMarkdown?: string;
     readonly placeholder?: string;
     readonly logoUrl?: string | null;
     /** Data-usage notice under the composer; empty string hides the plate. */
@@ -426,6 +428,7 @@ export interface ResolvedQaSurfaceConfig {
     readonly title: string;
     readonly subtitle: string;
     readonly welcomeMessage: string;
+    readonly usageGuideMarkdown: string;
     readonly placeholder: string;
     readonly logoUrl: string | null;
     readonly disclaimer: string;
