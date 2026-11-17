@@ -1,3 +1,18 @@
+## 0.23.5 (2026-11-17)
+
+### 🩹 Fixes
+
+- Allow skill loading in RAG Priority, use relevant retrieved evidence directly, ([2bffa2e8](https://github.com/xarleyn/dsh-plugins/commit/2bffa2e8))
+  and preserve independent reviewers' permitted verification tools. LightRAG query
+  results now distinguish retrieved sources, missing evidence and bypassed retrieval.
+
+- Show an operator-editable Markdown guide after the welcome dialog and remember ([e3918f45](https://github.com/xarleyn/dsh-plugins/commit/e3918f45))
+  its acknowledgement independently. Readers can reopen it from the chat.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.23.4 (2026-11-17)
 
 ### 🩹 Fixes
