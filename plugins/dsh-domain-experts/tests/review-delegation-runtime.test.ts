@@ -34,7 +34,13 @@ async function harness(
   options: { external?: boolean; cancelOnDispose?: boolean } = {},
 ) {
   const ctx = new Context();
-  ctx.provide("systemPrompt", { tools: () => () => {} });
+  ctx.provide("systemPrompt", {
+    tools: () => () => {},
+    context: (section: { order: number }) => {
+      expect(Number.isFinite(section.order)).toBe(true);
+      return () => {};
+    },
+  });
   new ToolsService(ctx);
   const terminal = deferred<Terminal>();
   const dispose = vi.fn(async () => {

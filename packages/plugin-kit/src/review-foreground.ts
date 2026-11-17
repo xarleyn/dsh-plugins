@@ -193,10 +193,17 @@ export function installForegroundReview(
   const completed = new WeakMap<Execution, Frame["completed"]>();
   reviewers.add(agent);
   const prompt = context.get("systemPrompt") as
-    | { context?: (section: { name: string; text: string }) => unknown }
+    | {
+        context?: (section: {
+          name: string;
+          order: number;
+          text: string;
+        }) => unknown;
+      }
     | undefined;
   prompt?.context?.({
     name: "review-foreground-delegation",
+    order: 1000,
     text: "This review uses foreground delegation. Every subagent/expert tool call waits for the child's completed result and returns it in that same call. This overrides generic tool guidance about background execution, automatic completion notices, or ending your turn to wait. You may delegate within the configured depth and capacity limits. Evaluate the completed evidence before your final answer or structured_output.",
   });
   context.on("tools/execute", async (exec, next) => {
