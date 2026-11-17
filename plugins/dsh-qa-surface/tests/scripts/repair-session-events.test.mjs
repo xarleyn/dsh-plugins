@@ -40,6 +40,116 @@ function rows(file) {
 }
 
 describe("qa-repair-sessions", () => {
+  it("can restrict a repair to answer modes without reusing a previous generic backup", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "qa-repair-selected-"));
+    const file = path.join(dir, "session.jsonl");
+    const mode = {
+      type: "qa/answer-modes",
+      seq: 2,
+      time: 10,
+      data: { requestId: "request", by: "rpc", modes: ["rag"] },
+    };
+    const original = `${[header, standard, custom, mode].map(JSON.stringify).join("\n")}\n`;
+    writeFileSync(file, original);
+    writeFileSync(
+      `${file}.pre-plugin-event-repair.bak`,
+      "older unrelated repair backup",
+    );
+    expect(
+      repairSessionFile(file, { write: true, answerModesOnly: true }),
+    ).toMatchObject({
+      changed: 1,
+      written: true,
+      types: { "qa/answer-modes": 1 },
+      backup: `${file}.pre-answer-mode-repair.bak`,
+    });
+    expect(rows(file)).toEqual([
+      header,
+      standard,
+      custom,
+      { ...mode, ignorable: true },
+    ]);
+    expect(readFileSync(`${file}.pre-answer-mode-repair.bak`, "utf8")).toBe(
+      original,
+    );
+    expect(readFileSync(`${file}.pre-plugin-event-repair.bak`, "utf8")).toBe(
+      "older unrelated repair backup",
+    );
+  });
+  it("marks legacy mode metadata without changing payload, sequence, time or unrelated events", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "qa-repair-modes-"));
+    const file = path.join(dir, "session.jsonl.zstd");
+    const modes = [
+      {
+        type: "qa/answer-modes",
+        seq: 1,
+        time: 10,
+        data: { requestId: "request", by: "rpc", modes: ["rag"] },
+      },
+      {
+        type: "qa/answer-mode-turn",
+        seq: 2,
+        time: 11,
+        data: {
+          turn: 1,
+          modes: ["rag"],
+          requests: ["request"],
+          approved: false,
+          declined: true,
+        },
+      },
+      {
+        type: "qa/answer-mode-command",
+        seq: 3,
+        time: 12,
+        data: { id: "command", modes: ["fast", "rag"] },
+      },
+      {
+        type: "qa/answer-mode-command-done",
+        seq: 4,
+        time: 13,
+        data: { id: "command" },
+      },
+    ];
+    const unrelated = {
+      type: "other/required",
+      seq: 5,
+      time: 14,
+      data: { keep: true },
+    };
+    const original = Buffer.concat([
+      zstdCompressSync(Buffer.from(`${JSON.stringify(header)}\n`), checksum),
+      zstdCompressSync(
+        Buffer.from(
+          `${[standard, ...modes, unrelated].map(JSON.stringify).join("\n")}\n`,
+        ),
+        checksum,
+      ),
+    ]);
+    writeFileSync(file, original);
+    expect(repairSessionFile(file)).toMatchObject({
+      changed: 4,
+      written: false,
+    });
+    expect(readFileSync(file)).toEqual(original);
+    expect(repairSessionFile(file, { write: true })).toMatchObject({
+      changed: 4,
+      written: true,
+    });
+    expect(rows(file)).toEqual([
+      header,
+      standard,
+      ...modes.map((event) => ({ ...event, ignorable: true })),
+      unrelated,
+    ]);
+    expect(readFileSync(`${file}.pre-plugin-event-repair.bak`)).toEqual(
+      original,
+    );
+    expect(repairSessionFile(file, { write: true })).toMatchObject({
+      changed: 0,
+      written: false,
+    });
+  });
   it("keeps dry-run read-only and marks only plugin events", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "qa-repair-plain-"));
     const file = path.join(dir, "session.jsonl");

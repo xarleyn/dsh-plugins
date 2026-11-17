@@ -3,7 +3,7 @@ import type { Session } from "@deepseek-ai/dsh-session";
 /**
  * The durable activation marker, read back from the session log.
  *
- * The marker is not an event of its own. `qa-surface` deliberately appends no
+ * The marker is not an event of its own. Activation appends no required
  * custom session type: a reader that does not mount this plugin refuses a log
  * containing an unknown non-`ignorable` type, which would make every activated
  * session unreadable in a plain DSH deployment. Instead the activation is

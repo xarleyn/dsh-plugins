@@ -22,6 +22,18 @@ export interface QaChangelogEntry {
 
 export const QA_CHANGELOG: readonly QaChangelogEntry[] = [
   {
+    version: "0.23.1",
+    date: "2026-11-17",
+    sections: [
+      {
+        title: "История чатов",
+        items: [
+          "История чатов с выбранными режимами ответа корректно открывается после перезапуска сервера. Режимы восстанавливаются вместе с историей.",
+        ],
+      },
+    ],
+  },
+  {
     version: "0.23.0",
     date: "2026-11-16",
     sections: [
