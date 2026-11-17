@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { QA_REPORT_SOURCES_TOOL } from "../../src/provenance/host-store.js";
 import {
   QA_DELEGATION_NOTE,
-  QA_DOCUMENTS_NOTE,
   QA_IDENTITY_NOTE,
   QA_SOURCE_PRIORITY_NOTE,
   QA_SOURCES_NOTE,
@@ -27,15 +26,10 @@ describe("source provenance note", () => {
     // One note per concern: provenance, delegation naming, document routing,
     // source priority. Identity needs an owning account, so it is absent here.
     expect(appended.flatMap(noteNames).sort()).toEqual(
-      [
-        QA_SOURCES_NOTE,
-        QA_DELEGATION_NOTE,
-        QA_DOCUMENTS_NOTE,
-        QA_SOURCE_PRIORITY_NOTE,
-      ].sort(),
+      [QA_SOURCES_NOTE, QA_DELEGATION_NOTE, QA_SOURCE_PRIORITY_NOTE].sort(),
     );
     expect(noteText(appended[0])).toMatch(/manual Sources\/Источники/u);
-    expect(noteText(appended[0])).toContain(QA_REPORT_SOURCES_TOOL);
+    expect(noteText(appended[0])).not.toContain(QA_REPORT_SOURCES_TOOL);
     expect(await step(session)).toEqual([]);
   });
 
@@ -57,7 +51,6 @@ describe("source provenance note", () => {
     // chat.
     expect(silenced.map(noteNames)).toEqual([
       [QA_DELEGATION_NOTE],
-      [QA_DOCUMENTS_NOTE],
       [QA_SOURCE_PRIORITY_NOTE],
     ]);
 
@@ -81,7 +74,9 @@ describe("source provenance note", () => {
     });
     createSession("session-root");
     const child = createSession("session-child", "session-root");
-    expect(noteNames((await step(child))[0])).toEqual([QA_SOURCES_NOTE]);
+    const first = (await step(child))[0];
+    expect(noteNames(first)).toEqual([QA_SOURCES_NOTE]);
+    expect(noteText(first)).toContain(QA_REPORT_SOURCES_TOOL);
   });
 
   it("carries every note in one step for an owned QA chat", async () => {
@@ -98,7 +93,6 @@ describe("source provenance note", () => {
         QA_SOURCES_NOTE,
         QA_IDENTITY_NOTE,
         QA_DELEGATION_NOTE,
-        QA_DOCUMENTS_NOTE,
         QA_SOURCE_PRIORITY_NOTE,
       ].sort(),
     );

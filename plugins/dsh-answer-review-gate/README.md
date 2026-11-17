@@ -1,5 +1,7 @@
 # @yadsh/dsh-answer-review-gate
 
+An operator can configure `workbookReview` with a trusted local `provider` and `model`, the protected workflow's `workflowTool`, and its `skill` name. Workbook attachments, workbook filenames in requests, and calls to spreadsheet tools select this route for subsequent reviews in the same history. The reviewer receives bounded producer receipts and can read exact document extractions prepared by the gate. It has no delegation, filesystem browsing or network tool. If this route fails, the gate applies its configured failure policy. Configure the primary agent's compaction provider and model separately.
+
 Independent answer review gate for DeepSeek Harness agents: before a candidate
 final answer is allowed to complete its turn, an independent reviewer checks it
 and can send it back for correction. The review is a **lifecycle requirement**

@@ -24,7 +24,7 @@ describe("source-priority note", () => {
     );
     expect(noteText(note)).toBe(QA_SOURCE_PRIORITY_NOTE_TEMPLATE);
     expect(noteText(note)).toMatch(/product documentation/u);
-    expect(noteText(note)).toMatch(/only then look in memory/u);
+    expect(noteText(note)).toMatch(/earlier decisions use memory/u);
     expect(await step(session)).toEqual([]);
   });
 

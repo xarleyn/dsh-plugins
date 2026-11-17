@@ -25,9 +25,9 @@ describe("retained QA notes", () => {
   it("restores every removed note on the first step after compaction without reloading", async () => {
     const f = fixture();
     const initial = await f.step(f.session);
-    expect(initial).toHaveLength(5);
+    expect(initial).toHaveLength(4);
     f.session.surface.nodes.splice(0);
-    expect(f.session.events).toHaveLength(5);
+    expect(f.session.events).toHaveLength(4);
 
     const restored = await f.step(f.session);
     expect(restored.flatMap(noteNames)).toEqual(initial.flatMap(noteNames));
@@ -49,7 +49,7 @@ describe("retained QA notes", () => {
   it("does not mark an uncommitted proposal as already carried", async () => {
     const f = fixture();
     const abandoned = await f.step(f.session, { commit: false });
-    expect(abandoned).toHaveLength(5);
+    expect(abandoned).toHaveLength(4);
     expect(f.session.surface.nodes).toEqual([]);
     expect((await f.step(f.session)).flatMap(noteNames)).toEqual(
       abandoned.flatMap(noteNames),

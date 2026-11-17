@@ -8,6 +8,25 @@ import {
 import { ReviewerFailure } from "../src/types.js";
 
 describe("validateReviewerVerdict", () => {
+  it.each(["critical", "major"])(
+    "returns a contradictory passing verdict for revision (%s)",
+    (severity) => {
+      const result = validateReviewerVerdict({
+        verdict: "pass",
+        issues: [
+          {
+            severity,
+            category: "unsupported",
+            claim: "An unverified number",
+            problem: "Missing source",
+            requiredFix: "Verify the source.",
+          },
+        ],
+      });
+      expect(result.verdict).toBe("revise");
+      expect(result.issues).toHaveLength(1);
+    },
+  );
   it("keeps complete native comparison fields and refuses malformed witnesses", () => {
     const c = {
       source: "S1",

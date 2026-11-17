@@ -448,6 +448,28 @@ export async function prepareDocumentEvidence(options: {
       ),
       "For a D-to-D pair there is no separate source file: both quoted passages come from the listed deliverable. Explain whether it satisfies the user's request. An answer about review status is not a document review.",
     ].join("\n"),
+    readDocument(child: string, file: string, offset: number) {
+      const key = readPaths.get(path.normalize(file))?.[0];
+      const source = key && pageLines.get(key);
+      if (
+        !source ||
+        !Number.isSafeInteger(offset) ||
+        offset < 0 ||
+        offset >= source.length
+      )
+        throw new ReviewerFailure("review-document-invalid-window");
+      const lines = source
+        .slice(offset, offset + 80)
+        .join("\n")
+        .slice(0, 12000)
+        .split("\n");
+      this.observeRead(child, file, lines);
+      return JSON.stringify({
+        firstLine: offset + 1,
+        totalLines: source.length,
+        lines,
+      });
+    },
     observeRead(child: string, file: string, lines: readonly string[]) {
       const keys = readPaths.get(path.normalize(file));
       if (!keys || !lines.length) return;

@@ -56,7 +56,11 @@ export function validateReviewerVerdict(value: unknown): ReviewVerdict {
     : "medium";
   const summary = typeof raw["summary"] === "string" ? raw["summary"] : "";
   return {
-    verdict,
+    verdict: issues.some(
+      (issue) => issue.severity === "major" || issue.severity === "critical",
+    )
+      ? "revise"
+      : verdict,
     summary,
     issues,
     confidence,

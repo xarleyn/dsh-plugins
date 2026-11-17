@@ -119,7 +119,9 @@ describe("integration question policy", () => {
     "keeps unchanged %s guidance once across steps and turns while enforcing every turn",
     async (requestId) => {
       const f = fixture();
-      expect((await f.step(1, [requestId])).messages).toHaveLength(2);
+      expect((await f.step(1, [requestId])).messages).toHaveLength(
+        requestId === "allowed" ? 1 : 2,
+      );
       expect((await f.step(1, [])).messages).toEqual([]);
       for (const turn of [2, 3]) {
         expect((await f.step(turn, [requestId])).messages).toHaveLength(1);
@@ -155,7 +157,7 @@ describe("integration question policy", () => {
     expect((await f.step(1, [])).messages).toEqual([]);
     expect(f.guard("ask_user_question")).toBe(QA_INTEGRATION_NO_CLARIFICATIONS);
     f.compact();
-    expect((await f.step(2, ["allowed"])).messages).toHaveLength(2);
+    expect((await f.step(2, ["allowed"])).messages).toHaveLength(1);
     expect(f.guard("ask_user_question")).toBeUndefined();
     f.policy.dispose();
   });
@@ -177,9 +179,9 @@ describe("integration question policy", () => {
   it("does not treat an abandoned guidance proposal as retained", async () => {
     const f = fixture();
     expect(
-      (await f.step(1, ["allowed"], f.agent, false)).messages,
+      (await f.step(1, ["no-questions"], f.agent, false)).messages,
     ).toHaveLength(2);
-    expect((await f.step(1, ["allowed"])).messages).toHaveLength(2);
+    expect((await f.step(1, ["no-questions"])).messages).toHaveLength(2);
     f.policy.dispose();
   });
   it("refuses a clarification when an attested child cannot resolve its root policy", () => {

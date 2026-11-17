@@ -51,20 +51,26 @@ export function recordDocumentDelivery(
   );
 }
 
-/** Rebuild the selection at this request, even on a short browser history page. */
-export function originalDocument(
+/** Original events behind checkpoints still on this branch's active surface. */
+export function activeDocumentHistory(
   session: Session,
-  before: number,
-  target: string,
+  events?: ReturnType<Session["snapshotEvents"]>,
 ) {
-  const calls = new Map<string, string>();
-  const files: QaDocumentDelivery[] = [];
   const active = new Set<number>(session.surface.nodes);
-  const events = session.snapshotEvents();
+  if (
+    !session.surface.nodes.some((seq) => {
+      const event = session.eventAt(seq);
+      return (
+        event?.type === "user/message" &&
+        (event.data.source as { kind?: string })?.kind === "compact-checkpoint"
+      );
+    })
+  )
+    return active;
   // Compaction is an optional Host plugin; only a checkpoint on this surface
   // admits the originals it replaced, including nested checkpoints.
   const summaries = new Map<string, number[]>();
-  for (const event of events as readonly {
+  for (const event of (events ?? session.snapshotEvents()) as readonly {
     type: string;
     data: { compactionId?: string; shadowedSeqs?: number[] };
   }[]) {
@@ -83,6 +89,19 @@ export function originalDocument(
       for (const original of summaries.get(source.compactionId) ?? [])
         active.add(original);
   }
+  return active;
+}
+
+/** Rebuild the selection at this request, even on a short browser history page. */
+export function originalDocument(
+  session: Session,
+  before: number,
+  target: string,
+) {
+  const calls = new Map<string, string>();
+  const files: QaDocumentDelivery[] = [];
+  const events = session.snapshotEvents();
+  const active = activeDocumentHistory(session, events);
   for (const event of events) {
     if (event.seq === undefined) continue;
     if (event.seq >= before) break;

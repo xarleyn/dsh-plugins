@@ -31,6 +31,10 @@ function fixture() {
   const root = {
     id: "root",
     header: {},
+    get surface() {
+      return { nodes: events.map((_, i) => i) };
+    },
+    eventAt: (seq: number) => events[seq],
     snapshotEvents: () => events,
     append: (
       type: string | readonly (readonly [string, unknown])[],
@@ -50,6 +54,8 @@ function fixture() {
     id: "child",
     session: {
       id: "child",
+      surface: { nodes: [] },
+      eventAt: () => undefined,
       header: { origin: "subagent", parentSession: "root" },
     },
   } as unknown as Agent;

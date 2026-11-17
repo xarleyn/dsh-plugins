@@ -4,7 +4,10 @@ import { SessionSeq, type Session } from "@deepseek-ai/dsh-session";
 import type { QaAccounts } from "../accounts/store.js";
 import type { QaQuestionMode } from "../questions.js";
 import { qaDelegatedHeader } from "../shared/session-lineage.js";
-import { QaNoteAdmission } from "../shared/retained-qa-notes.js";
+import {
+  QaNoteAdmission,
+  retainedQaNotes,
+} from "../shared/retained-qa-notes.js";
 
 const NOTE = "dsh-qa-surface:integration-clarifications";
 export const QA_INTEGRATION_NO_CLARIFICATIONS =
@@ -47,6 +50,11 @@ export class QaIntegrationQuestionPolicy {
             state = { turn, mode };
             this.turns.set(id, state);
           }
+          if (
+            state.mode !== "blocked" &&
+            !retainedQaNotes(agent.session, decision.messages).has(NOTE)
+          )
+            return this.admission.propose(agent, decision, []);
           const text =
             state.mode === "blocked"
               ? QA_INTEGRATION_NO_CLARIFICATIONS

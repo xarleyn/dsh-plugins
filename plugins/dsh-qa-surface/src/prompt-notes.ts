@@ -1,11 +1,14 @@
 import type { Agent, PreStepDecision } from "@deepseek-ai/dsh-agent";
-import { SessionId } from "@deepseek-ai/dsh-session/types";
+import { SessionId, SessionSeq } from "@deepseek-ai/dsh-session/types";
 import { qaDelegatedHeader } from "./shared/session-lineage.js";
 import { requestedDocument } from "./shared/document-redelivery.js";
-import { originalDocument } from "./chat-sharing/document-delivery.js";
+import {
+  activeDocumentHistory,
+  originalDocument,
+} from "./chat-sharing/document-delivery.js";
 import type { Context } from "@deepseek-ai/cordis";
 import { QaNoteAdmission } from "./shared/retained-qa-notes.js";
-import type { ContextSnapshotSection } from "@deepseek-ai/dsh-llm";
+import type { ContextSnapshotSection, UserMessage } from "@deepseek-ai/dsh-llm";
 import type { PluginLogger } from "@yadsh/dsh-plugin-log";
 import type { QaAccounts } from "./accounts/store.js";
 import { QA_REPORT_SOURCES_TOOL } from "./provenance/host-store.js";
@@ -59,18 +62,11 @@ export const QA_SOURCES_NOTE_TEMPLATE =
 export const QA_SOURCES_FALLBACK_TEMPLATE =
   "A delegated run whose provider cannot expose tool events must call {reportTool} before finishing.";
 export const QA_DELEGATION_NOTE_TEMPLATE =
-  "Delegate only work that belongs to the expert's source. Handle uploaded workbook edits yourself. After dispatch do independent work or end this step without tools; the Host delivers completion. Do not poll list_agents, send reminders, restart the task or interrupt a working child to hurry it. " +
-  "When you start a background subagent, give the delegation a short vivid name in its description field: two or three words in the user's language that say what the run is for («Сверка отчётов», \"Log triage\"). The QA surface shows that description as the subagent's display name in the operator's panel and completion notices.";
+  "Delegate source checks to the matching expert. Use a short name in the user's language in the description field. Keep uploaded workbooks in the parent. After dispatch, do independent work or yield for Host completion; never poll or restart a working child.";
 export const QA_DOCUMENTS_NOTE_TEMPLATE =
-  "When the user asks to send a previous DOCX again, reuse the exact filename from the successful document tool result. The chat attaches the matching original under the reply. For a generic request with several different DOCX outputs, ask which filename to send. Do not recreate, revise or convert a file for a resend. " +
-  "Load the available spreadsheet skill before processing a workbook. Build the complete address map before writing. Combine disjoint edits into one call up to the cell limit; if more are required, continue from the last returned path AND full hash. Use filename for the requested download name; Save As an existing workbook with filename and edits: []. Only report a name or totals verified on the returned file. " +
-  "Use spreadsheet_find for literal key/value/formula lookup across sheets and follow nextCursor to null; truncatedFields marks shortened previews. Use spreadsheet_diff before delivering edits: compare changed cells against the plan, and request comparePackageParts for whole-package XLSX object preservation checks. Formula-cache comparison is optional and never recalculates formulas. " +
-  "For changes to an existing XLSX/CSV/TSV, inspect/read it first and use `spreadsheet_edit` with its expectedSha256 and bounded cell patches. Pass the admitted attachment path directly; no workspace copy is required. The tool returns a new file and leaves the upload unchanged. Verify the returned file with spreadsheet_read before delivering it; use onlyIfBlank when filling empty fields. ODS/FODS editing is unsupported. " +
-  "Use the exact absolute attachment file projection supplied by the Host (files/<shard>/<sha>/<name>); an objects/<sha> storage reference is not a readable file path. Keep the supplied workspace prefix when handing a file to a delegated reviewer. For an image, inspect the supplied native image or use read_image when available; if neither reader can reach it, report the specific verification gap. " +
-  "A document a chat user attached is a path on disk, not text: read it with the deployment's document pipeline — `document_inspect` says what a DOCX or PDF is, `document_to_markdown` extracts its text, `document_from_url` stores the text of an attachment that only exists behind a URL. For XLSX, CSV, TSV, ODS or FODS, `spreadsheet_inspect` lists all sheets and detects text delimiter/encoding, `spreadsheet_read` reads pages, and `spreadsheet_create` creates a file in the selected format. CSV/TSV have one Data sheet with string fields; reuse detected delimiter and encoding when paging. XLSX/ODS/FODS support multiple sheets. Inspect all sheet names before selecting data; formula values are saved caches, not recalculated results. The plain file reader refuses those formats as binary, so that refusal is expected and is not a hint to go looking for the file somewhere else. When the pipeline itself refuses a path, report the refusal and the path it named instead of trying another reader.";
+  "Use the exact Host attachment path (files/<shard>/<sha>/<name>, not objects/<sha>). For office files use document_inspect/document_to_markdown, for images use native input or read_image. Load the available spreadsheet skill before workbook work. Follow a dedicated private workflow first. Report reader refusals without trying to bypass them. Resend an original DOCX by its verified filename.";
 export const QA_SOURCE_PRIORITY_NOTE_TEMPLATE =
-  "Answer from the source that owns the question: read what the conversation and its attachments already carry, then search the product documentation and ask the domain expert, and only then look in memory. Recalled memory is background from earlier sessions — a miss there is not evidence that no source exists, and it is not where a document, a page or a product fact should be looked up.";
-
+  "Use the source that owns the question: supplied material, primary product documentation or its domain expert. For earlier decisions use memory; verify current facts at the source. Follow the active answer mode.";
 /** Substitute `{name}` placeholders; a placeholder without a value drops out. */
 function renderTemplate(
   template: string,
@@ -230,9 +226,9 @@ export class QaPromptNotes {
     const root = this.rootSessionId(agent);
     return this.admission.propose(agent, decision, [
       ...this.identityNotes(root, config),
-      ...this.sourcesNotes(root, config),
+      ...this.sourcesNotes(root, config, root !== String(agent.session.id)),
       ...this.delegationNotes(root),
-      ...this.documentsNotes(root),
+      ...this.documentsNotes(root, agent, decision.messages),
       ...this.redeliveryNotes(agent, root),
       ...this.sourcePriorityNotes(root),
       ...this.codeSourceNotes(root, config, String(agent.session.id)),
@@ -254,7 +250,7 @@ export class QaPromptNotes {
     return [
       {
         name: QA_CODE_SOURCES_NOTE,
-        text: "This deployment has named code sources. Use code_sources to discover ids and read availability, code_search/code_read to inspect one source, and the same source id in dsh_git_* and docs_search calls. Honor the source explicitly requested by the user or delegation; repeat it on every call and pass it to subagents. Omitted source uses the configured default (or the sole entry); several entries without a default require a choice. Directory names do not imply versions or branches. Do not mix trees in a broad filesystem search or substitute a different tree after a refusal. For comparisons, inspect each requested source separately and identify it in the answer. Use dsh_git_context to verify actual branch and HEAD.",
+        text: "Use code_sources for available ids, then code_search/code_read and dsh_git_* on the explicitly selected tree. Pass its id to docs_search and delegated work. If several sources have no default, establish which one to use. Verify branch and HEAD with dsh_git_context. Keep comparisons separate and report refusals.",
       },
     ].map((note) => ({
       ...note,
@@ -295,6 +291,7 @@ export class QaPromptNotes {
   private sourcesNotes(
     rootSessionId: string,
     config: ResolvedQaSurfaceConfig,
+    delegated: boolean,
   ): readonly QaPromptNote[] {
     const sources = config.sources;
     if (!sources.enabled || !this.options.isQaSession(rootSessionId)) return [];
@@ -307,7 +304,10 @@ export class QaPromptNotes {
         { reportTool: QA_REPORT_SOURCES_TOOL },
       ),
     ];
-    if (sources.subagents.enableReportToolFallback) {
+    if (
+      sources.subagents.enableReportToolFallback &&
+      (delegated || config.notes.sources.fallbackTemplate !== "")
+    ) {
       const fallback = config.notes.sources.fallbackTemplate;
       // `{reportTool}` is what makes the fallback actionable; without it the
       // built-in sentence is the safer carrier.
@@ -381,10 +381,35 @@ export class QaPromptNotes {
     return [];
   }
 
-  private documentsNotes(rootSessionId: string): readonly QaPromptNote[] {
+  private documentsNotes(
+    rootSessionId: string,
+    agent: Agent,
+    messages: readonly UserMessage[],
+  ): readonly QaPromptNote[] {
     if (!this.options.isQaSession(rootSessionId)) return [];
     if (!this.options.config().notes.documents.enabled) return [];
     const template = this.options.config().notes.documents.template;
+    if (template === "") {
+      const relevant = (message: UserMessage) =>
+        message.source.kind === "user" &&
+        message.content.some(
+          (block) =>
+            block.type === "file" ||
+            block.type === "image" ||
+            (block.type === "text" &&
+              /(?:\b(?:docx?|document|word file|pdf|xlsx?|ods|fods|csv|tsv|workbook|spreadsheet|attachment|resend)\b|вложени|таблиц|документ|перешли|пришли.{0,16}(?:файл|снова))/iu.test(
+                block.text,
+              )),
+        );
+      if (
+        !messages.some(relevant) &&
+        !Array.from(activeDocumentHistory(agent.session)).some((seq) => {
+          const event = agent.session.eventAt(SessionSeq(seq));
+          return event?.type === "user/message" && relevant(event.data);
+        })
+      )
+        return [];
+    }
     return [
       {
         name: QA_DOCUMENTS_NOTE,
@@ -449,7 +474,7 @@ export class QaPromptNotes {
     return [
       {
         name: QA_BRANCH_NOTE,
-        text: "This chat is an independent branch. Copied messages, tool results, files and sources are historical context. Document workflow IDs in the inherited history belong to the source chat. To change or export such a document here, start a new workflow with document_workflow_begin and use the inherited draft as input. Review and human approval must be obtained again in this chat; inherited approvals do not authorize an export here. The user workspace is shared with the source chat. Runtime skill grants are fresh in this chat: activate any needed skill again before using the tools it grants.",
+        text: "This chat is an independent branch. Copied messages, tool results, files and sources are historical context. Document workflow IDs in the inherited history belong to the source chat. To change or export such a document here, start a new workflow with document_workflow_start and use the inherited draft as input. Review and human approval must be obtained again in this chat; inherited approvals do not authorize an export here. The user workspace is shared with the source chat. Runtime skill grants are fresh in this chat: activate any needed skill again before using the tools it grants.",
       },
     ];
   }

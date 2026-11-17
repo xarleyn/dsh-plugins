@@ -146,6 +146,8 @@ export function apply(
 
   const audit = new ReviewAudit(config.audit.maxEntries);
   const gate = new AnswerReviewGate({
+    localLlm: () =>
+      ctx.get("llm") as import("@deepseek-ai/dsh-llm").LlmRuntime | undefined,
     documents: () => ctx.get("documents") as DocumentsReader | undefined,
     fileReadPath: (ref) => {
       try {
