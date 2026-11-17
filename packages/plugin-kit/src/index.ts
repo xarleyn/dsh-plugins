@@ -13,6 +13,12 @@
  */
 
 export {
+  guardReviewDelegation,
+  REVIEW_DELEGATION_DENIED,
+  type ReviewToolRegistry,
+} from "./review-delegation.js";
+
+export {
   CREDENTIAL_HELP_KINDS,
   isCredentialHelpKind,
   resolveCredentialHelp,

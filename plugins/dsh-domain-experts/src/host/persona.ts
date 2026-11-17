@@ -213,6 +213,8 @@ function memorySection(
 }
 
 function delegationSection(input: PersonaInput): string {
+  if (input.structuredOutput === true)
+    return "This is an independent structured review. Do not delegate to other experts or start background agents. Read and search the sources yourself, report unavailable evidence as a verification gap, and finish this run with structured_output.";
   const { delegation, definition, callerDomain, depth } = input;
   const lines: string[] = [
     `Delegation depth: ${String(depth)} of at most ${String(delegation.maxDepth)}.`,
