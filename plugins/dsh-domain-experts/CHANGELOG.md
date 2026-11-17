@@ -1,3 +1,17 @@
+## 0.6.4 (2026-11-17)
+
+### 🩹 Fixes
+
+- Allow independent reviewers to delegate verification, await nested workers in the foreground, and include their completed results before the structured verdict. Preserve cancellation, provider policies and configured depth limits. ([bb6d981c](https://github.com/xarleyn/dsh-plugins/commit/bb6d981c))
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-kit to 0.8.3
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.6.3 (2026-11-17)
 
 ### 🩹 Fixes
