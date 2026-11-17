@@ -1,3 +1,13 @@
+## 0.23.3 (2026-11-17)
+
+### 🩹 Fixes
+
+- Recognize explicit DOCX redelivery after a colon-prefixed label in a compound request while preserving modification guards and all remaining instructions. ([bfa3e58f](https://github.com/xarleyn/dsh-plugins/commit/bfa3e58f))
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.23.2 (2026-11-17)
 
 ### 🩹 Fixes
