@@ -2,6 +2,35 @@
 export const EXPERT_REVIEW_OUTPUT_SCHEMA = {
   type: "object" as const,
   properties: {
+    comparisons: {
+      type: "array" as const,
+      description:
+        "When document review requests evidence pairs, provide one entry per required pair. Copy substantive verbatim passages from the source and target you personally read; do not paraphrase. Summary prose does not replace these witnesses.",
+      items: {
+        type: "object" as const,
+        properties: {
+          source: {
+            type: "string" as const,
+            description: "Exact S or D evidence key from the requested pair.",
+          },
+          target: {
+            type: "string" as const,
+            description: "Exact D evidence key from the requested pair.",
+          },
+          sourceQuote: { type: "string" as const },
+          targetQuote: { type: "string" as const },
+          explanation: { type: "string" as const },
+        },
+        required: [
+          "source",
+          "target",
+          "sourceQuote",
+          "targetQuote",
+          "explanation",
+        ],
+        additionalProperties: false,
+      },
+    },
     summary: {
       type: "string" as const,
       description:

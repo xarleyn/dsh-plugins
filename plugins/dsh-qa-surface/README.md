@@ -23,6 +23,14 @@ Session and Agent Loop.
 
 ## What it does
 
+A compound request can redeliver an existing DOCX and ask for additional work.
+The ordinary agent turn receives the entire request; its completed answer also
+includes the uniquely identified file from its original producer receipt.
+Newly generated files remain attached alongside it. Modification requests do
+not substitute an old file for the edited output, and ambiguous names require
+clarification. Explicit standalone resend requests retain the direct transfer
+path without starting a writer or reviewer.
+
 Chat history supports virtual folders and a separate pinned section. Create,
 rename, collapse and delete folders; drag chats into folders, out to the root,
 or into the pinned section. Drag rows or folder headers to arrange them, or use

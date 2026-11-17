@@ -4,6 +4,12 @@ Give a part of your product its own expert agent: one persona, one scope, one
 memory namespace, one tool policy — configured in the DSH Web UI and executed
 as an ordinary DeepSeek Harness subagent.
 
+Native structured review output can carry a `comparisons` array independently
+of its prose summary. Each document witness names its `source` and `target`
+evidence keys, verbatim `sourceQuote` and `targetQuote` passages, and an
+`explanation`. Consumers must validate these model-supplied witnesses against
+the exact files and this reviewer's reads before approving a document.
+
 ```text
 Main agent
     │  domain_expert(domain="payments", task="…")

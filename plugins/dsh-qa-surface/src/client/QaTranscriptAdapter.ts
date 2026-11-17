@@ -17,7 +17,7 @@ import type {
 import { artifactsOfToolResult } from "./chat-artifacts.js";
 import {
   deliveredDocuments,
-  requestedDocument,
+  requestedDocumentAttachment,
   selectDocument,
   type QaDocumentDelivery,
 } from "../shared/document-redelivery.js";
@@ -340,7 +340,9 @@ function collectTurnArtifacts(
       // request below can select it again; an edit must release the old file.
       if (node.kind === "steering" && nearestTurn !== undefined)
         delete getTurn(turns, nearestTurn).redelivery;
-      const requested = requestedDocument(visibleContentText(node.content));
+      const requested = requestedDocumentAttachment(
+        visibleContentText(node.content),
+      );
       if (
         requested !== undefined &&
         node.content.every((part) => part.type === "text")
@@ -563,7 +565,12 @@ function emitTurn(
       finalText.status === "committed" &&
       stoppedAt === undefined &&
       erroredCode === undefined
-        ? [turn.redelivery]
+        ? [
+            turn.redelivery,
+            ...turn.artifacts.filter(
+              (file) => file.path !== turn.redelivery!.path,
+            ),
+          ]
         : turn.artifacts;
     output.push({
       order: finalText.order,
@@ -648,33 +655,40 @@ export function projectTranscript(
       const images = visibleContentImages(node.content);
       const files = visibleContentFiles(node.content);
       if (text === QA_REGENERATE_MARKER) continue;
-      if (text === "" && images.length === 0 && files.length === 0) continue;
       const source = node.source as {
         qaAuthor?: string;
         qaOwnerByline?: boolean | null;
         qaDeliveryReply?: boolean;
         qaDocumentDelivery?: QaDocumentDelivery | null;
       };
+      if (
+        text === "" &&
+        images.length === 0 &&
+        files.length === 0 &&
+        !source.qaDeliveryReply
+      )
+        continue;
       // Only an owner's message carries a byline preference. Before admission
       // completes, the signed record already describes how to render it.
       const showAuthor =
         typeof source.qaOwnerByline !== "boolean" ||
         (options.showOwnerByline ?? source.qaOwnerByline);
-      output.push({
-        order: node.seq,
-        message: {
-          id: `${node.kind}:${node.seq}`,
-          role: "user",
-          text,
-          ...(showAuthor && source.qaAuthor !== undefined
-            ? { author: source.qaAuthor }
-            : {}),
-          status: "committed",
-          timestamp: node.time,
-          ...(images.length === 0 ? {} : { images }),
-          ...(files.length === 0 ? {} : { files }),
-        },
-      });
+      if (text !== "" || images.length > 0 || files.length > 0)
+        output.push({
+          order: node.seq,
+          message: {
+            id: `${node.kind}:${node.seq}`,
+            role: "user",
+            text,
+            ...(showAuthor && source.qaAuthor !== undefined
+              ? { author: source.qaAuthor }
+              : {}),
+            status: "committed",
+            timestamp: node.time,
+            ...(images.length === 0 ? {} : { images }),
+            ...(files.length === 0 ? {} : { files }),
+          },
+        });
       if (source.qaDeliveryReply) {
         const file = source.qaDocumentDelivery;
         output.push({

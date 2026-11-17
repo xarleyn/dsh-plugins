@@ -8,7 +8,7 @@ import {
   textOfBlocks,
   type CandidateSession,
 } from "./candidate.js";
-import { ReviewerFailure } from "./types.js";
+import { ReviewerFailure, type DocumentComparison } from "./types.js";
 import { activeHistoryNodes } from "./context.js";
 import { witnessedLineComparison } from "./line-citations.js";
 
@@ -435,11 +435,12 @@ export async function prepareDocumentEvidence(options: {
             ]
           : []),
       ]),
-      "Report substantive gaps against the user's requested scope. CHECK lines are the independent reviewer's own evidence. The cover message and the document have no obligation to contain these lines, quotations, or replies to reviewer feedback. For a pass, put one line for EACH listed pair in your own structured summary. Copy substantive verbatim passages (12 or more characters) from the files identified by that pair, and explain their correspondence.",
+      "Report substantive gaps against the user's requested scope. Comparison witnesses are the independent reviewer's own evidence. The cover message and the document have no obligation to contain CHECK lines, quotations, or replies to reviewer feedback. Copy substantive verbatim passages (12 or more characters) from the exact files identified by every required pair and explain their correspondence.",
+      "Prefer the native structured_output comparisons array: one object per required pair, with source, target, sourceQuote, targetQuote and explanation. sourceQuote and targetQuote must be substantive verbatim passages of at least 12 characters from the exact files you personally read. Do not use paraphrases, checklist prose or the cover message as the quoted evidence. Put the comparison evidence in comparisons even when the summary is a short paragraph. The primary author cannot repair missing reviewer evidence.",
       "S and D identifiers are evidence keys in the JSON records above, not filenames or paths. Open each record's read path. S keys identify sources; D keys identify deliverables.",
       "Required pairs: " +
         pairs.map((pair) => pair.join(" ")).join(", ") +
-        ". Use the matching format below for every required pair:",
+        ". When the native schema provides comparisons, use that array. Only on legacy backends without that field, use the matching CHECK format in the structured summary for every required pair:",
       ...pairs.map(([s, d]) =>
         s === d
           ? `CHECK ${s} ${d} | first deliverable passage | second deliverable passage | comparison to the user's requirements`
@@ -459,13 +460,33 @@ export async function prepareDocumentEvidence(options: {
         for (const line of lines) excerpts.add(normalize(line));
       }
     },
-    async verify(summary: string, child: string | undefined) {
+    async verify(
+      summary: string,
+      child: string | undefined,
+      comparisons?: readonly DocumentComparison[],
+    ) {
       const windows = child ? readers.get(child) : undefined;
       if (!windows) throw new ReviewerFailure("review-document-not-read");
       for (const key of pages.keys())
         if (!windows.get(key)?.size)
           throw new ReviewerFailure("review-document-not-read", key);
       for (const [s, d] of pairs) {
+        if (comparisons !== undefined) {
+          const checked = comparisons.some(
+            (c) =>
+              c.source === s &&
+              c.target === d &&
+              c.explanation.trim() &&
+              witnessedPassage(c.sourceQuote, pages.get(s)!, windows.get(s)!) &&
+              witnessedPassage(c.targetQuote, pages.get(d)!, windows.get(d)!),
+          );
+          if (!checked)
+            throw new ReviewerFailure(
+              "review-document-comparison-missing",
+              s + " " + d,
+            );
+          continue;
+        }
         const checked = summary.split(/\r?\n/u).some((line) => {
           const fields = comparisonFields(line, s + " " + d);
           return (

@@ -5,6 +5,15 @@ final answer is allowed to complete its turn, an independent reviewer checks it
 and can send it back for correction. The review is a **lifecycle requirement**
 enforced at the turn boundary — not a line in the system prompt.
 
+Document reviewers can return comparison witnesses in native structured
+`comparisons` fields: exact evidence keys, verbatim source and deliverable
+passages, and an explanation. Each required pair is checked against the
+original fingerprints and that reviewer's successful read windows. Summary
+formatting cannot replace these checks. Domain Experts 0.6.1 and later carries
+this field through native capture; older backends retain the witnessed CHECK
+summary format. An unread file, invented quotation or missing pair still fails
+closed.
+
 ## What it does
 
 ```text

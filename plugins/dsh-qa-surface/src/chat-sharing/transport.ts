@@ -33,7 +33,10 @@ import {
   originalDocument,
   recordDocumentDelivery,
 } from "./document-delivery.js";
-import { requestedDocument } from "../shared/document-redelivery.js";
+import {
+  requestedDocument,
+  requestedDocumentAttachment,
+} from "../shared/document-redelivery.js";
 
 /** Durable access is checked before and after asynchronous reads and per frame. */
 export class QaChatTransport {
@@ -321,6 +324,27 @@ export class QaChatTransport {
           );
           return { accepted: true };
         }
+        const compoundTarget = requestedDocumentAttachment(requestText);
+        if (compoundTarget !== undefined) {
+          const file = originalDocument(session, Infinity, compoundTarget);
+          const deliveryId = String(request.requestId) + ":attachment";
+          const recorded = session
+            .snapshotEvents()
+            .some(
+              (event) =>
+                event.type === "user/message" &&
+                event.data.source.kind === "qa-document-redelivery" &&
+                event.data.source.rpcId === deliveryId,
+            );
+          if (file && !recorded)
+            recordDocumentDelivery(
+              session,
+              deliveryId,
+              requestText,
+              file,
+              true,
+            );
+        }
       }
       const value = await this.ctx.sessionController.prompt(request, signal);
       this.store().revalidate(token, access);
@@ -479,7 +503,9 @@ export class QaChatTransport {
     const target =
       source.kind === "user" &&
       data.content?.every((part) => part.type === "text")
-        ? requestedDocument(data.content.map((part) => part.text).join(" "))
+        ? requestedDocumentAttachment(
+            data.content.map((part) => part.text).join(" "),
+          )
         : undefined;
     const session =
       target !== undefined &&
@@ -498,7 +524,11 @@ export class QaChatTransport {
         data: {
           ...data,
           ...(receipt
-            ? { content: [{ type: "text", text: receipt.requestText }] }
+            ? {
+                content: receipt.compound
+                  ? []
+                  : [{ type: "text", text: receipt.requestText }],
+              }
             : {}),
           source: {
             ...(receipt

@@ -278,7 +278,7 @@ export function renderExpertReviewTask(input: {
     "Report every objection as a finding (claim, evidence, confidence); record contradicting sources as conflicts. " +
       "An answer with no findings and no conflicts passes — a pass is final for this candidate and asks for no " +
       "further version. Do not rewrite the answer yourself.",
-    "Finish by calling structured_output exactly once with summary, findings, conflicts, assumptions and followUps. " +
+    "Finish by calling structured_output exactly once with summary, findings, conflicts, assumptions and followUps; include comparisons when document review requests evidence pairs. " +
       "A text verdict or fenced JSON block does not deliver this run's result.",
   ].join("\n");
 }
@@ -290,6 +290,27 @@ export const REVIEWER_OUTPUT_SCHEMA: Record<string, unknown> = {
     verdict: { type: "string", enum: ["pass", "revise"] },
     confidence: { type: "string", enum: ["low", "medium", "high"] },
     summary: { type: "string" },
+    comparisons: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          source: { type: "string" },
+          target: { type: "string" },
+          sourceQuote: { type: "string" },
+          targetQuote: { type: "string" },
+          explanation: { type: "string" },
+        },
+        required: [
+          "source",
+          "target",
+          "sourceQuote",
+          "targetQuote",
+          "explanation",
+        ],
+        additionalProperties: false,
+      },
+    },
     issues: {
       type: "array",
       items: {

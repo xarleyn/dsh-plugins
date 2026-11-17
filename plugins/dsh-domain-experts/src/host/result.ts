@@ -1,11 +1,13 @@
 import {
   EXPERT_RESULT_MARKER,
   type DomainExpertFinding,
+  type DocumentComparison,
   type ExpertConfidence,
 } from "../types.js";
 
 export interface ParsedExpertAnswer {
   readonly summary: string;
+  readonly comparisons?: readonly DocumentComparison[];
   readonly findings: readonly DomainExpertFinding[];
   readonly conflicts: readonly string[];
   readonly assumptions: readonly string[];
@@ -45,6 +47,9 @@ export function parseExpertAnswer(text: string): ParsedExpertAnswer {
         ? asText(payload.object["summary"])
         : prose,
     findings: findingsOf(payload.object["findings"]),
+    ...(payload.object["comparisons"] === undefined
+      ? {}
+      : { comparisons: comparisonsOf(payload.object["comparisons"]) }),
     conflicts: stringList(payload.object["conflicts"]),
     assumptions: stringList(payload.object["assumptions"]),
     followUps: stringList(
@@ -132,6 +137,27 @@ function balancedEnd(text: string): number {
     }
   }
   return -1;
+}
+
+function comparisonsOf(value: unknown): DocumentComparison[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const keys = [
+      "source",
+      "target",
+      "sourceQuote",
+      "targetQuote",
+      "explanation",
+    ] as const;
+    if (!keys.every((key) => typeof item[key] === "string" && item[key].trim()))
+      return [];
+    return [
+      Object.fromEntries(
+        keys.map((key) => [key, item[key]]),
+      ) as unknown as DocumentComparison,
+    ];
+  });
 }
 
 function findingsOf(value: unknown): readonly DomainExpertFinding[] {

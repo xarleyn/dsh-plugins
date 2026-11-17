@@ -33,6 +33,7 @@ async function fixture(
   textFollowup = false,
   withSource = true,
   deliverable = report,
+  comparisons?: ExpertRunResult["comparisons"],
 ) {
   const cwd = await mkdtemp(path.join(os.tmpdir(), "document-gate-"));
   dirs.push(cwd);
@@ -169,6 +170,7 @@ async function fixture(
           findings: [],
           conflicts: [],
           summary: typeof summary === "function" ? summary(task) : summary,
+          ...(comparisons === undefined ? {} : { comparisons }),
         };
         return { ok: true, code: "OK", message: "", result };
       },
@@ -215,6 +217,31 @@ async function fixture(
     },
   };
 }
+it("accepts witnessed native comparisons without a CHECK-formatted summary", async () => {
+  const f = await fixture(
+    "Verified the preserved cutoff.",
+    true,
+    "review-child",
+    false,
+    true,
+    report,
+    [
+      {
+        source: "S1",
+        target: "D1",
+        sourceQuote: req,
+        targetQuote: report,
+        explanation,
+      },
+    ],
+  );
+  expect(await f.stop()).toBe("pass");
+  expect(f.receipts.at(-1)).toMatchObject({
+    status: "pass",
+    documents: [{ sha256: f.digest }],
+  });
+});
+
 it("binds the accepted DOCX and its source to the receipt and scopes a later text pass to its own request", async () => {
   const f = await fixture(proof);
   expect(await f.stop()).toBe("pass");
@@ -459,10 +486,37 @@ it("credits every evidence key for a shared cached extraction, only to the child
     signal: new AbortController().signal,
   });
   const proof = `CHECK S1 D1 | ${report} | ${report} | The cached extraction is identical.`;
+  const comparison = {
+    source: "S1",
+    target: "D1",
+    sourceQuote: report,
+    targetQuote: report,
+    explanation: "The cached extraction is identical.",
+  };
+  await expect(
+    evidence.verify("Compared.", "reviewer", [comparison]),
+  ).rejects.toThrow("review-document-not-read");
   await expect(evidence.verify(proof, "reviewer")).rejects.toThrow(
     "review-document-not-read",
   );
   evidence.observeRead("reviewer", markdownPath, [report]);
+  await expect(
+    evidence.verify("Compared.", "reviewer", [comparison]),
+  ).resolves.toBeUndefined();
+  await expect(
+    evidence.verify("Compared.", "other-reviewer", [comparison]),
+  ).rejects.toThrow("review-document-not-read");
+  await expect(evidence.verify(proof, "reviewer", [])).rejects.toThrow(
+    "review-document-comparison-missing",
+  );
+  await expect(
+    evidence.verify("Compared.", "reviewer", [
+      { ...comparison, sourceQuote: "An invented source passage" },
+    ]),
+  ).rejects.toThrow("review-document-comparison-missing");
+  await expect(
+    evidence.verify("Compared.", "reviewer", [{ ...comparison, target: "D2" }]),
+  ).rejects.toThrow("review-document-comparison-missing");
   await expect(evidence.verify(proof, "reviewer")).resolves.toBeUndefined();
   await expect(evidence.verify(proof, "other-reviewer")).rejects.toThrow(
     "review-document-not-read",

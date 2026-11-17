@@ -23,6 +23,28 @@ const STRUCTURED = [
 ].join("\n");
 
 describe("result: structured parsing", () => {
+  it("preserves native comparison witnesses separately from summary prose", () => {
+    const comparison = {
+      source: "S1",
+      target: "D1",
+      sourceQuote: "The source states thirty seconds",
+      targetQuote: "The target records thirty seconds",
+      explanation: "The cutoff is preserved",
+    };
+    expect(
+      parseExpertAnswer(
+        JSON.stringify({ summary: "Verified.", comparisons: [comparison] }),
+      ).comparisons,
+    ).toEqual([comparison]);
+    expect(
+      parseExpertAnswer(
+        JSON.stringify({
+          summary: "Verified.",
+          comparisons: [{ source: "S1" }],
+        }),
+      ).comparisons,
+    ).toEqual([]);
+  });
   it("reads the tagged block and keeps the prose as fallback context", () => {
     const parsed = parseExpertAnswer(STRUCTURED);
     expect(parsed.structured).toBe(true);
