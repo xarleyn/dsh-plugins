@@ -1,4 +1,3 @@
-import { readSourceImage as readSourceImagePreview } from "./provenance/source-image.js";
 import path from "node:path";
 import { QaCodeSourceSelection } from "./code-source-selection.js";
 import { qaDelegatedHeader } from "./shared/session-lineage.js";
@@ -127,14 +126,9 @@ import {
   defaultQaProvenanceDirectoryPath,
   FileQaProvenanceSnapshotStore,
 } from "./provenance/snapshot-store.js";
-import {
-  previewConvertibleDocument,
-  readSourcePreview,
-} from "./provenance/document-preview.js";
-import { readWorkspaceFileChunk } from "./provenance/file-download.js";
+import { QaResourceReader } from "./provenance/resource-reader.js";
 import {
   listWorkspaceDirectory,
-  readWorkspaceFile,
   QaSourcePreviewError,
   type QaSourcePreviewReason,
 } from "./provenance/file-preview.js";
@@ -2611,22 +2605,10 @@ export class QaSurface extends TypertRemoteService {
     selection?: QaSpreadsheetPreviewSelection,
   ): Promise<QaSourceFilePreview> {
     const finish = await this.admitChatRead(token, sessionId, sourcePath);
-    const options = this.fileReadOptions(sessionId);
-    try {
-      const value = await readSourcePreview({
-        ...options,
-        sourcePath,
-        sessionId,
-        isEvidence: (canonicalPath) =>
-          this.provenance.sourceAllowed(sessionId, canonicalPath),
-        documents: () => this.ctx.get("documents") as DocumentsFace | undefined,
-        ...(selection === undefined ? {} : { selection }),
-      });
-      finish();
-      return value;
-    } catch (error) {
-      throw this.browseRefusal("source.preview-refused", sessionId, error);
-    }
+    return this.resourceReader(sessionId, finish).readSourceFile(
+      sourcePath,
+      selection,
+    );
   }
 
   /** Load one relative raster illustration of an attested Markdown source. */
@@ -2638,25 +2620,10 @@ export class QaSurface extends TypertRemoteService {
     imagePath: string,
   ): Promise<string> {
     const finish = await this.admitChatRead(token, sessionId, sourcePath);
-    const options = this.fileReadOptions(sessionId);
-    try {
-      const result = await readSourceImagePreview(
-        {
-          ...options,
-          sourcePath,
-          renderFrontmatter: false,
-          isEvidence: (canonicalPath) =>
-            this.provenance.sourceAllowed(sessionId, canonicalPath),
-        },
-        imagePath,
-      );
-      finish();
-      return result;
-    } catch (error) {
-      throw sourcePreviewRefusal(
-        error instanceof QaSourcePreviewError ? error.reason : "unavailable",
-      );
-    }
+    return this.resourceReader(sessionId, finish).readSourceImage(
+      sourcePath,
+      imagePath,
+    );
   }
 
   /**
@@ -2704,17 +2671,7 @@ export class QaSurface extends TypertRemoteService {
     path: string,
   ): Promise<QaWorkspaceFile> {
     const finish = await this.admitChatRead(token, sessionId, path);
-    const options = this.fileReadOptions(sessionId);
-    try {
-      const value = await readWorkspaceFile({
-        ...options,
-        filePath: path ?? "",
-      });
-      finish();
-      return value;
-    } catch (error) {
-      throw this.browseRefusal("workspace.read-refused", sessionId, error);
-    }
+    return this.resourceReader(sessionId, finish).readWorkspaceFile(path);
   }
 
   /** Download one bounded chunk after revalidating this chat's ownership. */
@@ -2728,20 +2685,12 @@ export class QaSurface extends TypertRemoteService {
     sha256Prefix?: string,
   ): Promise<QaWorkspaceFileChunk> {
     const finish = await this.admitChatRead(token, sessionId, path);
-    const options = this.fileReadOptions(sessionId);
-    try {
-      const value = await readWorkspaceFileChunk({
-        ...options,
-        filePath: path ?? "",
-        offset,
-        version,
-        ...(sha256Prefix === undefined ? {} : { sha256Prefix }),
-      });
-      finish();
-      return value;
-    } catch (error) {
-      throw this.browseRefusal("workspace.download-refused", sessionId, error);
-    }
+    return this.resourceReader(sessionId, finish).readWorkspaceFileChunk(
+      path,
+      offset,
+      version,
+      sha256Prefix,
+    );
   }
 
   @Remote("documentWorkflowStatus")
@@ -2829,20 +2778,10 @@ export class QaSurface extends TypertRemoteService {
     selection?: QaSpreadsheetPreviewSelection,
   ): Promise<QaDocumentPreview> {
     const finish = await this.admitChatRead(token, sessionId, path);
-    const options = this.fileReadOptions(sessionId);
-    try {
-      const value = await previewConvertibleDocument({
-        ...options,
-        filePath: path ?? "",
-        documents: () => this.ctx.get("documents") as DocumentsFace | undefined,
-        sessionId,
-        ...(selection === undefined ? {} : { selection }),
-      });
-      finish();
-      return value;
-    } catch (error) {
-      throw this.browseRefusal("workspace.preview-refused", sessionId, error);
-    }
+    return this.resourceReader(sessionId, finish).previewWorkspaceDocument(
+      path,
+      selection,
+    );
   }
 
   /**
@@ -2864,30 +2803,40 @@ export class QaSurface extends TypertRemoteService {
     return { config, cwd };
   }
 
-  private fileReadOptions(sessionId: string) {
+  private resourceReader(
+    sessionId: string,
+    finish: () => void,
+  ): QaResourceReader {
     const { config, cwd } = this.browseContext(sessionId);
     const attachmentRoot = this.admission.attachmentRoot();
     const { maxBytes, maxMarkdownRenderBytes, renderFrontmatter } =
       config.sources.filePreview;
-    return {
-      cwd,
-      sharedReadOnlyRoots: config.lockdown.sharedReadOnlyRoots,
-      ...(attachmentRoot === undefined ? {} : { attachmentRoot }),
-      maxBytes,
-      maxMarkdownRenderBytes,
-      renderFrontmatter,
-    };
+    return new QaResourceReader({
+      sessionId,
+      file: {
+        cwd,
+        sharedReadOnlyRoots: config.lockdown.sharedReadOnlyRoots,
+        ...(attachmentRoot === undefined ? {} : { attachmentRoot }),
+        maxBytes,
+        maxMarkdownRenderBytes,
+        renderFrontmatter,
+      },
+      isEvidence: (path) => this.provenance.sourceAllowed(sessionId, path),
+      documents: () => this.ctx.get("documents") as DocumentsFace | undefined,
+      finish,
+      refusal: (event, error) => this.browseRefusal(event, sessionId, error),
+    });
   }
 
-  /** One browse refusal, logged with its coarse reason and rethrown for the wire. */
+  /** Preserve the wire reason and log it for endpoints with a refusal event. */
   private browseRefusal(
-    event: string,
+    event: string | undefined,
     sessionId: string,
     error: unknown,
   ): Error {
     const reason =
       error instanceof QaSourcePreviewError ? error.reason : "unavailable";
-    this.logger.debug(event, { sessionId, reason });
+    if (event !== undefined) this.logger.debug(event, { sessionId, reason });
     return sourcePreviewRefusal(reason);
   }
 

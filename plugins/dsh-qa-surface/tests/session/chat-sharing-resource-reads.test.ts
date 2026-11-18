@@ -89,6 +89,7 @@ async function fixture() {
     };
   });
   let documents: { convert: typeof convert } | undefined;
+  const debug = vi.fn();
   const surface = Object.create(QaSurface.prototype) as QaSurface;
   Object.assign(surface, {
     chatSharingStore: sharing.store,
@@ -111,11 +112,12 @@ async function fixture() {
       sourceAllowed: (id: string, path: string) =>
         id === sessionId && published.has(resolve(workspace.cwd, path)),
     },
-    logger: { debug: vi.fn() },
+    logger: { debug },
   });
   return {
     ...sharing,
     surface,
+    debug,
     secureOwner,
     workspace,
     filePreview,
@@ -140,6 +142,7 @@ const source = {
 const reads = [
   {
     method: "readSourceFile",
+    refusalEvent: "source.preview-refused",
     file: "note.md",
     run: (f: Fixture) =>
       f.surface.readSourceFile(f.reader.token, sessionId, "note.md"),
@@ -147,6 +150,7 @@ const reads = [
   },
   {
     method: "readSourceImage",
+    refusalEvent: null,
     file: "diagram.png",
     run: (f: Fixture) =>
       f.surface.readSourceImage(
@@ -159,6 +163,7 @@ const reads = [
   },
   {
     method: "readWorkspaceFile",
+    refusalEvent: "workspace.read-refused",
     file: "note.md",
     run: (f: Fixture) =>
       f.surface.readWorkspaceFile(f.reader.token, sessionId, "note.md"),
@@ -174,6 +179,7 @@ const reads = [
   },
   {
     method: "readWorkspaceFileChunk",
+    refusalEvent: "workspace.download-refused",
     file: "note.md",
     run: (f: Fixture) =>
       f.surface.readWorkspaceFileChunk(
@@ -194,12 +200,14 @@ const reads = [
   },
   {
     method: "readSourceFile with document fallback",
+    refusalEvent: "source.preview-refused",
     run: (f: Fixture) =>
       f.surface.readSourceFile(f.reader.token, sessionId, "guide.docx"),
     expected: documentSource,
   },
   {
     method: "previewWorkspaceDocument",
+    refusalEvent: "workspace.preview-refused",
     run: (f: Fixture) =>
       f.surface.previewWorkspaceDocument(
         f.reader.token,
@@ -210,7 +218,8 @@ const reads = [
   },
 ];
 
-describe.each(reads)("$method on a shared chat", ({ file, run, expected }) => {
+describe.each(reads)("$method on a shared chat", (read) => {
+  const { file, run, expected, refusalEvent } = read;
   it.each(["allowed", "grant revoked", "account disabled"] as const)(
     "finishes a suspended read with access %s",
     async (access) => {
@@ -246,12 +255,32 @@ describe.each(reads)("$method on a shared chat", ({ file, run, expected }) => {
         resume.release();
       }
       if (access === "allowed") await expect(result).resolves.toEqual(expected);
-      else
+      else {
         await expect(result).rejects.toThrow(
           /^QA source preview refused the request \(reason: unavailable\)$/u,
         );
+        if (refusalEvent === null) expect(f.debug).not.toHaveBeenCalled();
+        else
+          expect(f.debug).toHaveBeenCalledWith(refusalEvent, {
+            sessionId,
+            reason: "unavailable",
+          });
+      }
     },
   );
+});
+
+it("rejects unpublished paths and disabled previews before file I/O or read diagnostics", async () => {
+  const f = await fixture();
+  const read = (name: string) =>
+    f.surface.readWorkspaceFile(f.reader.token, sessionId, name);
+  await expect(read("preview.pdf")).rejects.toThrow(
+    "This file has not been shared in the chat.",
+  );
+  f.filePreview.enabled = false;
+  await expect(read("note.md")).rejects.toThrow("(reason: unavailable)");
+  expect(beforeOpen).not.toHaveBeenCalled();
+  expect(f.debug).not.toHaveBeenCalled();
 });
 
 it("uses a documents provider registered after an unsupported source preview", async () => {
