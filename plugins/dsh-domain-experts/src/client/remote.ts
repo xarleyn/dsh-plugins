@@ -9,6 +9,10 @@
 import type { ClientRemote } from "@deepseek-ai/dsh-api-gateway/client";
 import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
 import type {
+  CatalogApplyResult,
+  CatalogExportResult,
+  CatalogImportMode,
+  CatalogPreviewResult,
   AuditListResult,
   CatalogResult,
   DomainDeleteResult,
@@ -24,6 +28,16 @@ import type {
 } from "../types.js";
 
 export interface DomainExpertsRemote {
+  exportCatalog(): Promise<RemoteResult<CatalogExportResult>>;
+  previewCatalogImport(
+    document: string,
+    mode: CatalogImportMode,
+  ): Promise<RemoteResult<CatalogPreviewResult>>;
+  applyCatalogImport(
+    document: string,
+    mode: CatalogImportMode,
+    token: string,
+  ): Promise<RemoteResult<CatalogApplyResult>>;
   listDomains(): Promise<RemoteResult<DomainListResult>>;
   getDomain(domainId: string): Promise<RemoteResult<DomainGetResult>>;
   draftDomain(domainId: string): Promise<RemoteResult<DomainWriteResult>>;

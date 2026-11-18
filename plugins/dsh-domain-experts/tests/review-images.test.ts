@@ -8,6 +8,7 @@ import type { ExpertRunInput } from "../src/host/execution.js";
 import type { DomainExpertsStorage } from "../src/host/storage.js";
 import {
   agentOf,
+  catalogGlobalOf,
   domainOf,
   domainTableOf,
   fakeSubagents,
@@ -45,6 +46,7 @@ describe("host-only reviewer images", () => {
         open: () =>
           Promise.resolve({
             name: "domain_experts",
+            global: catalogGlobalOf(),
             table: (name: keyof typeof tables) => tables[name],
             close: () => Promise.resolve(),
           } as unknown as DomainExpertsStorage),

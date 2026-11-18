@@ -10,14 +10,15 @@ Commit `03ee40e2` added the child schema and required capture. The
 of a prose-only verdict. Qualifying each model provider remains a separate
 runtime check.
 
+The Host operator can [transfer a catalog](./README.md#import-and-export-a-catalog)
+using versioned JSON with a preview of conflicts and atomic apply.
+
 ## Next
 
 - Durable, queryable execution audit (runs by domain, cross-domain
   delegations, worker usage, latency, failed scope checks).
 - Per-provider configuration UI contributed by the provider itself, replacing
   the opaque JSON map for third-party adapters.
-- Domain import/export as a documented YAML/JSON document, so a domain catalog
-  can be reviewed and versioned outside the running host.
 
 ## Later
 

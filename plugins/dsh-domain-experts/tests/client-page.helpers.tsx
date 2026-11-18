@@ -154,7 +154,18 @@ export function ok<T>(data: T): ApiOutcome<T> {
 export function apiOf(
   overrides: Partial<DomainExpertsApi> = {},
 ): DomainExpertsApi {
+  const unavailable = () =>
+    Promise.resolve({
+      ok: false as const,
+      code: "test",
+      message: "Unavailable",
+    });
   return {
+    transfer: {
+      exportCatalog: unavailable,
+      previewCatalogImport: unavailable,
+      applyCatalogImport: unavailable,
+    },
     listDomains: () => Promise.resolve(ok({ domains: [SUMMARY] })),
     getDomain: () => Promise.resolve(ok({ domain: DEFINITION })),
     draftDomain: () => Promise.resolve(ok({ domain: DEFINITION })),

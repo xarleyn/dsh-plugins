@@ -196,6 +196,42 @@ account memory ownership: `domain_memory` continues to require a live expert
 record, and a cold delegation audit records only the known caller-to-target
 suffix.
 
+## Import and export a catalog
+
+In the Plugins panel, open Domain Experts and expand **Import or export
+catalog**. Export downloads a UTF-8 JSON document sorted by domain ID. To
+import, choose a file and mode, review the actions for each ID, then apply.
+Only the Host operator can use these operations.
+
+| Mode | Existing ID with different data | New ID | Installed ID absent from file |
+| --- | --- | --- | --- |
+| Merge | Keep installed definition | Add | Keep |
+| Replace | Update the definition | Add | Remove |
+
+Both modes keep unchanged definitions as they are. A preview makes no writes.
+Apply requires the exact file, mode and catalog state from the preview.
+Concurrent edits or a Host restart require a new preview. Each apply publishes
+one durable catalog snapshot, so additions, updates and removals land together.
+
+The envelope has `format: "dsh-domain-catalog"`, `version: 1` and a
+`domains` array, with at most 500 definitions and 512 KiB per document.
+Definitions carry the ID, display fields, persona, built-in filesystem and
+documentation scopes, memory namespace references, tool policy, delegation and
+model selection. Import validates the complete document before planning. An
+unknown version, duplicate ID, unknown field or invalid definition is refused.
+
+Credentials, stored memory, audit records, timestamps and opaque configuration
+under `scope.providers` are outside the transfer format. Replacement retains
+the destination's provider configuration for a matching domain ID. Configure
+providers locally for newly added domains. Export and import also refuse
+recognizable credentials in included text. Review free-text fields before
+sharing an export, since arbitrary private text has no reliable marker.
+Removing a definition leaves its memory records on the Host.
+
+Existing installations read their stored domain rows until the first catalog
+write. From then on storage unit v2 reads the committed snapshot. Back up the
+storage before upgrading if you need to return to an older build.
+
 ## Enforcement model
 
 DSH tool filtering is capability scoping, not an operating-system sandbox, so

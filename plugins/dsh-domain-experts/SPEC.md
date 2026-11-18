@@ -158,17 +158,17 @@ Each numbered item is a verifiable guarantee, phrased as behaviour.
 
 ## 2. Data model
 
-One storage unit, `domain_experts` (the unit-name grammar is
-`^[a-z][a-z0-9_]*$`), with two tables:
+One storage unit, `domain_experts`, with a global catalog snapshot and two
+tables.
 
 | Table | Key | Value |
 | --- | --- | --- |
-| `domains` | domain id | `DomainDefinition` |
+| `domains` (legacy) | domain id | `DomainDefinition` |
 | `memory` | `<namespace>::<key>` | `MemoryRecord` |
 
 That is the built-in carrier. A deployment may point memory at the `sqlite`
-provider instead, which keeps the same `MemoryRecord` shape — so the unit stays
-at version `1` — in a file of its own: table `domain_memory`, primary key
+provider instead, which keeps the same `MemoryRecord` shape in a file of its
+own with table `domain_memory`, primary key
 `(namespace, key)`, an index on `(namespace, updated_at)`, tags as JSON and a
 stored search text the scorer defines. The unit's `memory` table remains the
 source the import reads and the copy a rollback returns to; the plugin never
@@ -182,9 +182,11 @@ deletes it. See `README.md`, "Where memory lives".
   storage-safe; an id that is not a valid namespace segment is treated as no
   account at all rather than interpolated into a key.
 
-- **Unit version** is `1` and moves together with `DOMAIN_RECORD_VERSION`.
-  A breaking record change bumps both and lists the previous version in
-  `compatibleVersions`.
+- **Unit version** is `2` and accepts existing v1 data. Until the first
+  successful catalog write, the registry reads the legacy `domains` table.
+  The global snapshot becomes authoritative in that write. The catalog queue
+  serializes CRUD and imports across planning and durability. The record
+  version stays at `1`.
 - **Record schemas are zod**, not Schemastery: that is the storage-domain
   contract. The plugin's own `Config` is Schemastery, as the plugin contract
   requires.

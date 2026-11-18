@@ -144,7 +144,44 @@ export interface DomainDefinition {
   readonly updatedAt: number;
 }
 
-/** Lightweight list projection for the domain list screen. */ export interface DomainSummary {
+/** Portable catalog contract, independent of the Host storage layout. */
+export const CATALOG_FORMAT = "dsh-domain-catalog";
+export const CATALOG_VERSION = 1;
+export const MAX_CATALOG_BYTES = 512 * 1024;
+export const MAX_CATALOG_DOMAINS = 500;
+
+export type CatalogImportMode = "merge" | "replace";
+
+export interface CatalogChange {
+  readonly id: string;
+  readonly action: "add" | "keep" | "update" | "remove" | "unchanged";
+}
+
+export interface CatalogPreview {
+  readonly changes: readonly CatalogChange[];
+  readonly token: string;
+}
+
+interface CatalogResultEnvelope {
+  readonly ok: boolean;
+  readonly code: string;
+  readonly message: string;
+}
+
+export interface CatalogExportResult extends CatalogResultEnvelope {
+  readonly document: string;
+}
+
+export interface CatalogPreviewResult extends CatalogResultEnvelope {
+  readonly preview: CatalogPreview | null;
+}
+
+export interface CatalogApplyResult extends CatalogResultEnvelope {
+  readonly changed: number;
+}
+
+/** Lightweight list projection for the domain list screen. */
+export interface DomainSummary {
   readonly id: string;
   readonly name: string;
   readonly description: string;
@@ -353,6 +390,11 @@ export type DomainErrorCode =
   | "DOMAIN_DISABLED"
   | "DOMAIN_INVALID"
   | "DOMAIN_EXISTS"
+  | "CATALOG_ACCESS_DENIED"
+  | "CATALOG_INVALID"
+  | "CATALOG_VERSION_UNSUPPORTED"
+  | "CATALOG_PREVIEW_STALE"
+  | "CATALOG_SENSITIVE_CONTENT"
   | "UNSUPPORTED_SUBAGENT_CAPABILITY"
   | "SUBAGENT_PROVIDER_MISSING"
   | "SCOPE_PROVIDER_MISSING"

@@ -54,6 +54,22 @@ export function accepted<P extends object>(payload: P): Envelope & P {
   return { ok: true, code: "", message: "", ...payload };
 }
 
+/** Transfer errors never echo data from a document or a storage backend. */
+export function catalogRefused<P extends object>(
+  error: unknown,
+  payload: P,
+): Envelope & P {
+  const code = errorCodeOf(error);
+  return {
+    ok: false,
+    code,
+    message: code.startsWith("CATALOG_")
+      ? errorMessageOf(error)
+      : "The catalog operation failed. Check the Host storage status and retry.",
+    ...payload,
+  };
+}
+
 /** The answer of a call that was refused, carrying the code of the cause. */
 function refused<P extends object>(error: unknown, payload: P): Envelope & P {
   return {

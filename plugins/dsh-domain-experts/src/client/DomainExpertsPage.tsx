@@ -12,6 +12,7 @@ import {
   type ValidationIssueView,
 } from "../types.js";
 import type { ApiOutcome } from "./remote.js";
+import { CatalogTransfer, type CatalogTransferApi } from "./CatalogTransfer.js";
 import {
   DomainEditor,
   type MemoryView,
@@ -22,6 +23,7 @@ import { StatusLine } from "./components.js";
 
 /** The subset of the Remote surface this page uses. */
 export interface DomainExpertsApi {
+  readonly transfer: CatalogTransferApi;
   listDomains(): Promise<
     ApiOutcome<{ readonly domains: readonly DomainSummary[] }>
   >;
@@ -511,6 +513,10 @@ export function DomainExpertsPage({
           </button>
         </div>
       </header>
+
+      {editing ? null : (
+        <CatalogTransfer api={api.transfer} onApplied={refresh} />
+      )}
 
       {loadError === "" ? null : (
         <StatusLine tone="error" testId="domain-experts-page-load-error">

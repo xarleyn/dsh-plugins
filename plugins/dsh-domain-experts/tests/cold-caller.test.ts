@@ -8,6 +8,7 @@ import { RunTracker } from "../src/host/execution.js";
 import type { DomainDefinition } from "../src/types.js";
 import {
   agentOf,
+  catalogGlobalOf,
   domainOf,
   domainTableOf,
   fakeSubagents,
@@ -45,6 +46,7 @@ function fixture(
   // This unit and descriptor outlive each service, modelling a process restart.
   const unit = {
     name: "domain_experts",
+    global: catalogGlobalOf(),
     table: (name: keyof typeof tables) => tables[name],
     close: () => Promise.resolve(),
   } as unknown as DomainExpertsStorage;
@@ -318,10 +320,11 @@ describe("cold caller: policy on the real host service", () => {
       callerDomain: "payments",
       delegatePath: ["payments", "inventory"],
     });
-    await f.tables.domains.put("payments", {
+    const edited = await h.service.updateDomain({
       ...CALLER,
       delegation: { ...CALLER.delegation, allowCrossDomain: false },
     });
+    expect(edited.ok).toBe(true);
     await expect(
       call(h.tool, { domain: "inventory", task: "inspect stock" }, CHILD),
     ).rejects.toThrow("[DELEGATION_DENIED]");

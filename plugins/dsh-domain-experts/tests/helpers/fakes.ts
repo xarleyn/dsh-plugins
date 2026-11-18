@@ -8,7 +8,13 @@ import type {
 } from "@deepseek-ai/dsh-subagent";
 import type { DomainDefinition, MemoryRecord } from "../../src/types.js";
 import { emptyDomainDraft } from "../../src/types.js";
-import type { DomainTable, MemoryRecordTable } from "../../src/host/storage.js";
+import type {
+  CatalogSnapshot,
+  CatalogStore,
+  DomainExpertsStorage,
+  DomainTable,
+  MemoryRecordTable,
+} from "../../src/host/storage.js";
 import type { LogSink, SubagentsFace } from "../../src/host/execution.js";
 
 /** A storage table good enough for the registry and the memory provider. */
@@ -50,6 +56,30 @@ export function domainTableOf(
   seed: Iterable<readonly [string, DomainDefinition]> = [],
 ): DomainTable {
   return memoryTable(seed) as unknown as DomainTable;
+}
+
+export function catalogOf(
+  seed: Iterable<readonly [string, DomainDefinition]> = [],
+): CatalogStore {
+  let snapshot: ReadonlyMap<string, DomainDefinition> = new Map(seed);
+  return {
+    read: () => snapshot,
+    write(next) {
+      snapshot = next;
+      return Promise.resolve();
+    },
+  };
+}
+
+export function catalogGlobalOf(): DomainExpertsStorage["global"] {
+  let snapshot: CatalogSnapshot = { domains: null };
+  return {
+    get: () => snapshot,
+    set(next) {
+      snapshot = next;
+      return Promise.resolve();
+    },
+  };
 }
 
 export function memoryRecordTableOf(): MemoryRecordTable {

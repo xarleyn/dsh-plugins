@@ -37,6 +37,7 @@ import {
   type StorageHandles,
 } from "./catalog.js";
 import { AuditRing } from "./host/audit.js";
+import { DomainExpertsError } from "./host/errors.js";
 import {
   RunTracker,
   runExpert,
@@ -62,6 +63,7 @@ import type { ToolDependencies } from "./host/tools/shared.js";
 import { WorkerRegistry } from "./host/workers/registry.js";
 import {
   accepted,
+  catalogRefused,
   clearDomainMemory,
   domainDeleteRefusal,
   domainDraft,
@@ -79,6 +81,10 @@ import {
 } from "./validate.js";
 import type {
   AuditListResult,
+  CatalogApplyResult,
+  CatalogExportResult,
+  CatalogImportMode,
+  CatalogPreviewResult,
   CatalogResult,
   DomainDefinition,
   DomainDeleteResult,
@@ -404,6 +410,64 @@ export class DomainExpertsService extends TypertRemoteService {
   }
 
   // -------------------------------------------------------- remote contract
+
+  private async operatorCatalog() {
+    // Gateway binds the Host-attested principal to each invocation. Calls
+    // without a Remote invocation come from trusted in-process Host code.
+    const invocation = this.ctx.invocation;
+    if (
+      invocation !== undefined &&
+      invocation.peer.principal.kind !== "owner"
+    ) {
+      throw new DomainExpertsError(
+        "CATALOG_ACCESS_DENIED",
+        "Only the Host operator can transfer a domain catalog.",
+      );
+    }
+    return (await this.stores.opened()).domains;
+  }
+
+  @Remote("exportCatalog")
+  async exportCatalog(): Promise<CatalogExportResult> {
+    return guarded(
+      async () => {
+        const catalog = await this.operatorCatalog();
+        return accepted({ document: catalog.exportCatalog() });
+      },
+      (error) => catalogRefused(error, { document: "" }),
+    );
+  }
+
+  @Remote("previewCatalogImport")
+  async previewCatalogImport(
+    document: string,
+    mode: CatalogImportMode,
+  ): Promise<CatalogPreviewResult> {
+    return guarded<CatalogPreviewResult>(
+      async () => {
+        const catalog = await this.operatorCatalog();
+        return accepted({ preview: catalog.previewImport(document, mode) });
+      },
+      (error) => catalogRefused(error, { preview: null }),
+    );
+  }
+
+  @Remote("applyCatalogImport")
+  async applyCatalogImport(
+    document: string,
+    mode: CatalogImportMode,
+    token: string,
+  ): Promise<CatalogApplyResult> {
+    return guarded(
+      async () => {
+        const catalog = await this.operatorCatalog();
+        return accepted({
+          changed: await catalog.applyImport(document, mode, token),
+        });
+      },
+      (error) => catalogRefused(error, { changed: 0 }),
+    );
+  }
 
   @Remote("listDomains")
   async listDomains(): Promise<DomainListResult> {

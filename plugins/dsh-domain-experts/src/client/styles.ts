@@ -54,6 +54,13 @@ export const DOMAIN_EXPERTS_STYLES = `
 .dx-row>*{flex:1 1 180px;min-width:0}
 .dx-check{display:flex;align-items:center;gap:8px;color:var(--dsw-alias-label-secondary);font-size:13px}
 .dx-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.dx-transfer{min-width:0;border-block:1px solid var(--dsw-alias-border-l2);padding:8px 0}
+.dx-transfer summary{cursor:pointer;width:fit-content}
+.dx-transfer-body{display:grid;gap:8px;min-width:0;margin-top:8px;overflow-wrap:anywhere}
+.dx-transfer .dx-actions{align-items:end}
+.dx-transfer .dx-field{max-width:100%}
+.dx-transfer-preview{display:grid;gap:4px;max-height:240px;overflow:auto;margin:0;padding:0;list-style:none}
+.dx-transfer-preview li{display:flex;flex-wrap:wrap;gap:4px 12px;padding:4px 8px;background:var(--dsw-alias-bg-layer-2)}
 .dx-button{appearance:none;font:inherit;font-size:13px;cursor:pointer;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l2);border-radius:8px;padding:6px 12px}
 .dx-button:hover{border-color:var(--dsw-alias-label-dimmed)}
 .dx-button:disabled{cursor:not-allowed;opacity:.55}

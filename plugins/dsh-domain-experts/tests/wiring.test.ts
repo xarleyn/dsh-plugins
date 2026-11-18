@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { Context } from "@deepseek-ai/cordis";
+import type { RemoteInvocation } from "@deepseek-ai/dsh-typert-protocol";
 import type { MemoryTable } from "../src/host/memory/shared.js";
 import type { DomainExpertsStorage } from "../src/host/storage.js";
 import { DomainExpertsService } from "../src/index.js";
@@ -12,6 +13,7 @@ import {
   type MemoryRecord,
 } from "../src/types.js";
 import {
+  catalogGlobalOf,
   domainTableOf,
   memoryRecordTableOf,
   memoryTable,
@@ -34,6 +36,7 @@ function fakeStorage(): DomainExpertsStorage {
   };
   return {
     name: "domain_experts",
+    global: catalogGlobalOf(),
     table: (name: string) => tables[name],
     close: () => Promise.resolve(),
   } as unknown as DomainExpertsStorage;
@@ -48,6 +51,7 @@ function storageWith(
   };
   return {
     name: "domain_experts",
+    global: catalogGlobalOf(),
     table: (name: string) => tables[name],
     close: () => Promise.resolve(),
   } as unknown as DomainExpertsStorage;
@@ -156,6 +160,29 @@ describe("wiring: host contract", () => {
 });
 
 describe("wiring: remote contract", () => {
+  it("refuses all catalog transfers before opening storage for a non-owner peer", async () => {
+    let opened = false;
+    const { ctx } = harnessOf({
+      storage: () => {
+        opened = true;
+        return Promise.resolve(fakeStorage());
+      },
+    });
+    const invocation = {
+      peer: { principal: { kind: "guest" } },
+    } as unknown as RemoteInvocation;
+    const service = ctx.extend({ invocation }).domainExperts;
+    const refused = { ok: false, code: "CATALOG_ACCESS_DENIED" };
+    await expect(service.exportCatalog()).resolves.toMatchObject(refused);
+    await expect(
+      service.previewCatalogImport("{}", "merge"),
+    ).resolves.toMatchObject(refused);
+    await expect(
+      service.applyCatalogImport("{}", "replace", ""),
+    ).resolves.toMatchObject(refused);
+    expect(opened).toBe(false);
+  });
+
   it("round-trips a domain through the Remote envelopes", async () => {
     const harness = harnessOf();
 
@@ -418,6 +445,7 @@ describe("wiring: sqlite memory", () => {
     };
     const storage = {
       name: "domain_experts",
+      global: catalogGlobalOf(),
       table: (name: string) => tables[name],
       close: () => Promise.resolve(),
     } as unknown as DomainExpertsStorage;
@@ -520,6 +548,7 @@ describe("wiring: sqlite memory", () => {
       storage: () =>
         Promise.resolve({
           name: "domain_experts",
+          global: catalogGlobalOf(),
           table: (name: string) => tables[name],
           close: () => Promise.resolve(),
         } as unknown as DomainExpertsStorage),

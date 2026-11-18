@@ -21,7 +21,7 @@ import type { DomainDefinition } from "../src/types.js";
 import {
   agentOf,
   domainOf,
-  domainTableOf,
+  catalogOf,
   fakeSubagents,
   fixedClock,
   memoryRecordTableOf,
@@ -81,7 +81,7 @@ function harnessOf(
   const audits = new AuditRing(50);
   const log: RecordedLog = { events: [] };
   const domains = new DomainRegistry(
-    domainTableOf([[definition.id, definition]]),
+    catalogOf([[definition.id, definition]]),
     clock,
   );
   const scopeProviders = new ScopeProviderRegistry();

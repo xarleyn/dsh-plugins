@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { DomainRegistry } from "../src/host/registry.js";
 import { DomainExpertsError } from "../src/host/errors.js";
-import { domainOf, domainTableOf, fixedClock } from "./helpers/fakes.js";
+import { domainOf, catalogOf, fixedClock } from "./helpers/fakes.js";
 
 function registryOf(seed = [domainOf("inventory"), domainOf("payments")]) {
   const clock = fixedClock();
   return {
     registry: new DomainRegistry(
-      domainTableOf(seed.map((d) => [d.id, d] as const)),
+      catalogOf(seed.map((d) => [d.id, d] as const)),
       clock,
     ),
     clock,
