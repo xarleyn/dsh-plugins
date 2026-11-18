@@ -31,6 +31,53 @@ const outcome = {
 };
 
 describe("bounded domain review", () => {
+  it("does not start a legacy reviewer even when every numeric limit is zero", async () => {
+    const face = { testExpert: vi.fn(), reviewExpert: vi.fn() };
+    const backend = createDomainExpertBackend({ face, config });
+    await expect(backend.review(input())).rejects.toMatchObject({
+      reason: "review-budget-unavailable",
+    });
+    expect(face.testExpert).not.toHaveBeenCalled();
+    expect(face.reviewExpert).not.toHaveBeenCalled();
+  });
+
+  it("delivers cancellation to the running unlimited review and discards its late verdict", async () => {
+    const parent = new AbortController();
+    const observedAbort = vi.fn();
+    let enter!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      enter = resolve;
+    });
+    let finish!: (result: typeof outcome) => void;
+    const pending = new Promise<typeof outcome>((resolve) => {
+      finish = resolve;
+    });
+    const reviewExpertBounded: NonNullable<
+      DomainExpertsFace["reviewExpertBounded"]
+    > = async (_domain, _task, _parent, _images, budget) => {
+      expect(budget).toEqual({
+        maxToolCalls: 0,
+        maxConsecutiveRefusals: 0,
+        timeoutMs: 0,
+        signal: parent.signal,
+      });
+      budget.signal.addEventListener("abort", observedAbort, {
+        once: true,
+      });
+      enter();
+      return pending;
+    };
+    const backend = createDomainExpertBackend({
+      face: { testExpert: vi.fn(), reviewExpertBounded },
+      config,
+    });
+    const result = backend.review({ ...input(), signal: parent.signal });
+    await entered;
+    parent.abort();
+    expect(observedAbort).toHaveBeenCalledOnce();
+    finish(outcome);
+    await expect(result).rejects.toMatchObject({ reason: "reviewer-aborted" });
+  });
   it("requires the explicit capability instead of passing ignored options to a legacy service", async () => {
     const testExpert = vi.fn();
     const backend = createDomainExpertBackend({

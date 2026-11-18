@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { Session, SessionId } from "@deepseek-ai/dsh-session";
 import { scopeTarget } from "@deepseek-ai/dsh-scope";
 import {
@@ -92,7 +92,8 @@ function domainFace(
   outcome: ExpertRunOutcome = EXPERT_PASS,
 ): DomainExpertsFace {
   return {
-    testExpert: () => Promise.resolve(outcome),
+    testExpert: vi.fn(),
+    reviewExpertBounded: () => Promise.resolve(outcome),
   };
 }
 
@@ -185,7 +186,8 @@ describe("plugin wiring", () => {
         },
       },
       domainExperts: {
-        async testExpert() {
+        testExpert: vi.fn(),
+        async reviewExpertBounded() {
           expect(active).toBe(true);
           return EXPERT_PASS;
         },
@@ -242,7 +244,7 @@ describe("plugin wiring", () => {
     host.get = (service) =>
       service === "domainExperts"
         ? {
-            testExpert: async () => {
+            reviewExpertBounded: async () => {
               attempts += 1;
               return {
                 ...EXPERT_PASS,
@@ -399,7 +401,8 @@ describe("plugin wiring", () => {
     const calls: [string, string, string][] = [];
     const { host, events } = makeHost({
       domainExperts: {
-        testExpert: (
+        testExpert: vi.fn(),
+        reviewExpertBounded: (
           domainId: string,
           task: string,
           parentSessionId: string,

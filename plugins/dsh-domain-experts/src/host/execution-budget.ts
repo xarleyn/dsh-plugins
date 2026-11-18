@@ -19,23 +19,26 @@ export function expertExecutionBudget(
   let reason: string | undefined;
   let calls = 0;
   let refusals = 0;
-  let disposed = false;
   let releasePromise: Promise<void> | undefined;
   let finished = false;
   const descendants = new Set([childId]);
-  const unsubscribeCreated = ctx.on(
-    "agent/created",
-    ({ agent }) => {
-      const header = agent.session.header;
-      if (
-        header.parentSession !== undefined &&
-        descendants.has(String(header.parentSession)) &&
-        (header.origin === "subagent" || header.isSeeded !== true)
+  const countToolCalls =
+    budget.maxToolCalls > 0 || budget.maxConsecutiveRefusals > 0;
+  const unsubscribeCreated = countToolCalls
+    ? ctx.on(
+        "agent/created",
+        ({ agent }) => {
+          const header = agent.session.header;
+          if (
+            header.parentSession !== undefined &&
+            descendants.has(String(header.parentSession)) &&
+            (header.origin === "subagent" || header.isSeeded !== true)
+          )
+            descendants.add(String(agent.id));
+        },
+        { global: true },
       )
-        descendants.add(String(agent.id));
-    },
-    { global: true },
-  );
+    : undefined;
   let rejectStopped: (error: Error) => void = () => undefined;
   const stopped = new Promise<never>((_resolve, reject) => {
     rejectStopped = reject;
@@ -43,50 +46,50 @@ export function expertExecutionBudget(
   // Cancellation can arrive before the provider returns its activation.
   void stopped.catch(() => undefined);
   const failure = () => new Error(`expert execution stopped: ${reason}`);
-  const release = (): Promise<void> => {
-    if (releasePromise !== undefined) return releasePromise;
-    if (activation === undefined || disposed) return Promise.resolve();
-    disposed = true;
+  const disposeActivation = (): Promise<void> => {
     const current = activation;
-    releasePromise = (async () => {
-      try {
-        await current.dispose();
-        rejectStopped(failure());
-      } catch {
+    if (current === undefined) return Promise.resolve();
+    return (releasePromise ??= Promise.resolve().then(() => current.dispose()));
+  };
+  const cancelActivation = () => {
+    if (activation === undefined) return;
+    void disposeActivation().then(
+      () => rejectStopped(failure()),
+      () =>
         rejectStopped(
           new Error(
             `expert execution stopped: ${reason}; activation disposal failed`,
           ),
-        );
-      }
-    })();
-    return releasePromise;
+        ),
+    );
   };
   const stop = (cause: string) => {
     if (finished || reason !== undefined) return;
     reason = cause;
-    void release();
+    cancelActivation();
   };
-  const unsubscribe = ctx.on(
-    "tools/result",
-    (exec, result) => {
-      if (
-        !descendants.has(String(exec.agent?.id)) ||
-        (exec.name === "structured_output" && !result.isError)
+  const unsubscribe = countToolCalls
+    ? ctx.on(
+        "tools/result",
+        (exec, result) => {
+          if (
+            !descendants.has(String(exec.agent?.id)) ||
+            (exec.name === "structured_output" && !result.isError)
+          )
+            return;
+          calls += 1;
+          refusals = result.isError ? refusals + 1 : 0;
+          if (
+            budget.maxConsecutiveRefusals > 0 &&
+            refusals >= budget.maxConsecutiveRefusals
+          )
+            stop("max-consecutive-refusals");
+          else if (budget.maxToolCalls > 0 && calls >= budget.maxToolCalls)
+            stop("max-tool-calls");
+        },
+        { global: true },
       )
-        return;
-      calls += 1;
-      refusals = result.isError ? refusals + 1 : 0;
-      if (
-        budget.maxConsecutiveRefusals > 0 &&
-        refusals >= budget.maxConsecutiveRefusals
-      )
-        stop("max-consecutive-refusals");
-      else if (budget.maxToolCalls > 0 && calls >= budget.maxToolCalls)
-        stop("max-tool-calls");
-    },
-    { global: true },
-  );
+    : undefined;
   const timer =
     budget.timeoutMs > 0
       ? setTimeout(() => stop("review-timeout"), budget.timeoutMs)
@@ -95,9 +98,10 @@ export function expertExecutionBudget(
   budget.signal.addEventListener("abort", abort, { once: true });
   if (budget.signal.aborted) abort();
   const cleanup = () => {
+    if (finished) return;
     finished = true;
-    unsubscribe();
-    unsubscribeCreated();
+    unsubscribe?.();
+    unsubscribeCreated?.();
     clearTimeout(timer);
     budget.signal.removeEventListener("abort", abort);
   };
@@ -105,11 +109,11 @@ export function expertExecutionBudget(
     cleanup,
     bind(value: SubagentActivation): SubagentActivation {
       activation = value;
-      if (reason !== undefined) void release();
+      if (reason !== undefined) cancelActivation();
       const result = Promise.race([value.result, stopped])
         .then(async (outcome) => {
           if (reason !== undefined) {
-            await release();
+            await disposeActivation();
             throw failure();
           }
           return outcome;
@@ -120,10 +124,7 @@ export function expertExecutionBudget(
         result,
         dispose: async () => {
           cleanup();
-          if (!disposed) {
-            disposed = true;
-            await value.dispose();
-          }
+          await disposeActivation();
         },
       };
     },

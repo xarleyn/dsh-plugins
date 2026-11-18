@@ -337,7 +337,10 @@ describe("revision rounds receive the previous round's findings", () => {
   it("reaches the domain-expert reviewer task with the previous issues", async () => {
     const tasks: string[] = [];
     const face: DomainExpertsFace = {
-      async testExpert(_domain, task): Promise<ExpertRunOutcome> {
+      async testExpert() {
+        throw new Error("Unexpected legacy review call");
+      },
+      async reviewExpertBounded(_domain, task): Promise<ExpertRunOutcome> {
         tasks.push(task);
         const index = tasks.length;
         return {

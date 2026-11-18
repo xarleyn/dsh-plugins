@@ -69,7 +69,7 @@ function harness(
     },
     steer: vi.fn(),
   } as unknown as GateAgent;
-  const testExpert = vi.fn(async () => ({
+  const reviewExpertBounded = vi.fn(async () => ({
     ok: true,
     code: "",
     message: "",
@@ -81,7 +81,7 @@ function harness(
     audit: new ReviewAudit(20),
     now: () => 100,
     logger: { info() {}, warn() {}, error() {} },
-    domainExperts: () => ({ testExpert }),
+    domainExperts: () => ({ testExpert: vi.fn(), reviewExpertBounded }),
     subagents: () => undefined,
     steerMessage: steer,
     publishStatus: (_agent, receipt) => {
@@ -94,7 +94,7 @@ function harness(
   return {
     gate,
     agent,
-    testExpert,
+    reviewExpertBounded,
     steer,
     receipts,
     run: () => gate.handleTurnStopping(agent, 1, signal),
@@ -105,7 +105,7 @@ describe("capture recovery and durable review status", () => {
   it("recovers missing expert capture without warning the primary and preserves human request identity", async () => {
     const h = harness([missing, expertPass]);
     expect(await h.run()).toBe("pass");
-    expect(h.testExpert).toHaveBeenCalledTimes(2);
+    expect(h.reviewExpertBounded).toHaveBeenCalledTimes(2);
     expect(h.steer).not.toHaveBeenCalled();
     expect(h.receipts.map((r) => r.status)).toEqual([
       "reviewing",
@@ -125,13 +125,13 @@ describe("capture recovery and durable review status", () => {
       requestText: "Explain file locks",
     });
     expect(await h.run()).toBeNull();
-    expect(h.testExpert).toHaveBeenCalledTimes(2);
+    expect(h.reviewExpertBounded).toHaveBeenCalledTimes(2);
   });
 
   it("bounds repeated missing captures and emits one failure warning", async () => {
     const h = harness([missing, missing]);
     expect(await h.run()).toBe("failure");
-    expect(h.testExpert).toHaveBeenCalledTimes(2);
+    expect(h.reviewExpertBounded).toHaveBeenCalledTimes(2);
     expect(h.steer).toHaveBeenCalledTimes(1);
     expect(h.receipts.map((r) => r.status)).toEqual([
       "reviewing",
@@ -151,14 +151,14 @@ describe("capture recovery and durable review status", () => {
         },
       ]);
       expect(await h.run()).toBe("failure");
-      expect(h.testExpert).toHaveBeenCalledTimes(1);
+      expect(h.reviewExpertBounded).toHaveBeenCalledTimes(1);
     },
   );
 
   it("does not publish PASS or steer after cancellation while the expert runs", async () => {
     const controller = new AbortController();
     const h = harness([expertPass], controller.signal);
-    h.testExpert.mockImplementationOnce(async () => {
+    h.reviewExpertBounded.mockImplementationOnce(async () => {
       controller.abort();
       return { ok: true, code: "", message: "", result: expertPass };
     });
@@ -171,7 +171,8 @@ describe("capture recovery and durable review status", () => {
     const backend = createDomainExpertBackend({
       config: config.reviewer,
       face: {
-        testExpert: async () => ({
+        testExpert: vi.fn(),
+        reviewExpertBounded: async () => ({
           ok: true,
           code: "",
           message: "",

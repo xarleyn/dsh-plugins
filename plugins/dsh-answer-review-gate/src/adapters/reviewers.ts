@@ -29,6 +29,7 @@ import type {
   ReviewInput,
   ReviewerBackend,
   SubagentAgentOptions,
+  SubagentActivation,
   SubagentsFace,
 } from "../types.js";
 
@@ -41,11 +42,8 @@ export type ReviewerConfig = ResolvedAnswerReviewGateConfig["reviewer"];
  * `ctx.get("domainExperts")` result; absence is a reviewer failure handled
  * by the failure policy, never a load-time dependency.
  *
- * Lifecycle bound: the domain-experts `testExpert` entry owns its run and its
- * face exposes no abort-signal parameter, so a started review cannot be
- * cancelled from here. The most the gate can honour is the signal's state at
- * the boundary: a turn already aborted at entry does not launch a doomed
- * reviewer run.
+ * The round owns the review's cancellation signal, including when all
+ * numeric limits are disabled. Legacy services cannot take that signal.
  */
 export function createDomainExpertBackend(deps: {
   readonly face: DomainExpertsFace | undefined;
@@ -80,26 +78,19 @@ export function createDomainExpertBackend(deps: {
         );
       }
       const images = input.requestImages ?? [];
-      const limits = deps.limits;
-      const bounded =
-        limits !== undefined &&
-        (limits.maxToolCalls > 0 ||
-          limits.maxConsecutiveRefusals > 0 ||
-          limits.timeoutMs > 0);
-      if (bounded && deps.face.reviewExpertBounded === undefined) {
+      const limits = deps.limits ?? {
+        maxToolCalls: 0,
+        maxConsecutiveRefusals: 0,
+        timeoutMs: 0,
+      };
+      const hasLimits =
+        limits.maxToolCalls > 0 ||
+        limits.maxConsecutiveRefusals > 0 ||
+        limits.timeoutMs > 0;
+      if (typeof deps.face.reviewExpertBounded !== "function") {
         throw new ReviewerFailure(
           "review-budget-unavailable",
-          "the installed domain-experts service cannot enforce review limits; update it before reviewing",
-        );
-      }
-      if (
-        !bounded &&
-        images.length > 0 &&
-        deps.face.reviewExpert === undefined
-      ) {
-        throw new ReviewerFailure(
-          "expert-image-input-unavailable",
-          "the installed domain-experts service cannot receive review images; update it before reviewing this request",
+          "the installed domain-experts service cannot cancel a reviewer; update it before reviewing",
         );
       }
       const packet = await expertReviewPacket(
@@ -113,36 +104,18 @@ export function createDomainExpertBackend(deps: {
           attempt === 0
             ? packet.task
             : `${CAPTURE_RECOVERY_INSTRUCTION}\n\n${packet.task}`;
-        const remainingMs = limits?.timeoutMs
+        const remainingMs = limits.timeoutMs
           ? limits.timeoutMs - (Date.now() - startedAt)
           : 0;
-        if (bounded && limits!.timeoutMs > 0 && remainingMs <= 0)
+        if (limits.timeoutMs > 0 && remainingMs <= 0)
           throw new ReviewerFailure("review-timeout");
-        const outcome = bounded
-          ? await deps.face.reviewExpertBounded!(
-              deps.config.domain,
-              task,
-              input.sessionId,
-              images,
-              {
-                ...limits!,
-                timeoutMs: remainingMs,
-                signal: input.signal,
-              },
-            )
-          : images.length > 0
-            ? await deps.face.reviewExpert!(
-                deps.config.domain,
-                task,
-                input.sessionId,
-                images,
-              )
-            : await deps.face.testExpert(
-                deps.config.domain,
-                task,
-                input.sessionId,
-                true,
-              );
+        const outcome = await deps.face.reviewExpertBounded(
+          deps.config.domain,
+          task,
+          input.sessionId,
+          images,
+          { ...limits, timeoutMs: remainingMs, signal: input.signal },
+        );
         await packet.verify();
         assertReviewActive(input);
         if (!outcome.ok || outcome.result === null) {
@@ -159,7 +132,7 @@ export function createDomainExpertBackend(deps: {
             outcome.result.diagnostic,
           )
         ) {
-          if (bounded)
+          if (hasLimits)
             throw new ReviewerFailure(
               "expert-output-not-captured",
               "the bounded round ended without its structured verdict",
@@ -188,6 +161,35 @@ const TOOL_UNFILTERABLE = "TOOL_UNFILTERABLE";
  * activation exists (`SubagentError`, `UNSUPPORTED_CAPABILITY`).
  */
 const UNSUPPORTED_CAPABILITY_CODE = "UNSUPPORTED_CAPABILITY";
+
+/** The Host accepts the signal at start but a bound activation needs explicit disposal. */
+async function waitForReviewer(
+  activation: SubagentActivation,
+  signal: AbortSignal,
+) {
+  let abort!: () => void;
+  const stopped = new Promise<never>((_resolve, reject) => {
+    abort = () => reject(new ReviewerFailure("reviewer-aborted"));
+  });
+  signal.addEventListener("abort", abort, { once: true });
+  try {
+    if (signal.aborted) abort();
+    return await Promise.race([activation.result, stopped]);
+  } catch (error) {
+    if (error instanceof ReviewerFailure) throw error;
+    throw new ReviewerFailure(
+      "reviewer-result-unavailable",
+      error instanceof Error ? error.message : String(error),
+    );
+  } finally {
+    signal.removeEventListener("abort", abort);
+    try {
+      await activation.dispose();
+    } catch {
+      // Teardown is best effort on providers that already released the child.
+    }
+  }
+}
 
 /**
  * `reviewer.backend = subagent`: start a native reviewer child as a foreground
@@ -366,54 +368,32 @@ export function createSubagentBackend(deps: {
             error instanceof Error ? error.message : String(error),
           );
         }
-        try {
-          let result;
-          try {
-            result = await activation.result;
-          } catch (error) {
-            // The contract rejects the result only when the Host could not
-            // capture one at all — a reviewer infrastructure failure.
-            throw new ReviewerFailure(
-              "reviewer-result-unavailable",
-              error instanceof Error ? error.message : String(error),
-            );
-          }
-          assertReviewActive(input);
-          if (
-            canRecoverCapture(
-              attempt,
-              result.stopReason,
-              result.structured !== undefined,
-              result.diagnostic,
-            )
-          ) {
-            input.onRecovery?.();
-            continue;
-          }
-          if (result.stopReason !== "completed") {
-            throw new ReviewerFailure(
-              `reviewer-${result.stopReason}`,
-              result.diagnostic ?? "",
-            );
-          }
-          if (result.structured !== undefined) {
-            const verdict = validateReviewerVerdict(result.structured);
-            return input.documentReview
-              ? { ...verdict, reviewerSessionId: activation.childId }
-              : verdict;
-          }
-          throw new ReviewerFailure("reviewer-output-not-captured");
-        } finally {
-          // Await the child teardown: `dispose()` is asynchronous on the host
-          // (the domain-experts runner awaits it too), so a fire-and-forget call
-          // left the child fiber running past the review. Disposal is
-          // best-effort — it must never mask the review outcome.
-          try {
-            await activation.dispose();
-          } catch {
-            /* disposal failure must not override the verdict or the failure */
-          }
+        const result = await waitForReviewer(activation, input.signal);
+        assertReviewActive(input);
+        if (
+          canRecoverCapture(
+            attempt,
+            result.stopReason,
+            result.structured !== undefined,
+            result.diagnostic,
+          )
+        ) {
+          input.onRecovery?.();
+          continue;
         }
+        if (result.stopReason !== "completed") {
+          throw new ReviewerFailure(
+            `reviewer-${result.stopReason}`,
+            result.diagnostic ?? "",
+          );
+        }
+        if (result.structured !== undefined) {
+          const verdict = validateReviewerVerdict(result.structured);
+          return input.documentReview
+            ? { ...verdict, reviewerSessionId: activation.childId }
+            : verdict;
+        }
+        throw new ReviewerFailure("reviewer-output-not-captured");
       }
       throw new ReviewerFailure("reviewer-output-not-captured");
     },
