@@ -699,9 +699,9 @@ Also **[source]**, no compile error but runtime-relevant:
   **The AGENTS.md module-identity rule needs no edit for `rc.2`.**
 - `ConfigFormSnapshot`'s memory mode is **not** new: `persistence =
   ctx.remote.$host.isLoopback ? 'host' : 'memory'` is identical at both tags. A
-  non-loopback browser already got read-only settings at 0.1.5, which is why
-  `AGENTS.md` routes must-work-without-loopback UI to `settings.plugins.tab`.
-  **No availability regression** — do not treat this as a 0.1.7 blocker.
+  non-loopback browser already got read-only settings at 0.1.5. That observation
+  concerns the historical migration. For current Plugins seats and peer grants
+  see the [Host access matrix](./COMPATIBILITY.md#configuration-card-access).
 - **[verified] new at `rc.2`, and the sharpest item in this document — no compile
   error anywhere.** `tool-addition` / `tool-removal` blocks **started being
   emitted**: the types existed at `rc.1` but nothing produced them, whereas

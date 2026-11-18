@@ -293,8 +293,10 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
   служит: слот `settings.plugin.item` удалён в 0.1.7, а `settings.plugins.tab`
   больше не точка регистрации карточки (хост слот сохранил). Оболочка карточки,
   её CSS и проверка — `AGENTS.md` §Plugin configuration card UI; ключ ряда,
-  две вью посадочного места (`page` и `summary`) и форма, которую ряд отдаёт, —
-  `docs/DSH-0.1.7-MIGRATION.md` §4.2.
+  представления ряда (`page` и `summary`) и форма описаны там же. Для страницы
+  со своим Remote или состоянием аккаунта используйте `plugins.bundle.config`
+  с ключом npm-пакета. Доступ к панели, наличие профиля и возможность записи
+  в форму проверяются отдельно. [Матрица доступа Host](./COMPATIBILITY.md#configuration-card-access).
 - **Не блокируйте загрузку**: тяжёлая инициализация — после первого кадра или
   лениво по событию.
 

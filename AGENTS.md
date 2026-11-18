@@ -78,63 +78,25 @@
 
 ### Choosing the registration point
 
-- A plugin's configuration card registers in the Host's **Plugins** panel, on
-  the `plugins.row.config` seat of this bundle's own row. The seat is keyed
-  `<package name>#<row id>`, where the row id is the `id` the bundle's
-  `cordis.patch.yml` declares. That row id is also the settings namespace the
-  Host resolves the volatile Config under, so a seat move never orphans a saved
-  value.
-- A feature-owned page — backed by custom Remote services or account/session
-  state rather than by this bundle's settings namespace — takes the panel's
-  bundle-level seat, `plugins.bundle.config`, keyed by the package name. That
-  seat renders no form at all, which is why a configuration card uses the row
-  seat and resolves its own form.
-- Do not register a configuration card in the Settings dialog. The
-  `settings.plugin.item` slot was deleted in `0.1.7`, and `settings.plugins.tab`
-  — a tab of the native Plugins settings section — is not a registration point a
-  plugin of this repository adds to, even though the Host still ships that slot.
-- `plugins.item` is neither: it is the Host's own list of companion packages, fed
-  from inside the Plugins page (`ui-plugin-manager` renders its entries itself),
-  and not a seat a plugin of this repository registers into.
-- The Plugins panel is not the settings directory, so a card seated there keeps
-  answering from a non-loopback browser, where the settings directory is
-  intentionally unavailable. Read `state.status` and `state.writable` off the
-  form and disable the write controls instead of hiding the card.
-- The seat hands its registrant two views: `view: 'page'` is the card, and the
-  same entry is seated as `view: 'summary'` wherever the page wants a one-liner
-  for a row that declares no description. Answer the summary with that sentence
-  and mount the card only for `page` — a card inside a line of text draws a page
-  within a line and polls its Remote twice.
-- Alongside the injected face the seat passes its own owner prop named `form`: a
-  `ConfigPageForm` of `{ state, mutate }` only, which can neither be subscribed
-  to nor written field by field, and which is `undefined` when the Config
-  declares no `.volatile()` field — a page that edits nothing says so, it does
-  not invent a field to make a surface appear. The renderer spreads the owner
-  props after the face, so a card that needs the full `ConfigForm` resolves it
-  through `ctx.configForms.get<T>(namespace)` and passes it in its face under a
-  name other than `form`.
-- Use `settings.section` for a page that is mounted inside the native settings
-  tree, as `dsh-preset-persona-editor` does. It is a placement choice, not an
-  availability guarantee: a page that must keep working without the native
-  settings surface belongs on the Plugins panel. A page registered here
-  that reuses the standard card shell keeps its `<li>` root inside a
-  plugin-owned `<ul>`.
-- Use a Plugins-page seat — `plugins.row.config` (keyed
-  `<package name>#<row id>`) for one row's own configuration,
-  `plugins.bundle.config` (keyed by the package name) for the bundle's — when the
-  card edits that bundle's own Host Config and nothing else, as `dsh-documents`
-  does. This is a placement on the *other* surface, not a rename of the settings
-  namespace: the row id is the namespace the Host serves the form under, so
-  moving a card here keeps every stored value readable. Two consequences follow:
-  the page reports itself unavailable on a Host without a managed profile and
-  reads its inventory through `api-remotes`, so a card that must stay reachable
-  from a non-loopback browser belongs in `settings.plugins.tab`, not here; and
-  the page draws the row's own title and description from the package's exported
-  display metadata (`<package>/locale/en.json`, exported at
-  `./locale/en.json`), not from a `label` the registrant supplies — without that
-  file the row is named by its full package name. A card registered here that
-  reuses the standard card shell keeps its `<li>` root inside a plugin-owned
-  `<ul>`, since the configuration section supplies no list.
+- Use `plugins.row.config` for this bundle's Host Config. Keep the key
+  `<package name>#<row id>` and resolve the settings namespace by the id in
+  `cordis.patch.yml`. Render the body for `page` and one sentence for
+  `summary`. The Host uses the summary when the row has no description.
+- Use `plugins.bundle.config`, keyed by package name, for a feature page
+  backed by its own Remotes or account/session state. The Host supplies no
+  form there. Use `settings.section` for a page explicitly intended for the
+  native settings tree, as in `dsh-preset-persona-editor`.
+- A row may receive an owner prop named `form` with only `{ state, mutate }`;
+  it can be absent when the row has no volatile Config. For subscriptions or
+  field writes, resolve `ctx.configForms.get<T>(rowId)` and inject it under a
+  distinct prop such as `settingsForm`. Owner props take precedence.
+- Check panel access, profile inventory, namespace status and provider
+  writability independently. Follow the [Host access matrix](docs/COMPATIBILITY.md#configuration-card-access)
+  when choosing a seat or diagnosing an absent or read-only card.
+  `settings.plugins.tab` is a legacy settings tab, `settings.plugin.item`
+  was removed in 0.1.7, and `plugins.item` lists companion packages.
+- The Host reads row titles and descriptions from the exported locale. The
+  package name is the fallback when display metadata is absent.
 - That naming fallback is the Host's behaviour; the requirement is this
   repository's: `pnpm verify:packages` demands `locale/en.json` of every plugin
   package, with a non-empty `meta.title` and `meta.description`, exported at

@@ -189,3 +189,28 @@ selects a Russian interface: the pinned Host locale catalog contains `zh` and
 catalog. A plugin must not select a deployment language by calling `addLanguage`
 on its own. Until the deployment supplies another language, the exported English
 metadata remains the discovery anchor for Plugins rows.
+
+### Configuration card access
+
+On Host `0.2.2-rc.3`, the Plugins entry and panel require the peer's
+`pluginManager/listBundles` grant. The table assumes that grant and a successful
+inventory read. An unavailable grant removes the entry. An inventory read failure
+is a separate error.
+
+| Browser | Managed profile | Profile without management |
+| --- | --- | --- |
+| Loopback | The panel lists installed bundles and their rows. The settings document action can be offered. | The panel shows management unavailable and has no bundle rows. The settings document action can be offered independently. |
+| Non-loopback | The panel lists installed bundles and their rows. The settings document action is absent. | The panel shows management unavailable and has no bundle rows. The settings document action is absent. |
+
+The native Settings entry has its own `settings/describe` grant. Loopback
+controls its local document action. For a row that is present, the Config form
+gets `writable` from the settings provider and becomes `unavailable` if the
+namespace is absent. Render current values when ready and enable edits only
+when the form is ready and writable. The Host still authorizes the write.
+Choose the seat by what the page edits and keep the row namespace stable.
+
+The source of these conditions is the tagged Host's
+[panel registration](https://github.com/deepseek-ai/deepseek-harness/blob/dsh-v0.2.2-rc.3/packages/client/ui-plugin-manager/src/client/index.ts),
+[inventory controller](https://github.com/deepseek-ai/deepseek-harness/blob/dsh-v0.2.2-rc.3/packages/client/ui-plugin-manager/src/client/manager-store.ts),
+[settings entry and document action](https://github.com/deepseek-ai/deepseek-harness/blob/dsh-v0.2.2-rc.3/packages/client/ui-settings-general/src/client/index.ts)
+and [form state](https://github.com/deepseek-ai/deepseek-harness/blob/dsh-v0.2.2-rc.3/packages/client/ui-settings/src/client/config-form.ts).

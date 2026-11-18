@@ -1075,17 +1075,9 @@ DSH's storage-domain facility is intended for typed durable plugin/application r
 
 The plugin should ship a browser-side client entry using `dsh.client`.
 
-DSH currently provides `settings.plugins.tab` for feature-owned pages and `settings.plugin.item` for plugin configuration cards. External plugins can ship their Host and browser halves in the same package without modifying core.
-
-Because Domain Experts are richer than a few scalar settings, use a dedicated:
-
-```text
-Settings
-└── Plugins
-    └── Domain Experts
-```
-
-tab rather than trying to cram everything into a small configuration card.
+Domain Experts ships its own Remote-backed feature page on the Plugins panel.
+The [client registration](../../src/client/index.tsx) uses `plugins.bundle.config`
+with the package name. This supersedes the original Settings tab proposal.
 
 ---
 
@@ -1881,7 +1873,7 @@ official tool registration
 ctx.storageDomain
 ctx.settings
 dsh.client
-settings.plugins.tab
+plugins.bundle.config
 ```
 
 DSH currently documents external settings cards and plugin-owned tabs as supported extension seams, so UI integration should use those rather than modifying core Web files.
