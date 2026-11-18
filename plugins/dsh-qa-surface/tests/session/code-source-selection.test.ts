@@ -2,7 +2,10 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { resolveCodeSources } from "@yadsh/dsh-plugin-kit/code-sources";
+import {
+  resolveCodeSources,
+  selectCodeSource,
+} from "@yadsh/dsh-plugin-kit/code-sources";
 import {
   QaCodeSourceSelection,
   type CodeSourceSession,
@@ -56,6 +59,81 @@ function harness() {
 }
 
 describe("durable chat source selection", () => {
+  it.each(["empty", "ambiguous"])(
+    "follows catalogue defaults across restart after inheriting an %s catalogue",
+    (initial) => {
+      const h = harness();
+      const store = h.open();
+      const entries = store.catalog().entries;
+      h.setCatalog(
+        resolveCodeSources({ entries: initial === "empty" ? [] : entries }),
+      );
+      store.inherit("child", "root", true);
+      expect(store.view("child", true)).toMatchObject({
+        selectedSource: null,
+        effectiveSource: null,
+        writable: false,
+      });
+      h.setCatalog(resolveCodeSources({ entries, defaultSource: "stable" }));
+      store.select("root", "preview");
+      expect(selectCodeSource(store.catalog("child"))?.id).toBe("stable");
+      // Replaying the creation event must not pin the parent's new preference.
+      store.inherit("child", "root", true);
+      expect(store.view("child", true)).toMatchObject({
+        selectedSource: null,
+        effectiveSource: "stable",
+      });
+      store.close();
+      h.sessions.delete("root");
+      const reopened = h.open();
+      expect(selectCodeSource(reopened.catalog("child"))?.id).toBe("stable");
+      h.setCatalog(resolveCodeSources({ entries, defaultSource: "preview" }));
+      expect(selectCodeSource(reopened.catalog("child"))?.id).toBe("preview");
+      h.setCatalog(resolveCodeSources({ entries }));
+      expect(() => selectCodeSource(reopened.catalog("child"))).toThrow(
+        /Several code sources/u,
+      );
+    },
+  );
+
+  it.each(["selected", "default", "sole"])(
+    "keeps an inherited %s source across restart and refuses its removal",
+    (kind) => {
+      const h = harness();
+      const store = h.open();
+      const entries = store.catalog().entries;
+      if (kind === "selected") {
+        h.setCatalog(resolveCodeSources({ entries, defaultSource: "preview" }));
+        store.select("root", "stable");
+      }
+      if (kind === "sole")
+        h.setCatalog(
+          resolveCodeSources({
+            entries: entries.filter((entry) => entry.id === "stable"),
+          }),
+        );
+      store.inherit("child", "root", true);
+      h.setCatalog(resolveCodeSources({ entries, defaultSource: "preview" }));
+      store.close();
+      h.sessions.delete("root");
+      const reopened = h.open();
+      expect(selectCodeSource(reopened.catalog("child"))?.id).toBe("stable");
+      h.setCatalog(
+        resolveCodeSources({
+          entries: entries.filter((entry) => entry.id === "preview"),
+          defaultSource: "preview",
+        }),
+      );
+      expect(reopened.view("child", true)).toMatchObject({
+        selectedSource: "stable",
+        effectiveSource: "stable",
+        unavailable: true,
+      });
+      expect(() => selectCodeSource(reopened.catalog("child"))).toThrow(
+        /Unknown source/u,
+      );
+    },
+  );
   it("snapshots the default for QA children without imposing it on unrelated native agents", () => {
     const h = harness();
     const store = h.open();

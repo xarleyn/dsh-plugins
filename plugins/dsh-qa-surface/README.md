@@ -618,6 +618,14 @@ unreadable or unknown source fails without falling back to another tree.
 Use the same id in `dsh_git_*` calls. Generic `read`, `glob` and `grep` still
 use explicit paths; use the source-aware tools for version-scoped work.
 
+A new delegated chat or fork inherits the source in effect for its QA parent.
+A parent choice, catalogue default or sole entry pins that source ID. Later
+parent edits and default changes leave the pinned ID in place. If the operator
+removes it, the chat reports it as unavailable. When the parent has no effective
+source at creation, the child follows the deployment catalogue, including a
+default configured later. Both behaviours survive a restart. Older delegated
+chats with no stored selection still resolve through their recorded parent.
+
 Search is literal and case-insensitive, bounded to 1,000 attempted text
 files, 10,000 visited entries, 8 MiB of input, three seconds and 32 KiB of
 results. It skips links, binary/oversized files and common generated
