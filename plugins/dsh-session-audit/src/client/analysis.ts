@@ -8,7 +8,7 @@
  */
 import {
   isKnownAnalysis,
-  parseAuditAnalysis,
+  validateAuditAnalysis,
   type AuditAnalysis,
   type AuditAnalysisV1,
 } from "@yadsh/dsh-audit-core";
@@ -45,7 +45,7 @@ export function parseAnalysis(analysisJson: string): ParsedAnalysis {
     raw = analysisJson;
   }
 
-  const parsed = parseAuditAnalysis(analysisJson);
+  const parsed = validateAuditAnalysis(raw);
   if (!parsed.ok) {
     return {
       analysis: { kind: "unknown", schemaVersion: null },

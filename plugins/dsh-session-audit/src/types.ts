@@ -42,6 +42,8 @@ export interface AuditSummaryValue {
   /** `-1` when the analysis declared no readable version. */
   schemaVersion: number;
   modifiedAt: string;
+  /** Content revision for clients that refresh a selected history entry. */
+  revision?: string;
 }
 
 /** The full audit, as two documents and their summary. */
