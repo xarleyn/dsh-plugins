@@ -77,6 +77,8 @@ rules:
     relation: specification
 ```
 
+Anyone who can write the workspace rules file can set the `code` and `docs` selectors for that workspace. The settings card selects the rules file through `configFile`. Selectors support ordinary globs such as `src/**/*.ts`, `docs/{guide,reference}.md` and `part-[ab].md`. Extglob operators are rejected when the rules are loaded. For example, replace `docs/@(guide|reference).md` with `docs/{guide,reference}.md` or two include entries. An invalid configuration leaves Doc Impact inactive for that workspace until corrected.
+
 Personal overrides belong in `.dsh/doc-impact.local.yml`, which should be ignored by Git:
 
 ```yaml

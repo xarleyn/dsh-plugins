@@ -1,5 +1,6 @@
 import picomatch from "picomatch";
 import { ConfigError } from "./errors.js";
+import { assertSupportedGlob } from "./glob.js";
 import {
   CHANGE_DETECTION_MODES,
   DIRECTIONS,
@@ -60,6 +61,7 @@ function enumValue<T extends string>(
 }
 
 function validateGlob(pattern: string, ruleId: string): void {
+  assertSupportedGlob(pattern, ruleId);
   let brackets = 0;
   let braces = 0;
   let escaped = false;
@@ -85,7 +87,7 @@ function validateGlob(pattern: string, ruleId: string): void {
   }
 
   try {
-    picomatch.makeRe(pattern);
+    picomatch.makeRe(pattern, { noextglob: true });
   } catch {
     throw new ConfigError(`malformed glob: ${JSON.stringify(pattern)}`, ruleId);
   }
