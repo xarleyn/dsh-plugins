@@ -73,9 +73,9 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "verify:package": "node scripts/verify-package.mjs",
-    "verify": "pnpm run verify:package",
+    "verify": "pnpm run verify:package && pnpm run test:bridge",
     "test:bridge": "node --test tests/bridge-queue.integration.mjs",
-    "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run verify && pnpm run test:bridge",
+    "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run verify",
     "prepack": "pnpm run build && pnpm run verify"
   },
   "keywords": [
