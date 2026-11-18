@@ -32,12 +32,17 @@ export function seedSharedSkills(
     let staging: string | undefined;
     try {
       const target = skillDirectory(roots, name);
-      if (!existsSync(target)) {
+      // Inspect the named entry itself. The canonical path can resolve a link
+      // to another skill in this same store.
+      const entry = lstatSync(path.join(roots.skills, name), {
+        throwIfNoEntry: false,
+      });
+      if (entry !== undefined && !entry.isDirectory()) {
+        throw new Error("shared seed target must be a real directory");
+      }
+      if (entry === undefined) {
         const source = path.join(seed.root, name);
-        if (
-          !lstatSync(source).isDirectory() ||
-          lstatSync(source).isSymbolicLink()
-        ) {
+        if (!lstatSync(source).isDirectory()) {
           throw new Error("seed must be a real skill directory");
         }
         if (!lstatSync(path.join(source, "SKILL.md")).isFile()) {

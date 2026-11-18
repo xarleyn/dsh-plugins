@@ -4,6 +4,7 @@ import {
   mkdtempSync,
   readFileSync,
   symlinkSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -106,6 +107,24 @@ describe("deployment shared skill promotion", () => {
         .service.list(scope)
         .some(({ name }) => name === "proposal"),
     ).toBe(false);
+  });
+
+  it("retries after an operator removes a colliding file", () => {
+    const { service, workspace } = fixture();
+    const shared = path.join(workspace, ".dsh", "skills");
+    const target = path.join(shared, "proposal");
+    mkdirSync(shared, { recursive: true });
+    writeFileSync(target, "Operator file.");
+
+    const scope = { shared: true } as const;
+    expect(service.list(scope).map(({ name }) => name)).toEqual([
+      "release-notes",
+      "tables",
+    ]);
+    expect(readFileSync(target, "utf8")).toBe("Operator file.");
+    expect(existsSync(path.join(shared, ".seeded-proposal"))).toBe(false);
+    unlinkSync(target);
+    expect(service.get(scope, "proposal").body).toBe("Original instructions.");
   });
 
   it("retries a missing seed without hiding the remaining catalog", () => {

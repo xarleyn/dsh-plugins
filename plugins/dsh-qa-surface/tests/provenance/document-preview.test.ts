@@ -7,6 +7,7 @@ import { QaSourcePreviewError } from "../../src/provenance/file-preview.js";
 import {
   previewConvertibleDocument,
   previewSourceDocument,
+  readSourcePreview,
 } from "../../src/provenance/document-preview.js";
 
 const temporary: string[] = [];
@@ -93,13 +94,26 @@ describe("workspace document preview", () => {
     const pdf = join(cwd, "report.pdf");
     await writeFile(pdf, "%PDF-1.4");
     const face = faceWriting(pdf);
-    await previewSourceDocument({
-      filePath: join(shared, "report.docx"),
+    const request = {
+      sourcePath: join(shared, "report.docx"),
       cwd,
       sharedReadOnlyRoots: [shared],
       documents: () => face,
       sessionId: "root",
       maxBytes: 10_000,
+      maxMarkdownRenderBytes: 1000,
+      isEvidence: () => true,
+    };
+    expect(
+      await refusalReason(() =>
+        readSourcePreview({ ...request, isEvidence: () => false }),
+      ),
+    ).toBe("not-evidence");
+    expect(face.convert).not.toHaveBeenCalled();
+    expect(await readSourcePreview(request)).toMatchObject({
+      path: request.sourcePath,
+      size: 8,
+      document: { kind: "pdf", bytes: 8 },
     });
     expect(face.convert).toHaveBeenCalledWith(expect.anything(), {
       workspaceRoot: cwd,

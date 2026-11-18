@@ -3,12 +3,15 @@ import type { DocumentsFace } from "@yadsh/dsh-documents";
 import { basename } from "node:path";
 import type {
   QaDocumentPreview,
+  QaSourceFilePreview,
   QaSpreadsheetPreviewSelection,
 } from "../types.js";
 import {
   mediaTypeOf,
   QaSourcePreviewError,
+  readSourceFilePreview,
   resolveAllowedFile,
+  type QaSourceFilePreviewRequest,
   type QaAllowedFileRequest,
 } from "./file-preview.js";
 import {
@@ -19,6 +22,35 @@ import { previewSpreadsheetDocument } from "./spreadsheet-preview.js";
 
 /** Look up the document subsystem a sibling Host plugin published. */
 export type DocumentsLookup = () => DocumentsFace | undefined;
+
+/** Fall back to the document reader only after the text reader accepts the evidence and roots. */
+export async function readSourcePreview(
+  request: QaSourceFilePreviewRequest &
+    Pick<QaDocumentPreviewRequest, "documents" | "sessionId" | "selection">,
+): Promise<QaSourceFilePreview> {
+  try {
+    return await readSourceFilePreview(request);
+  } catch (error) {
+    if (
+      !(error instanceof QaSourcePreviewError) ||
+      error.reason !== "unsupported"
+    )
+      throw error;
+  }
+  const document = await previewSourceDocument({
+    ...request,
+    filePath: request.sourcePath,
+  });
+  return {
+    path: request.sourcePath,
+    content: "",
+    size: document.bytes,
+    truncated: false,
+    markdown: false,
+    renderableMarkdown: false,
+    document,
+  };
+}
 
 export interface QaDocumentPreviewRequest extends QaAllowedFileRequest {
   /** The document pipeline, resolved per call so a late provider still counts. */

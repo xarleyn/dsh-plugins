@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { dirname } from "node:path";
 import { QaSurface } from "../../src/index.js";
 import { sharingFixture } from "./chat-sharing.helpers.js";
 import {
@@ -94,6 +95,37 @@ describe("shared resources and privileged QA operations", () => {
     }
     expect(admission.secureSession).not.toHaveBeenCalled();
   });
+  it("withholds a workspace listing if the owner's account was disabled during admission", async () => {
+    const f = sharingFixture();
+    cleanup.push(
+      () => f.store.storage.close(),
+      () => f.accounts.close(),
+    );
+    const surface = Object.create(QaSurface.prototype) as QaSurface;
+    Object.assign(surface, {
+      chatSharingStore: f.store,
+      accountRemotes: { resolve: () => f.accounts },
+      getConfig: () => ({
+        accounts: { enabled: true },
+        sources: { filePreview: { enabled: true, maxListingEntries: 10 } },
+      }),
+      ctx: {
+        agents: {
+          get: () => ({ session: { header: { cwd: dirname(f.dbPath) } } }),
+        },
+      },
+      admission: {
+        secureSession: async () => {
+          f.accounts.setAccessDisabled(f.owner.user.id, true);
+        },
+      },
+      logger: { debug: vi.fn() },
+    });
+    await expect(
+      surface.listWorkspaceFiles(f.owner.token, "chat-a", ""),
+    ).rejects.toThrow("(reason: unavailable)");
+  });
+
   it("reuses only published sources, structured produced outputs and exact attachment references", () => {
     const events = [
       {

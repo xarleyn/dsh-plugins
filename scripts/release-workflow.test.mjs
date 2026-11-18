@@ -182,7 +182,11 @@ function createFixture({ withVersionPlan = false } = {}) {
 }
 
 function runNx(root, ...args) {
-  return run(process.execPath, [nxCli, ...args], root);
+  // Keep plugin workers from holding the temporary workspace open after the
+  // release CLI exits on Windows. The fixture verifies the release commands.
+  return run(process.execPath, [nxCli, ...args], root, {
+    env: process.platform === "win32" ? { NX_ISOLATE_PLUGINS: "false" } : {},
+  });
 }
 
 function repositoryState(root) {
