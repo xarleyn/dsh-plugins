@@ -218,3 +218,15 @@ installed deployment must additionally verify agent → form → required docume
 → replacement → submission → native reader, persistent volume recovery, role
 grants, proxy limits and the selected Host version. A local preview is not an
 installed-stand acceptance test.
+
+To check the native text reader, start a local OpenAI-compatible model with
+tool calling. Set `DSH_QA_READER_URL` to its loopback HTTP base URL ending in
+`/v1` and `DSH_QA_READER_MODEL` to its served model ID. From the repository
+root, run `pnpm --filter @yadsh/dsh-qa-surface smoke:packed --form-reader`.
+The command installs the packed plugin in a temporary profile and creates two
+ordinary-user chats with personal workspaces and access to the form and text
+reader tools. One chat submits both text files.
+The other replaces the required file under the same name and removes the
+optional file. The check matches each submitted resource to the model's native
+`read` call and checks the random file contents against its final answer.
+The output records the file version, byte count, SHA-256 and tool call ID.

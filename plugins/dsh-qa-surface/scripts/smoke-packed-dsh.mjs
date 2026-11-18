@@ -19,6 +19,7 @@ import { runFileDropBrowserPass } from "./smoke-file-drop-browser.mjs";
 import { runFileWriteSettingsBrowserPass } from "./smoke-file-writes-browser.mjs";
 import { runSubagentModelsPass } from "./smoke-subagent-models.mjs";
 import { runQuestionSoundsPass } from "./smoke-question-sounds.mjs";
+import { formReaderPatch, runFormReaderPass } from "./smoke-form-reader.mjs";
 import {
   installAnswerModePlugins,
   runAnswerModesPass,
@@ -61,6 +62,8 @@ const modelSelectionOnly = process.argv.includes("--model-selection");
 const subagentModelsOnly = process.argv.includes("--subagent-models");
 const answerModesOnly = process.argv.includes("--answer-modes");
 const questionSoundsOnly = process.argv.includes("--question-sounds");
+const formReaderOnly = process.argv.includes("--form-reader");
+const readerModel = process.env.DSH_QA_READER_MODEL;
 if (modelSelectionOnly && !withBrowser)
   throw new Error("--model-selection requires --browser");
 if (chatLayoutOnly && !withBrowser)
@@ -1003,6 +1006,7 @@ try {
       Object.entries(process.env).filter(
         ([name]) =>
           !(
+            formReaderOnly ||
             modelSelectionOnly ||
             usageGuideOnly ||
             subagentModelsOnly ||
@@ -1012,6 +1016,7 @@ try {
       ),
     ),
     DSH_HOME: dshHome,
+    ...(formReaderOnly && { DSH_QA_READER_KEY: "local-reader-fixture" }),
   };
   await run(
     process.execPath,
@@ -1055,7 +1060,7 @@ try {
     profileWorkspacePath,
     `${profileWorkspace}\noverrides:\n  "@yadsh/dsh-plugin-kit": ${JSON.stringify(supportSpec)}\n`,
   );
-  await run("pnpm", ["install", "--ignore-scripts"], {
+  await run("pnpm", ["install", "--ignore-scripts", "--no-frozen-lockfile"], {
     cwd: join(dshHome, "profiles", "web"),
   });
   const installedKit = JSON.parse(
@@ -1142,20 +1147,44 @@ try {
 
   const port = await freePort();
   const origin = `http://127.0.0.1:${port}`;
-  host = spawn(
-    process.execPath,
-    [dshBin, "web", "--no-open", "--port", String(port)],
-    {
-      cwd: workspacePath,
-      env: dshEnv,
-      stdio: ["ignore", "pipe", "pipe"],
-      windowsHide: true,
-    },
-  );
-  host.stdout.setEncoding("utf8").on("data", (chunk) => hostLog.push(chunk));
-  host.stderr.setEncoding("utf8").on("data", (chunk) => hostLog.push(chunk));
-  const token = await waitFor(() => launchToken(hostLog), "DSH launch token");
-  const cookie = await authenticateBrowser(port, `127.0.0.1:${port}`, token);
+  async function startWeb(extraArgs = []) {
+    host = spawn(
+      process.execPath,
+      [dshBin, "web", ...extraArgs, "--no-open", "--port", String(port)],
+      {
+        cwd: workspacePath,
+        env: dshEnv,
+        stdio: ["ignore", "pipe", "pipe"],
+        windowsHide: true,
+      },
+    );
+    host.stdout.setEncoding("utf8").on("data", (chunk) => hostLog.push(chunk));
+    host.stderr.setEncoding("utf8").on("data", (chunk) => hostLog.push(chunk));
+    const token = await waitFor(() => launchToken(hostLog), "DSH launch token");
+    const cookie = await authenticateBrowser(port, `127.0.0.1:${port}`, token);
+    return { token, cookie };
+  }
+  let { token, cookie } = await startWeb();
+  if (formReaderOnly) {
+    const registered = await rpc(
+      origin,
+      "workspace/create",
+      { args: { request: { path: workspacePath } } },
+      cookie,
+    );
+    const patch = join(temporaryRoot, "form-reader.patch.yml");
+    await writeFile(
+      patch,
+      formReaderPatch(
+        process.env.DSH_QA_READER_URL,
+        readerModel,
+        registered.workspace.workspaceId,
+      ),
+    );
+    await stopProcess(host);
+    hostLog.length = 0;
+    ({ token, cookie } = await startWeb(["--patch", patch]));
+  }
   await waitFor(
     async () =>
       (
@@ -1226,12 +1255,14 @@ try {
 
   const fullBrowser =
     withBrowser &&
+    !formReaderOnly &&
     !usageGuideOnly &&
     !modelSelectionOnly &&
     !chatLayoutOnly &&
     !answerModesOnly &&
     !reviewDockOnly;
   if (
+    !formReaderOnly &&
     !usageGuideOnly &&
     !modelSelectionOnly &&
     !subagentModelsOnly &&
@@ -1242,6 +1273,8 @@ try {
     !questionSoundsOnly
   )
     await runLanPass({ dshBin, dshEnv, repo, hostLog });
+  if (formReaderOnly)
+    await runFormReaderPass({ origin, cookie, model: readerModel });
   if (questionSoundsOnly)
     await runQuestionSoundsPass({
       origin,
