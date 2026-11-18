@@ -52,16 +52,11 @@ export interface AnswerReviewGateConfig {
      */
     readonly agentPreset?: string;
     /**
-     * Read-only tool allow-list for the `subagent` reviewer child. Absent means
-     * `REVIEWER_READ_ONLY_TOOLS` — reads and searches, and nothing that can
-     * change state. An explicitly empty list means a tool-less reviewer.
-     * Whatever is listed, the destructive names of `REVIEWER_FORBIDDEN_TOOLS`
-     * are removed. The Host accepts no per-run tool scoping any more, so this
-     * list no longer composes the child — the gate records the unenforceable
-     * boundary, and a deployment scopes the reviewer's tools with
-     * `reviewer.agentPreset` instead.
+     * Operator-approved names. Without enforcement the list remains advisory.
      */
     readonly allowedTools?: string[];
+    /** Apply the list to tool dispatch on this reviewer and its managed workers. */
+    readonly enforceAllowedTools?: boolean;
     /**
      * Wall-clock budget for one review round in milliseconds, covering the
      * whole `review()` call including its one bounded capture-recovery
@@ -151,6 +146,7 @@ export interface ResolvedAnswerReviewGateConfig {
     readonly persona: string;
     readonly agentPreset: string;
     readonly allowedTools: readonly string[];
+    readonly enforceAllowedTools?: boolean;
     /** 0 disables the per-round review deadline. */
     readonly roundTimeoutMs: number;
   };
@@ -185,6 +181,7 @@ export const ANSWER_REVIEW_GATE_DEFAULTS: ResolvedAnswerReviewGateConfig = {
     persona: "",
     agentPreset: "",
     allowedTools: REVIEWER_READ_ONLY_TOOLS,
+    enforceAllowedTools: false,
     // Healthy review rounds on the reference stand complete within minutes;
     // the observed pathology was a reviewer that never answered for 16-18
     // minutes while the user's turn stayed open. Ten minutes per round is
@@ -287,6 +284,7 @@ export function resolveAnswerReviewGateConfig(
         reviewer.allowedTools === undefined
           ? REVIEWER_READ_ONLY_TOOLS
           : restrictReviewerTools(reviewer.allowedTools),
+      enforceAllowedTools: reviewer.enforceAllowedTools === true,
       roundTimeoutMs: clampRoundTimeout(reviewer.roundTimeoutMs),
     },
     maxReviewRounds: clampInteger(
@@ -386,13 +384,19 @@ export const AnswerReviewGateConfigSchema: z<
           .string()
           .default("")
           .description(
-            "Agent Preset id for the subagent reviewer. Where a reviewer's persona and tool set live on this Host: per-run tool scoping no longer exists, so a preset from a provider that does not inherit the parent's composition is the only way to scope the child's tools.",
+            "Agent Preset id for a native reviewer on a provider that supports independent composition. Enable enforceAllowedTools to limit the tools available throughout the review.",
           ),
         allowedTools: z
           .array(z.string())
           .default([...REVIEWER_READ_ONLY_TOOLS])
           .description(
-            "Read-only tool allow-list for the subagent reviewer. Unset means the read-only set (reads and searches); an explicitly empty list means no tools; deleting or writing a file is never allowed. The Host accepts no per-run tool scoping, so the list no longer composes the child — scope the tools with reviewer.agentPreset.",
+            "Operator-approved reviewer tool names. With enforceAllowedTools enabled the list limits both the reviewer and its local workers. Include each trusted delegation tool or alias required by the reviewer.",
+          ),
+        enforceAllowedTools: z
+          .boolean()
+          .default(false)
+          .description(
+            "Enforce allowedTools for both reviewer backends and their local workers. Native structured output remains available. A Host or provider without enforcement fails before review.",
           ),
         roundTimeoutMs: z
           .number()
@@ -411,6 +415,7 @@ export const AnswerReviewGateConfigSchema: z<
         persona: "",
         agentPreset: "",
         allowedTools: [...REVIEWER_READ_ONLY_TOOLS],
+        enforceAllowedTools: false,
         roundTimeoutMs: 600_000,
       })
       .volatile(),

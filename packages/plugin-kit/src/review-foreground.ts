@@ -52,6 +52,14 @@ export interface ForegroundReviewContext {
     options: { global: true },
   ): () => void;
   on(
+    event: "tools/pre-execute",
+    callback: (
+      execution: Execution & { name: string },
+      next: () => Promise<Decision>,
+    ) => Promise<Decision>,
+    options: { prepend: true },
+  ): () => void;
+  on(
     event: "tools/execute",
     callback: (
       exec: Execution,
@@ -70,9 +78,11 @@ export interface ForegroundReviewContext {
 interface Frame {
   readonly agent: object;
   readonly context: ForegroundReviewContext;
+  readonly allowedTools?: readonly string[];
   readonly completed: { name: string; result: ActivationResult }[];
 }
 interface Adapter {
+  readonly supportsToolPolicy: true;
   readonly storage: AsyncLocalStorage<Frame>;
   readonly wrapped: Runtime["startActivation"];
   readonly original: PropertyDescriptor | undefined;
@@ -82,6 +92,7 @@ interface Adapter {
 const adapterKey = Symbol.for("dsh.review.foreground.adapter");
 const originalKey = Symbol.for("cordis.original");
 const reviewers = new WeakSet<object>();
+const toolPolicies = new WeakMap<object, readonly string[]>();
 
 export function isForegroundReviewAgent(agent: object): boolean {
   return reviewers.has(agent);
@@ -113,15 +124,23 @@ function retainAdapter(runtime: Runtime): Adapter {
       return start.call(this, spec);
     const local =
       this.getProvider(spec.provider)?.prepareContinuable !== undefined;
+    if (frame.allowedTools && !local)
+      throw new Error(
+        "This reviewer requires a locally managed worker to enforce its tool policy.",
+      );
     const childId = local ? (spec.childId ?? randomUUID()) : undefined;
+    let policyInstalled = false;
     const unsubscribe =
       childId === undefined
         ? () => {}
         : frame.context.on(
             "agent/created",
             ({ agent }) => {
-              if (String(agent.id) === childId)
-                installForegroundReview(agent.ctx, agent);
+              if (String(agent.id) !== childId) return;
+              if (frame.allowedTools)
+                installReviewToolPolicy(agent.ctx, agent, frame.allowedTools);
+              installForegroundReview(agent.ctx, agent);
+              policyInstalled = true;
             },
             { global: true },
           );
@@ -146,6 +165,13 @@ function retainAdapter(runtime: Runtime): Adapter {
     };
     spec.signal.addEventListener("abort", abort, { once: true });
     try {
+      if (
+        frame.allowedTools &&
+        (!policyInstalled || activation.childId !== childId)
+      )
+        throw new Error(
+          "The worker did not install the reviewer's tool policy.",
+        );
       if (spec.signal.aborted) await dispose();
       const result = await activation.result;
       spec.signal.throwIfAborted();
@@ -163,7 +189,13 @@ function retainAdapter(runtime: Runtime): Adapter {
       await dispose();
     }
   };
-  const adapter: Adapter = { storage, wrapped, original, users: 1 };
+  const adapter: Adapter = {
+    storage,
+    wrapped,
+    original,
+    users: 1,
+    supportsToolPolicy: true,
+  };
   Object.defineProperty(target, "startActivation", {
     configurable: true,
     writable: true,
@@ -219,7 +251,13 @@ export function installForegroundReview(
   });
   context.on("tools/execute", async (exec, next) => {
     if (exec.agent !== agent) return next();
-    const frame: Frame = { agent, context, completed: [] };
+    const allowedTools = toolPolicies.get(agent);
+    const frame: Frame = {
+      agent,
+      context,
+      completed: [],
+      ...(allowedTools && { allowedTools }),
+    };
     try {
       return await adapter.storage.run(frame, next);
     } finally {
@@ -257,5 +295,80 @@ export function installForegroundReview(
         ]),
       ],
     };
+  });
+}
+
+/** Apply an operator's tool list in this scope and to future foreground workers. */
+export function installReviewToolPolicy(
+  context: ForegroundReviewContext,
+  agent: object,
+  names: readonly string[],
+): void {
+  const runtime = context.get("subagents") as Runtime | undefined;
+  if (!runtime)
+    throw new Error(
+      "The Host cannot enforce a reviewer tool policy without subagents.",
+    );
+  const target = Reflect.get(runtime, originalKey) ?? runtime;
+  const active = Reflect.get(target, adapterKey) as Adapter | undefined;
+  if (active && active.supportsToolPolicy !== true)
+    throw new Error(
+      "The active foreground adapter cannot propagate the reviewer's tool policy.",
+    );
+  const tools = context.get("tools") as
+    | {
+        get(name: string, scope: object): unknown;
+        restrict(filter: { allow: string[] }): () => void;
+        guard(
+          check: (execution: { name: string }) => string | undefined,
+        ): () => void;
+      }
+    | undefined;
+  if (
+    !tools ||
+    typeof tools.guard !== "function" ||
+    typeof tools.restrict !== "function" ||
+    typeof tools.get !== "function"
+  )
+    throw new Error("The Host cannot enforce a scoped reviewer tool policy.");
+  const previous = toolPolicies.get(agent);
+  const allowed = new Set([
+    ...names.filter((name) => !previous || previous.includes(name)),
+    "structured_output",
+  ]);
+  // The Host mask accepts only inherited names. A scope-local or later
+  // registration is still checked by the dispatch guard on every invocation.
+  const inherited: string[] = [];
+  for (const name of allowed) {
+    if (tools.get(name, agent) === undefined) continue;
+    try {
+      tools.restrict({ allow: [name] })();
+      inherited.push(name);
+    } catch (error) {
+      if (!(
+        error instanceof Error && error.message.includes("unknown global tool")
+      ))
+        throw error;
+    }
+  }
+  tools.restrict({ allow: inherited });
+  const denial = ({ name }: { name: string }) =>
+    allowed.has(name)
+      ? undefined
+      : "This tool is outside the reviewer's configured tool policy.";
+  // Refuse before an interactive approval can park the parent. The dispatch
+  // guard also covers calls made directly by other Host executors.
+  context.on(
+    "tools/pre-execute",
+    async (execution, next) => {
+      const reason = execution.agent === agent ? denial(execution) : undefined;
+      return reason ? { kind: "deny", reason } : next();
+    },
+    { prepend: true },
+  );
+  tools.guard(denial);
+  toolPolicies.set(agent, [...allowed]);
+  context.effect(() => () => {
+    toolPolicies.delete(agent);
   });
 }

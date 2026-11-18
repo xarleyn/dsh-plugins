@@ -303,6 +303,15 @@ async function executeExpert(
     );
   }
   const startActivation = async (activationSpec: SubagentActivationSpec) => {
+    if (
+      input.budget?.allowedTools &&
+      dependencies.startActivation === undefined
+    )
+      throw unsupportedCapability(
+        provider.name,
+        "tool policy",
+        "this reviewer requires a scoped local activation",
+      );
     const activation =
       dependencies.startActivation === undefined
         ? await dependencies.subagents.startActivation(activationSpec)

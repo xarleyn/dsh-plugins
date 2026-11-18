@@ -7,6 +7,8 @@ export interface ExpertExecutionBudget {
   readonly maxConsecutiveRefusals: number;
   readonly timeoutMs: number;
   readonly signal: AbortSignal;
+  /** Operator-owned tool ceiling for a structured review and its local workers. */
+  readonly allowedTools?: readonly string[];
 }
 
 /** Observe only the reserved child and release its activation before failing. */

@@ -93,6 +93,14 @@ export function createDomainExpertBackend(deps: {
           "the installed domain-experts service cannot cancel a reviewer; update it before reviewing",
         );
       }
+      if (
+        deps.config.enforceAllowedTools &&
+        deps.face.supportsReviewToolPolicy !== true
+      )
+        throw new ReviewerFailure(
+          "reviewer-capability-unsupported",
+          "the installed domain-experts service cannot enforce the reviewer's tool policy",
+        );
       const packet = await expertReviewPacket(
         renderExpertReviewTask(input),
         deps.workspaceRoot,
@@ -114,7 +122,14 @@ export function createDomainExpertBackend(deps: {
           task,
           input.sessionId,
           images,
-          { ...limits, timeoutMs: remainingMs, signal: input.signal },
+          {
+            ...limits,
+            timeoutMs: remainingMs,
+            signal: input.signal,
+            ...(deps.config.enforceAllowedTools && {
+              allowedTools: deps.config.allowedTools,
+            }),
+          },
         );
         await packet.verify();
         assertReviewActive(input);
@@ -241,6 +256,14 @@ export function createSubagentBackend(deps: {
           "the subagents service is not loaded",
         );
       }
+      if (
+        deps.config.enforceAllowedTools &&
+        deps.face.enforcesReviewToolPolicy !== true
+      )
+        throw new ReviewerFailure(
+          "reviewer-capability-unsupported",
+          "the native reviewer adapter cannot enforce the configured tool policy",
+        );
       const effort =
         deps.config.reasoningEffort !== ""
           ? deps.config.reasoningEffort
@@ -287,13 +310,13 @@ export function createSubagentBackend(deps: {
       // The start request accepts no per-run tool scoping any more, so the
       // configured allow-list composes nothing here. Say so once per review
       // instead of letting the configuration read as enforcement.
-      if (!boundaryReported) {
+      if (!deps.config.enforceAllowedTools && !boundaryReported) {
         boundaryReported = true;
         deps.onDegradation?.(
           TOOL_UNFILTERABLE,
-          "the reviewer's tool allow-list cannot be scoped per run on this Host: " +
-            "the child starts under the parent's tool composition. " +
-            "Express the boundary in an Agent Preset selected by reviewer.agentPreset.",
+          preset
+            ? `The Host composes the reviewer with Agent Preset "${preset}". reviewer.allowedTools is advisory. Verify the preset and its delegated workers' tools for read-only review.`
+            : "The Host composes the reviewer using the provider default. reviewer.allowedTools is advisory. Select a reviewed Agent Preset with reviewer.agentPreset to constrain its tools.",
         );
       }
 

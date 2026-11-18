@@ -117,6 +117,7 @@ declare module "@deepseek-ai/cordis" {
  * live configuration it answers to and the Remote contract the client calls.
  */
 export class DomainExpertsService extends TypertRemoteService {
+  readonly supportsReviewToolPolicy: boolean = true;
   static inject = inject;
   static Config = ConfigSchema;
 

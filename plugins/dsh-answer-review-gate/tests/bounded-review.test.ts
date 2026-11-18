@@ -31,6 +31,17 @@ const outcome = {
 };
 
 describe("bounded domain review", () => {
+  it("requires tool policy support before invoking a cancellable legacy service", async () => {
+    const face = { testExpert: vi.fn(), reviewExpertBounded: vi.fn() };
+    const backend = createDomainExpertBackend({
+      face,
+      config: { ...config, enforceAllowedTools: true },
+    });
+    await expect(backend.review(input())).rejects.toMatchObject({
+      reason: "reviewer-capability-unsupported",
+    });
+    expect(face.reviewExpertBounded).not.toHaveBeenCalled();
+  });
   it("does not start a legacy reviewer even when every numeric limit is zero", async () => {
     const face = { testExpert: vi.fn(), reviewExpert: vi.fn() };
     const backend = createDomainExpertBackend({ face, config });

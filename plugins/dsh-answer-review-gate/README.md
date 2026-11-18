@@ -77,12 +77,13 @@ User → primary agent → research / tools / background subagents
   bounds: a committed message cannot be edited at this seam, so a second such
   draft goes through the ordinary review path, and a request the user waived is
   settled before the guard runs.
-- Independent reviewers cannot delegate to more agents. A scoped execution guard
-  refuses domain delegation and native activation tools, including configured
-  aliases, before their bodies run. Read/search tools and `structured_output`
-  remain available. The native reviewer backend requires a local managed
-  provider so the Host can install this policy before the first prompt; a
-  provider that cannot enforce it fails explicitly.
+- Independent reviewers can delegate through the tools their preset exposes,
+  including configured aliases. Each call waits for its child and returns the
+  child's result to the reviewer before it submits `structured_output`. Local
+  descendants follow the same rule, within the Host's depth and capacity limits.
+  The native reviewer backend requires a local managed provider to install this
+  behavior before the first prompt. The Agent Preset and deployment permissions
+  determine which tools the reviewer can use.
 - The reviewer itself is exempt: it runs as a subagent child and subagents are
   never gated, so the reviewer cannot recursively review itself.
 
@@ -121,10 +122,8 @@ including requests with no text. The Host applies the reviewer's selected model
 capabilities and image limits; the gate does not replace images with text-only
 placeholders. A reviewer that cannot inspect an attachment reports its own
 verification gap without inferring that the primary agent could not see it.
-Image review through `domain-expert` requires a matching domain-experts build
-with the host-only `reviewExpert` entry. Older builds report
-`expert-image-input-unavailable` through the configured failure policy rather
-than silently reviewing only the text.
+Image and text reviews use the same cancellable domain-experts entry. Image
+references are passed through on each attempt, including capture recovery.
 
 ### `reviewer.backend: domain-expert` (default)
 
@@ -133,17 +132,15 @@ by **stable domain id** (`reviewer.domain`, default `answer-reviewer`), so the
 reviewer persona, policy, tools and model are tuned in the domain-experts UI,
 not here. The verdict is derived from the expert's own structured protocol:
 findings and conflicts are the review objections; a run with no findings and no
-conflicts passes. The legacy domain-experts test entry owns its lifecycle: a running
-child cannot be interrupted through this face. The gate checks cancellation
-before and after each attempt, refuses a late verdict, and starts no recovery
-attempt after cancellation.
+conflicts passes. Every review passes the round's cancellation signal to the
+host-only `reviewExpertBounded` entry. A service without that capability reports
+`review-budget-unavailable` through `failMode` before a reviewer starts.
 
 For a bounded review, set `maxToolCallsPerRound` (for example `60`),
 `maxConsecutiveRefusalsPerRound` (`5`) and `reviewTimeoutMs` (`120000`). All
-default to `0`, which preserves the legacy contract. Nonzero limits require
-the `domain-expert` backend and the host-only `reviewExpertBounded` capability
-from a matching domain-experts build; an incompatible backend fails explicitly
-through `failMode`. The monitor counts completed calls from this reviewer and its delegated descendants,
+default to `0`, which disables the respective numeric limit. Parent cancellation
+and the outer round deadline still reach the reviewer. Nonzero numeric limits
+require the `domain-expert` backend. The monitor counts completed calls from this reviewer and its delegated descendants,
 resets the error streak on success and exempts native structured result capture.
 At a limit, timeout or caller cancellation it disposes the managed activation
 before reporting a failed review. A bounded round makes one attempt; missing
@@ -157,13 +154,26 @@ still apply.
 
 Starts a native reviewer child (`reviewer.provider`, default `spawn`) with a
 fresh context: it receives only the user request and the candidate answer, an
-optional persona (`reviewer.persona`), a read-only tool allow-list
-(`reviewer.allowedTools`; unset means the read-only set, an explicitly empty
-list means no tools) and an optional model route
+optional persona (`reviewer.persona`) and an optional model route
 (`reviewer.route` / `reviewer.model` / `reviewer.reasoningEffort`). The verdict
 must be delivered by the native `structured_output` tool; prose and fenced
 JSON are not captured verdicts. For correlated-failure reduction, route the
 reviewer to a different provider or model than the primary agent.
+
+The Host composes the child's tools using the selected Agent Preset
+(`reviewer.agentPreset`) or its provider's default composition. Inspect the
+tools contributed by that preset and by its plugins, including those available
+to delegated workers.
+
+To limit both reviewer backends and their workers, set
+`reviewer.enforceAllowedTools: true` and list the trusted tools in
+`reviewer.allowedTools`. For example, `[read, grep, qa_subagent]` permits
+reads, searches and delegation through that tool wherever the Host grants them.
+Verify deployment-owned aliases before adding them. The gate always permits
+native `structured_output`. A worker whose provider cannot install the policy
+is refused before launch. Some tools contributed directly by a preset or a
+plugin can still appear in the model's catalog. The scoped execution guard
+rejects unlisted names, including tools registered later.
 
 ## Capture recovery and current review status
 
@@ -209,7 +219,9 @@ reviewer:
   # model: ""
   # reasoningEffort: ""
   # persona: ""
-  # allowedTools: []          # unset means the read-only set; [] means no tools
+  # agentPreset: reviewer-readonly  # id of a preset installed by the operator
+  # enforceAllowedTools: true
+  # allowedTools: [read, grep, qa_subagent]
   # roundTimeoutMs: 600000    # per-round wall-clock budget; 0 disables
 maxReviewRounds: 3
 failMode: warn
@@ -245,7 +257,9 @@ an individual deadline or tool limit; a failed review is never converted into a 
 | `reviewer.provider` | Subagent provider name for the `subagent` backend. |
 | `reviewer.route` / `reviewer.model` / `reviewer.reasoningEffort` | Reviewer route overrides for the `subagent` backend. |
 | `reviewer.persona` | Persona instruction for the `subagent` reviewer. |
-| `reviewer.allowedTools` | Read-only tool allow-list. Unset means the read-only set (`read`, `read_image`, `glob`, `grep`, `docs_read`, `docs_search`); an explicitly empty list means the reviewer works without tools. Destructive and writing names are removed whatever the list says. |
+| `reviewer.agentPreset` | Agent Preset id for the native reviewer. The selected provider must support preset selection. |
+| `reviewer.allowedTools` | Trusted tool names. With enforcement enabled, an empty list permits only native result capture. |
+| `reviewer.enforceAllowedTools` | Apply the list throughout the local review tree. Defaults to `false`, which preserves preset behavior and the native backend's `TOOL_UNFILTERABLE` diagnostic. |
 | `reviewer.roundTimeoutMs` | Wall-clock budget for one review round (10000–1800000, default 600000; `0` disables). An expired deadline ends the round under the failure policy instead of holding the turn open. |
 | `maxReviewRounds` | Review/revision rounds per user turn before the failure policy applies (1–10). |
 | `failMode` | `open` / `warn` / `closed`, see above. |
@@ -281,17 +295,11 @@ The `--profile` flag is required.
 - The reviewer runs in a fresh context and receives only the review material
   (user request, candidate answer). It does not inherit the primary agent's
   hidden reasoning.
-- The `domain-expert` backend's tool access is whatever the configured domain
-  grants; configure the reviewer domain read-only. The `subagent` backend's
-  tools are `reviewer.allowedTools` minus the names `src/reviewer-tools.ts`
-  excludes: an unset list gives the reviewer the read-only set (reads and
-  searches), and a listed `file_delete`, `write`, `edit`, `apply_patch`,
-  `str_replace_editor`, `bash`, `shell`, `run_code`, `lsp`,
-  `dsh_lightrag_delete` or a `terminal_`/`job_` tool is dropped before the child
-  is started. A reviewer that reaches for a deletion stops the turn it belongs
-  to: on a QA stand the call parked above the parent's composer for an approval
-  a delegated child can never receive, so the boundary is held both by the
-  allow-list and by the surface, which refuses a delegated call outright.
+- A read-only deployment must constrain both the reviewer and the workers it
+  can start. For native subagents, choose a suitable Agent Preset. For domain
+  experts, the domain allow-list limits inherited tools on a managed child.
+  Its preset can also contribute local tools. Explicit domain denials apply at
+  execution, including to local tools registered later.
 - Reviewer output is untrusted model output: it is parsed and validated, a
   malformed verdict is a reviewer failure handled by the failure policy, and
   the primary remains responsible for checking reviewer evidence rather than

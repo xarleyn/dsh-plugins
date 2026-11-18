@@ -1,10 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Context } from "@deepseek-ai/cordis";
+import * as reviewKit from "@yadsh/dsh-plugin-kit/review-foreground";
 import { SessionId } from "@deepseek-ai/dsh-session/types";
-import {
-  installForegroundReview,
-  type ForegroundReviewContext,
-} from "@yadsh/dsh-plugin-kit/review-foreground";
 import type {
   SubagentActivation,
   SubagentActivationSpec,
@@ -45,13 +42,22 @@ export async function startRestrictedExpert(
     );
   }
   const childId = SessionId(randomUUID());
+  if (
+    budget?.allowedTools &&
+    typeof reviewKit.installReviewToolPolicy !== "function"
+  )
+    throw unsupportedCapability(
+      spec.provider,
+      "tool policy",
+      "the installed plugin kit cannot enforce the reviewer's tool policy",
+    );
   let applied = false;
   const unsubscribe = ctx.on("agent/created", ({ agent }) => {
     if (agent.id !== childId) return;
     try {
       if (spec.outputSchema !== undefined)
-        installForegroundReview(
-          agent.ctx as unknown as ForegroundReviewContext,
+        reviewKit.installForegroundReview(
+          agent.ctx as unknown as reviewKit.ForegroundReviewContext,
           agent,
         );
       // The Host composes the preset before this serial lifecycle event and
@@ -112,6 +118,12 @@ export async function startRestrictedExpert(
           );
         }
       }
+      if (budget?.allowedTools)
+        reviewKit.installReviewToolPolicy(
+          agent.ctx as unknown as reviewKit.ForegroundReviewContext,
+          agent,
+          budget.allowedTools,
+        );
       applied = true;
     } catch (cause) {
       throw new DomainExpertsError(

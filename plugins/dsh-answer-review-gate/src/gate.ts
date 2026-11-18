@@ -137,7 +137,9 @@ export interface AnswerReviewGateDeps {
   readonly now: () => number;
   /** Per-call service resolvers keep optional backends soft. */
   readonly domainExperts: () => DomainExpertsFace | undefined;
-  readonly subagents: () => SubagentsFace | undefined;
+  readonly subagents: (
+    allowedTools?: readonly string[],
+  ) => SubagentsFace | undefined;
   /**
    * The host's QA surface, for the model policy of the chat under review.
    * Optional and read per call: a deployment with no QA surface has no policy,
@@ -396,12 +398,8 @@ export class AnswerReviewGate {
   ): Promise<BoundaryOutcome> {
     const startedAt = this.deps.now();
     const backend = this.backendFor(agent, config, sessionId);
-    // The round's cancellation surface merges the reviewed turn's own abort
-    // with the configured per-round deadline: the turn signal alone never
-    // fired while nobody cancelled it, so a reviewer that stopped answering
-    // held the user's turn open indefinitely. The subagent backend forwards
-    // this signal to its child and disposes it; the domain-expert face owns
-    // its run and cannot be cancelled, so its late result is simply dropped.
+    // Both backends use this signal to dispose the managed reviewer when the
+    // parent stops or the round expires.
     const round = new AbortController();
     const forwardAbort = () => round.abort(signal.reason);
     if (signal.aborted) round.abort(signal.reason);
@@ -727,7 +725,11 @@ export class AnswerReviewGate {
         };
       }
       return createSubagentBackend({
-        face: this.deps.subagents(),
+        face: this.deps.subagents(
+          config.reviewer.enforceAllowedTools
+            ? config.reviewer.allowedTools
+            : undefined,
+        ),
         config: config.reviewer,
         parent: agent,
         // The reviewed chat's policy, not its visitor's picker: a reviewer that

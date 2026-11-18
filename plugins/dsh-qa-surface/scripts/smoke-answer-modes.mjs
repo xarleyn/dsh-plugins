@@ -123,6 +123,9 @@ export async function runAnswerModesPass(options) {
   const reviews = new Set();
   const waitingReviews = new Set();
   const closedReviews = new Set();
+  const localToolChecks = new Map();
+  const inspectedModels = new Set();
+  let workerReadStarted = false;
   let ragQueries = 0;
   const server = createServer(async (request, response) => {
     try {
@@ -173,17 +176,59 @@ export async function runAnswerModesPass(options) {
         waitingReviews.add(scenario);
         return;
       }
-      if (scenario === "CURRENT" && phase <= 1) {
+      if (scenario === "CURRENT" && !inspectedModels.has(body.model)) {
+        inspectedModels.add(body.model);
         const inventory = (body.tools ?? [])
           .map((entry) => entry.function.name)
           .sort();
         console.log(
           `packed review inventory (${body.model}): ${inventory.join(", ")}`,
         );
+        if (body.model === "mode-demo") assert.ok(inventory.includes("write"));
+        else {
+          assert.ok(inventory.includes("qa_subagent"));
+          assert.ok(
+            !inventory.includes("write") &&
+              !inventory.includes("pwsh") &&
+              !inventory.includes("bash"),
+          );
+        }
       }
-      if (body.model === "worker-demo") {
+      if (localToolChecks.get(body.model) === "pending") {
+        const last = body.messages
+          .filter((message) => message.role === "tool")
+          .at(-1);
+        assert.match(
+          last?.content ?? "",
+          /outside the reviewer's configured tool policy/u,
+        );
+        localToolChecks.set(body.model, "denied");
+      }
+      if (
+        scenario === "CURRENT" &&
+        body.model !== "mode-demo" &&
+        !localToolChecks.has(body.model) &&
+        body.tools?.some((entry) => entry.function.name === "file_delete")
+      ) {
+        // The QA catalog can advertise this agent-local tool after the mask.
+        // Use an uncreated synthetic path and require the policy's own refusal.
+        tool = {
+          name: "file_delete",
+          arguments: { path: "review-probe-never-created.txt" },
+        };
+        localToolChecks.set(body.model, "pending");
+      } else if (body.model === "worker-demo") {
         assert.equal(scenario, "CURRENT");
-        text = "The delegated evidence check found both dashboard entries.";
+        if (!workerReadStarted) {
+          tool = { name: "qa_list_subagent_models", arguments: {} };
+          workerReadStarted = true;
+        } else {
+          const last = body.messages
+            .filter((message) => message.role === "tool")
+            .at(-1);
+          assert.match(last?.content ?? "", /worker-demo/u);
+          text = "The delegated catalog check found worker-demo.";
+        }
       } else if (body.model === "review-demo") {
         const key = `review-${scenario}`;
         const reviewPhase = phases.get(key) ?? 0;
@@ -215,7 +260,7 @@ export async function runAnswerModesPass(options) {
           assert.match(
             last,
             scenario === "CURRENT"
-              ? /delegated evidence check found both dashboard entries/u
+              ? /delegated catalog check found worker-demo/u
               : /models/u,
           );
           assert.ok(!last.includes("RAG Priority is active"));
@@ -392,7 +437,17 @@ export async function runAnswerModesPass(options) {
   );
   await writeFile(
     patch,
-    `- id: dsh-qa-surface
+    `- insert:
+    - id: preset-review-demo
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: review-demo
+        plugins:
+          - id: search
+            name: '@deepseek-ai/dsh-tool-fs-search'
+            config:
+              sampleOverCapGlobResults: false
+- id: dsh-qa-surface
   config:
     accounts:
       enabled: true
@@ -448,6 +503,9 @@ export async function runAnswerModesPass(options) {
   config:
     failMode: closed
     reviewer:
+      ${expertReview ? "" : "agentPreset: review-demo"}
+      enforceAllowedTools: true
+      allowedTools: [read, grep, qa_list_subagent_models, qa_subagent]
       roundTimeoutMs: 10000
       backend: ${expertReview ? "domain-expert" : "subagent"}
       domain: demo-answer-reviewer

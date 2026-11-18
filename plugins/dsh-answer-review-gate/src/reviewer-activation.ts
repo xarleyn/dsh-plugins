@@ -1,8 +1,5 @@
 import { randomUUID } from "node:crypto";
-import {
-  installForegroundReview,
-  type ForegroundReviewContext,
-} from "@yadsh/dsh-plugin-kit/review-foreground";
+import * as reviewKit from "@yadsh/dsh-plugin-kit/review-foreground";
 import type { GateHostContext } from "./index.js";
 import { ReviewerFailure, type SubagentsFace } from "./types.js";
 
@@ -10,14 +7,24 @@ import { ReviewerFailure, type SubagentsFace } from "./types.js";
 export function foregroundReviewers(
   ctx: GateHostContext,
   face: SubagentsFace,
+  allowedTools?: readonly string[],
 ): SubagentsFace {
   return {
+    enforcesReviewToolPolicy: allowedTools !== undefined,
     getProvider: (name) => face.getProvider(name),
     async startActivation(spec) {
       if (face.getProvider(spec.provider)?.prepareContinuable === undefined)
         throw new ReviewerFailure(
           "reviewer-capability-unsupported",
           "independent reviewers require a local managed provider to await delegated work",
+        );
+      if (
+        allowedTools &&
+        typeof reviewKit.installReviewToolPolicy !== "function"
+      )
+        throw new ReviewerFailure(
+          "reviewer-capability-unsupported",
+          "the installed plugin kit cannot enforce the reviewer's tool policy",
         );
       const childId = randomUUID();
       let applied = false;
@@ -28,11 +35,13 @@ export function foregroundReviewers(
         }: {
           agent: {
             readonly id: string;
-            readonly ctx: ForegroundReviewContext;
+            readonly ctx: reviewKit.ForegroundReviewContext;
           };
         }) => {
           if (String(agent.id) !== childId) return;
-          installForegroundReview(agent.ctx, agent);
+          if (allowedTools)
+            reviewKit.installReviewToolPolicy(agent.ctx, agent, allowedTools);
+          reviewKit.installForegroundReview(agent.ctx, agent);
           applied = true;
         },
         { global: true },

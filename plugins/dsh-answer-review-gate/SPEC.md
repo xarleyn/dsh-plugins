@@ -408,9 +408,9 @@ image identity in the text packet, but must not declare the model text-only or
 replace the native images with unreadable handles. The Host owns model input
 capability checks and image request limits. A saved review packet contains the
 full text; its native images accompany every expert run, including structured
-capture recovery. A domain-experts build without the host-only image review
-entry fails explicitly with `expert-image-input-unavailable` under the existing
-failure policy. Durable image refs are not added to the browser Remote API.
+capture recovery. Both text and image reviews require the host-only
+`reviewExpertBounded` capability. An older domain-experts service follows the
+configured failure policy with `review-budget-unavailable` before activation.
 
 If the reviewer's runtime cannot inspect an attachment, that is a verification
 gap in its own run. It cannot infer that the primary agent lacks vision or
@@ -423,29 +423,21 @@ Ideally reviewer uses:
 - read-only tools;
 - no modification/deployment tools;
 - no unrestricted shell;
-- no ability to recursively invoke itself.
+- foreground delegation within the Host's configured depth and capacity.
 
-The tool half of that list is enforced, not advised. `src/reviewer-tools.ts`
-names the read-only set the `subagent` reviewer is composed with when the
-deployment names none (`read`, `read_image`, `glob`, `grep`, `docs_read`,
-`docs_search`) and the names that never enter a reviewer — `file_delete`,
-`write`, `edit`, `apply_patch`, `str_replace_editor`, `bash`, `shell`,
-`run_code`, `lsp`, `dsh_lightrag_delete`, and any `terminal_*`/`job_*` tool.
-The exclusion is applied twice: once when the config is resolved, once again at
-the call that starts the child, so no path composes a reviewer that can change
-the workspace. `tests/reviewer-tools.test.ts` holds both.
-
-This exists because a reviewer that could delete did delete: on a stand with
-`interaction.approvals: interactive` the child raised `file_delete`, the request
-parked above the parent's composer, and the turn waited — 12,5 minutes in one
-observation, over an hour in another — for an approval a delegated call cannot
-receive. The reviewer's prompt says the same thing the filter enforces: an
-obstacle is a finding about the candidate, never something to clear.
-
-The `domain-expert` backend's tools are the configured domain's, and a tool the
-surface attaches to the agent's own layer survives any inherited filter; that
-branch is bounded on the surface's side, where a delegated call asking for
-confirmation is refused on the spot.
+The native backend sends `reviewer.agentPreset` when configured. Its provider
+must support preset selection. The Host composes the child's tools. The gate
+normalizes the `reviewer.allowedTools` list. With enforcement disabled it reports
+`TOOL_UNFILTERABLE` because the activation request has no per-run tool filter.
+The domain backend can restrict inherited tools on a local managed child and
+guard explicitly denied names at execution. Its preset can contribute local
+tools outside the inherited mask. A read-only deployment must verify the
+effective composition of the reviewer and its delegated workers. With
+`reviewer.enforceAllowedTools` enabled, both backends mask inherited tools and
+guard dispatch against the trusted list on every local worker. A missing
+capability or an external worker whose tools cannot be constrained is refused.
+The Host's native result capture is always permitted. Local tools that the Host
+still advertises remain subject to the execution guard.
 
 Correlated model failures should be reduced where economically reasonable by using a reviewer route different from primary.
 
@@ -625,9 +617,8 @@ retry policy — and an expired deadline is a reviewer failure
 what keeps a reviewer that stopped answering from holding the user's turn open
 indefinitely: a live turn once sat in its review phase for 16-18 minutes until
 the system tore the turn down as incomplete. The deadline aborts the round's
-signal, so the subagent backend cancels and disposes its child; the
-domain-experts face owns its runs and cannot be interrupted, so its late
-result is dropped and the run finishes unobserved.
+signal. Both supported reviewer backends propagate this signal to the managed
+activation. A cancelled round discards any late result.
 
 ---
 
@@ -932,9 +923,9 @@ How many review rounds are typically needed?
 
 # Security
 
-Reviewer is read-only by default: the allow-list and the excluded names are in
-`src/reviewer-tools.ts`, and a delegated reviewer that asks for confirmation is
-refused where it asks rather than parking the parent turn.
+The operator chooses a read-only composition for the reviewer and its workers.
+Enable `reviewer.enforceAllowedTools` to apply the configured list to every
+managed worker. The defaults in `src/reviewer-tools.ts` cover reads and searches.
 
 It must not:
 

@@ -202,6 +202,18 @@ describe("reviewer tool boundary", () => {
 });
 
 describe("reviewer child composition (gate branch)", () => {
+  it("refuses a required list on a native adapter without scoped enforcement", async () => {
+    const started: SubagentActivationSpec[] = [];
+    const backend = createSubagentBackend({
+      face: capturingFace(started, [PASS_RESULT]),
+      config: { ...rawReviewerConfig(["read"]), enforceAllowedTools: true },
+      parent: "parent-agent",
+    });
+    await expect(backend.review(reviewInput())).rejects.toMatchObject({
+      reason: "reviewer-capability-unsupported",
+    });
+    expect(started).toHaveLength(0);
+  });
   it("sends no tool filter in any form: the Host cannot scope a run's tools", async () => {
     // The 0.2.1 start request carries no per-run tool scoping, so a requested
     // list — destructive names included — composes nothing. The request must
@@ -268,13 +280,18 @@ describe("reviewer child composition (gate branch)", () => {
 
   it("sends a configured preset id through to the child request", async () => {
     const started: SubagentActivationSpec[] = [];
+    const diagnostics: string[] = [];
     const backend = createSubagentBackend({
       face: capturingFace(started, [PASS_RESULT]),
       config: { ...rawReviewerConfig([]), agentPreset: "reviewer-readonly" },
       parent: "parent-agent",
+      onDegradation: (_code, detail) => diagnostics.push(detail),
     });
     await backend.review(reviewInput());
     expect(started[0]!.agentPreset).toBe("reviewer-readonly");
+    expect(diagnostics).toEqual([
+      expect.stringContaining('Agent Preset "reviewer-readonly"'),
+    ]);
   });
 });
 
