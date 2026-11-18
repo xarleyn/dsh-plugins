@@ -121,7 +121,9 @@ copy of it.
 - Semantic compression (Headroom/Kompress-style preview engines can sit on
   top of the CAS service later).
 - S3/MinIO backends (the `CasStore` interface is the contract).
-- Mark-and-sweep GC driven by durable session references.
+- Mark-and-sweep GC driven by durable session references. The current TTL and
+  quota policies can expire an object while its preview remains in a saved
+  chat. See the [decision and required Harness API](docs/decisions/session-reference-gc.md).
 - UI browser for stored objects; OTel export; regex search; advanced MIME
   detection.
 
@@ -166,5 +168,5 @@ is ordering-dependent and should be avoided (see the design document, §27).
 | Shared `ctx.casResults` service surface | Implemented |
 | Repeat-aware offloading | Deferred |
 | S3/MinIO backend | Deferred |
-| Session-driven mark-and-sweep GC | Deferred |
+| Session-driven mark-and-sweep GC | Awaiting a complete durable reference inventory and coordination with concurrent writers |
 | UI browser / OTel export / regex search | Deferred |

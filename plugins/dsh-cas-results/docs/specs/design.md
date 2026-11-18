@@ -1220,21 +1220,12 @@ If possible, re-run the original tool call.
 
 Never silently return empty data.
 
-## Future improvement
+## Collection based on saved chat references
 
-A later DSH-specific GC implementation may scan durable session references and implement mark-and-sweep:
-
-```text
-session logs
-    ↓
-collect live SHA references
-    ↓
-CAS objects
-    ↓
-delete only unreachable objects
-```
-
-This should be Phase 3+, because coupling v1 tightly to DSH persistence internals would make the plugin much more fragile across upstream updates.
+The [decision on session references](../decisions/session-reference-gc.md)
+records the limits of the public Harness APIs and the conditions for reclaiming
+unreferenced objects. The current collector enforces TTL and quota using CAS
+metadata. A saved chat can outlive its stored tool result.
 
 ---
 
