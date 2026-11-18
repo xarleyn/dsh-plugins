@@ -62,6 +62,9 @@ manual-only OpenViking operation:
   matches", which a model reads as a real result and repeats), and an
   `adjustUpstreamTool` hook that rewrites those tools' `tools/list` schemas to
   advertise the parameter as required.
+- Each proxy POST now shares a single deadline across its FIFO admission queue
+  and HTTP exchange. MCP cancellation removes queued tool calls and shutdown
+  aborts outstanding exchanges.
 
 - The injected recall envelope carries a framing line the fork adds in
   `src/runtime.ts` (`RECALL_FRAMING`, applied by `withRecallFraming`): recalled

@@ -407,11 +407,18 @@ page, opened from its own row in the DSH web UI. It edits the plugin's
 | `requestTimeoutMs` | integer 1000–120000 | `10000` | Timeout for one OpenViking request |
 | `mcpToolCallTimeoutMs` | integer 1000–600000 | `60000` | Timeout for one bridged MCP tool call |
 
-The proxy's HTTP deadline is `requestTimeoutMs`, forwarded to its subprocess as
-`OPENVIKING_TIMEOUT_MS`. The outer MCP bridge uses `mcpToolCallTimeoutMs`; raising
-only that outer deadline cannot extend the inner HTTP request. Keep it longer
-than the HTTP deadline. Changes to the bridged transport take effect after the
-plugin reloads; ordinary runtime HTTP operations adopt settings changes live.
+The stdio proxy admits up to 16 concurrent HTTP POSTs. Each POST gets one
+`requestTimeoutMs` budget (forwarded as `OPENVIKING_TIMEOUT_MS`) for waiting
+for a slot, sending the request and reading the response body. Error `-32004`
+reports `data.phase` as `queue` if it expired before dispatch or `upstream`
+after dispatch. A queued tool that expires or is cancelled never reaches the
+server. An upstream timeout can leave work running on the server.
+
+`mcpToolCallTimeoutMs` bounds the whole tool call at the DSH bridge, including
+session recovery and any retry. Keep it longer than the per-POST deadline when
+the caller should receive the proxy's timeout diagnostic. Bridged transport
+changes take effect after plugin reload. Ordinary runtime HTTP operations adopt
+settings changes live.
 
 Out-of-range or unknown enum values are rejected by DSH with a validation error
 rather than silently coerced. Values supplied through `OPENVIKING_*` environment
