@@ -47,6 +47,7 @@ const required = [
   "scripts/repair-session-events.mjs",
   "scripts/attach-workspace-sessions.mjs",
   "cordis.patch.yml",
+  "deploy/qa-lan.patch.yml",
   "compatibility.json",
   "capability-policy.json",
   "README.md",

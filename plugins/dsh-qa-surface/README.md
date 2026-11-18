@@ -1785,48 +1785,29 @@ trusted reverse proxy if iframe embedding is required.
 
 ### Serving the QA rig over the LAN
 
-The plugin itself needs no changes to be reachable from other machines; the
-web server's bind address is a deployment composition decision. DSH refuses
-`dsh --host 0.0.0.0` on the command line on purpose, so network exposure is
-expressed with the shipped patch overlay instead:
+Choose one concrete IP address assigned to the serving machine. The QA overlay
+uses port 3082 by default and binds to loopback until you supply `--host`.
 
 ```bash
-pnpm dsh --profile qa-surface --no-open --port 3082 \
-  --patch plugins/dsh-qa-surface/deploy/qa-lan.patch.yml
+dsh --profile qa-surface --patch ./node_modules/@yadsh/dsh-qa-surface/deploy/qa-lan.patch.yml \
+  --no-open --host <local-interface-ip> --port 3082
 ```
 
-The overlay sets the `webserver` row to `0.0.0.0` while keeping the `--port`
-flag working. On an all-interfaces bind DSH derives trusted `/api` authorities
-from the machine's LAN IPv4 addresses, so `http://<lan-ip>:3082/qa` works
-without extra configuration; users reaching a DNS name instead of an IP
-literal need `--trusted-host <name>` on the same command line.
+Open the launch URL printed by Harness to establish the browser session, then
+visit `/qa` on that origin. The gateway accepts the listener's IP authority.
+For a DNS name, supply its authority with `--trusted-host`. To serve HTTPS
+directly, pass the certificate chain and key with `--tls-cert` and `--tls-key`.
 
-LAN browsers cannot read the DSH settings namespace (settings RPCs are pinned
-to loopback by the gateway). The plugin covers this itself: a browser that
-sees the namespace as unavailable reads the effective configuration through
-the `qaSurface/describe` Host Remote, so branding, session pinning and
-lockdown UI switches keep working over the LAN. Host-side enforcement was
-never dependent on that read path.
+LAN browsers read the effective QA configuration through `qaSurface/describe`.
+The settings namespace, directory picker and credential RPCs require loopback.
+Keep secrets out of QA configuration. The describe response includes operator
+settings such as `lockdown.sharedReadOnlyRoots`.
 
-`describe` takes no token on purpose — the browser needs the configuration
-before it can render anything — so treat its answer as public deployment
-metadata: any `/qa` visitor can read the full resolved configuration, not
-only the audience-facing projection, including operator-side values such as
-the `lockdown.sharedReadOnlyRoots` paths. Keep credentials and secrets out of
-the `qa-surface` configuration entirely; the plugin declares no field for
-them, and nothing in the channel redacts the resolved values.
+The same listener serves the Harness UI at `/`. Use a dedicated profile and
+limit access to the intended users. Treat the printed launch URL as a credential.
 
-What a LAN deployment does not change:
-
-- DSH has no authentication or TLS on this port; anyone who can reach it can
-  drive the harness, and the full operator UI at `/` stays reachable next to
-  `/qa`. Scope the port's reachability (subnet-limited firewall rule, VPN or
-  tailnet, authenticating reverse proxy) and use a dedicated process identity.
-- Loopback-only settings, directory picking and credential RPCs stay refused
-  for LAN clients. On `/qa`, the plugin replaces DSH's non-persistent welcome
-  step with a QA-specific testing disclosure and remembers its exact copy
-  version in that browser's local storage. The stock DSH notice remains
-  unchanged on operator routes.
+On `/qa`, the QA testing disclosure remembers its copy version in the browser's
+local storage. Operator routes use the stock Harness welcome notice.
 
 See [Configuration](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-qa-surface/docs/CONFIGURATION.md) for the config-channel details.
 

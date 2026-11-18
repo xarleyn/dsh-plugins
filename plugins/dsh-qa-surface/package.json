@@ -81,6 +81,7 @@
     "scripts/attach-workspace-sessions.mjs",
     "locale/*.json",
     "cordis.patch.yml",
+    "deploy/qa-lan.patch.yml",
     "compatibility.json",
     "capability-policy.json",
     "README.md",

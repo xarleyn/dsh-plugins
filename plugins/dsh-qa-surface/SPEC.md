@@ -488,11 +488,10 @@ then — the browser calls `describe` once per controller lifetime, waits in
 invalid answer falls back to the client defaults under `unavailable`. A
 readable namespace always wins and keeps delivering live updates.
 
-LAN serving itself is a deployment composition concern, not plugin config:
-the shipped `deploy/qa-lan.patch.yml` overlay binds the `webserver` row to
-`0.0.0.0`, and the DSH `/api` browser-trust fence derives the LAN authorities
-on its own. See the README "Serving the QA rig over the LAN" section for the
-deployment responsibilities this creates.
+The shipped `deploy/qa-lan.patch.yml` overlay binds the webserver to the
+local interface selected with `--host` and defaults to loopback. The DSH
+gateway accepts the listener's IP authority. See “Serving the QA rig over the
+LAN” in the README for the launch and browser authentication flow.
 
 ---
 

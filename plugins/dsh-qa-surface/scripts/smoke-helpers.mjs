@@ -19,11 +19,14 @@ export function bootGraph(html) {
   return JSON.parse(html.slice(valueStart, valueEnd));
 }
 
-export async function authenticateBrowser(port, authority, token) {
+export async function authenticateBrowser(port, authority, token, connectHost) {
   const response = await requestWithAuthority(
     port,
     authority,
     `/?token=${encodeURIComponent(token)}`,
+    undefined,
+    {},
+    connectHost,
   );
   const setCookie = response.headers["set-cookie"]?.[0];
   if (response.status !== 303 || setCookie === undefined) {
@@ -61,12 +64,12 @@ export function run(command, args, options = {}) {
   });
 }
 
-/** Reserve an unused loopback TCP port and release it again. */
-export async function freePort() {
+/** Ask the OS for an unused port on the interface the fixture will bind. */
+export async function freePort(host = "127.0.0.1") {
   const server = createServer();
   await new Promise((resolve, reject) => {
     server.once("error", reject);
-    server.listen(0, "127.0.0.1", resolve);
+    server.listen(0, host, resolve);
   });
   const address = server.address();
   if (typeof address !== "object" || address === null)
@@ -115,23 +118,19 @@ export async function rpc(origin, method, payload, cookie) {
   return envelope.result.value;
 }
 
-/**
- * One HTTP request against the loopback socket with an explicit Host header.
- * The /api browser-trust fence judges the Host header, so this speaks with
- * the exact authority a real LAN browser would send while the connection
- * itself never leaves loopback.
- */
+/** Connect to the fixture listener and send the specified HTTP authority. */
 export function requestWithAuthority(
   port,
   authority,
   path,
   payload,
   headers = {},
+  connectHost = "127.0.0.1",
 ) {
   return new Promise((resolve, reject) => {
     const request = http.request(
       {
-        host: "127.0.0.1",
+        host: connectHost,
         port,
         path,
         method: payload === undefined ? "GET" : "POST",
