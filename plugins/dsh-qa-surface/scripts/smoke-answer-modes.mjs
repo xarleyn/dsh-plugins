@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { mkdir, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -8,6 +8,9 @@ import { freePort, rpc, run, stopProcess, waitFor } from "./smoke-helpers.mjs";
 
 const YES = "Да, провести глубокий поиск";
 const NO = "Нет, ответить по найденному";
+
+const lifecycleCandidate = (scenario) =>
+  `MODE_${scenario}_DEMO. The synthetic review fixture confirms that Overview and Reports are available in the dashboard catalogue.`;
 
 /** Install the packed review/retrieval collaborators into this disposable Host. */
 export async function installAnswerModePlugins({
@@ -96,7 +99,7 @@ export async function runAnswerModesPass(options) {
       enabled: true,
       name: "Demo answer reviewer",
       description: "Review the synthetic answer.",
-      tools: { allow: ["qa_list_subagent_models"], deny: [] },
+      tools: { allow: ["qa_list_subagent_models", "qa_subagent"], deny: [] },
       model: {
         ...draft.model,
         inherit: false,
@@ -118,6 +121,8 @@ export async function runAnswerModesPass(options) {
   const completed = new Set();
   const failures = [];
   const reviews = new Set();
+  const waitingReviews = new Set();
+  const closedReviews = new Set();
   let ragQueries = 0;
   const server = createServer(async (request, response) => {
     try {
@@ -150,14 +155,36 @@ export async function runAnswerModesPass(options) {
       const serialized = JSON.stringify(body.messages);
       const scenarios = [
         ...serialized.matchAll(
-          /MODE_(ALLOW|DENY|SKIP|AFTER|DEEP|EVIDENCE)_DEMO/gu,
+          /MODE_(ALLOW|DENY|SKIP|AFTER|DEEP|EVIDENCE|CANCEL|TIMEOUT|CURRENT)_DEMO/gu,
         ),
       ];
       const scenario = scenarios.at(-1)?.[1];
       const phase = phases.get(scenario) ?? 0;
       let text = "Demo research";
       let tool;
-      if (body.model === "review-demo") {
+      if (
+        (body.model === "review-demo" && scenario === "TIMEOUT") ||
+        (body.model === "worker-demo" && scenario === "CANCEL")
+      ) {
+        assert.ok(!waitingReviews.has(scenario), "Review was started twice");
+        response.on("close", () => closedReviews.add(scenario));
+        response.writeHead(200, { "content-type": "text/event-stream" });
+        response.write(": waiting for review cancellation\n\n");
+        waitingReviews.add(scenario);
+        return;
+      }
+      if (scenario === "CURRENT" && phase <= 1) {
+        const inventory = (body.tools ?? [])
+          .map((entry) => entry.function.name)
+          .sort();
+        console.log(
+          `packed review inventory (${body.model}): ${inventory.join(", ")}`,
+        );
+      }
+      if (body.model === "worker-demo") {
+        assert.equal(scenario, "CURRENT");
+        text = "The delegated evidence check found both dashboard entries.";
+      } else if (body.model === "review-demo") {
         const key = `review-${scenario}`;
         const reviewPhase = phases.get(key) ?? 0;
         if (reviewPhase === 0) {
@@ -169,12 +196,28 @@ export async function runAnswerModesPass(options) {
             );
             assert.ok(!serialized.includes("RAG Priority is active"));
           }
-          tool = { name: "qa_list_subagent_models", arguments: {} };
+          tool =
+            scenario === "CURRENT" || scenario === "CANCEL"
+              ? {
+                  name: "qa_subagent",
+                  arguments: {
+                    description: "Check the demo catalogue",
+                    prompt: `Verify both dashboard entries for MODE_${scenario}_DEMO.`,
+                    provider: "qa-modes-demo",
+                    model: "worker-demo",
+                  },
+                }
+              : { name: "qa_list_subagent_models", arguments: {} };
         } else {
           const last =
             body.messages.filter((message) => message.role === "tool").at(-1)
               ?.content ?? "";
-          assert.match(last, /models/u);
+          assert.match(
+            last,
+            scenario === "CURRENT"
+              ? /delegated evidence check found both dashboard entries/u
+              : /models/u,
+          );
           assert.ok(!last.includes("RAG Priority is active"));
           assert.equal(
             reviewPhase,
@@ -203,6 +246,10 @@ export async function runAnswerModesPass(options) {
           reviews.add(scenario);
         }
         phases.set(key, reviewPhase + 1);
+      } else if (["CANCEL", "TIMEOUT", "CURRENT"].includes(scenario)) {
+        text =
+          phase === 0 ? lifecycleCandidate(scenario) : "Review unavailable.";
+        phases.set(scenario, phase + 1);
       } else if (scenario === "EVIDENCE") {
         const last =
           body.messages.filter((message) => message.role === "tool").at(-1)
@@ -389,6 +436,11 @@ export async function runAnswerModesPass(options) {
             name: Mode demo
           - id: review-demo
             name: Review demo
+          - id: worker-demo
+            name: Worker demo
+- id: subagent
+  config:
+    maxDepth: 3
 - id: dsh-lightrag
   config:
     endpoint: http://127.0.0.1:${server.address().port}
@@ -396,6 +448,7 @@ export async function runAnswerModesPass(options) {
   config:
     failMode: closed
     reviewer:
+      roundTimeoutMs: 10000
       backend: ${expertReview ? "domain-expert" : "subagent"}
       domain: demo-answer-reviewer
       provider: spawn
@@ -445,6 +498,7 @@ export async function runAnswerModesPass(options) {
       id: general.id,
       input: {
         ...general,
+        allowedModels: [{ provider: "qa-modes-demo", model: "worker-demo" }],
         capabilities: {
           ...general.capabilities,
           skills: ["demo-glossary"],
@@ -453,6 +507,8 @@ export async function runAnswerModesPass(options) {
             always: [
               "ask_user_question",
               "qa_list_subagent_models",
+              "qa_subagent",
+              "write",
               "skill",
               "dsh_lightrag_query",
             ],
@@ -569,6 +625,68 @@ export async function runAnswerModesPass(options) {
       JSON.stringify(page),
       /"status":"pass"/u,
       "The Host must publish a successful review receipt",
+    );
+    for (const scenario of ["CANCEL", "TIMEOUT", "CURRENT"]) {
+      await remote("chatPrompt", {
+        token: user.token,
+        request: {
+          sessionId,
+          requestId: randomUUID(),
+          mode: "queue",
+          content: [{ type: "text", text: `MODE_${scenario}_DEMO` }],
+        },
+      });
+      if (scenario !== "CURRENT") {
+        await waitFor(
+          () => waitingReviews.has(scenario),
+          `review start ${scenario}`,
+        );
+        if (scenario === "CANCEL")
+          await remote("chatCancel", { token: user.token, sessionId });
+        await waitFor(
+          () => closedReviews.has(scenario),
+          `review provider closed ${scenario}`,
+        );
+      }
+      await waitFor(
+        async () =>
+          (await remote("chatList", { token: user.token })).items.find(
+            (item) => item.sessionId === sessionId,
+          )?.running === false &&
+          (scenario !== "CURRENT" || reviews.has(scenario)),
+        `idle after ${scenario}`,
+      );
+      assert.equal(failures.length, 0, failures[0]?.stack);
+      const history = await remote("chatPage", {
+        token: user.token,
+        request: { address: { kind: "session", sessionId }, maxMessages: 100 },
+      });
+      const hash = createHash("sha256")
+        .update(lifecycleCandidate(scenario))
+        .digest("hex");
+      const statuses = history.records
+        .filter(
+          ({ event }) =>
+            event.type === "user/message" &&
+            event.data.source?.kind === "answer-review-status",
+        )
+        .map(({ event }) => event.data.source.receipt)
+        .filter((receipt) => receipt.candidateHash === hash)
+        .map((receipt) => receipt.status);
+      const expected = {
+        CANCEL: "cancelled",
+        TIMEOUT: "failure",
+        CURRENT: "pass",
+      }[scenario];
+      assert.ok(
+        statuses.includes("reviewing"),
+        `Missing waiting receipt for ${scenario}: ${statuses}`,
+      );
+      assert.equal(statuses.at(-1), expected, `Final receipt for ${scenario}`);
+      if (scenario !== "CURRENT") assert.ok(!statuses.includes("pass"));
+    }
+    console.log(
+      `packed review lifecycle: ${expertReview ? "domain-expert" : "subagent"} cancelled, timed out, and passed the next candidate`,
     );
     console.log(
       `packed QA answer modes: request metadata, consent allow/deny/skip, expiry, skill loading, one supported RAG retrieval, restricted primary tools and independent ${expertReview ? "domain-expert" : "subagent"} reviewer tools/structured output passed`,
