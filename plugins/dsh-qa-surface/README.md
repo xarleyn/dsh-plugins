@@ -102,6 +102,18 @@ credentials, including access filtering, switching, reload persistence,
 new-chat defaults, and desktop/phone layout. It does not run the separate LAN
 deployment-overlay acceptance pass.
 
+For a real inference check, start two local OpenAI-compatible models. Set
+`DSH_QA_MODEL_A_URL` and `DSH_QA_MODEL_B_URL` to their loopback API base URLs
+(including `/v1`), and `DSH_QA_MODEL_A_ID` and `DSH_QA_MODEL_B_ID` to the
+distinct IDs advertised by their model catalogs. Run
+`pnpm --filter @yadsh/dsh-qa-surface e2e:browser --live-model-selection`.
+The disposable profile grants its general role both models. An ordinary user
+switches in both directions, reloads the chat and sends a fresh prompt after
+each switch. A loopback test listener forwards the completion stream and checks
+the first upstream request's prompt, destination, model ID and HTTP status.
+The chat transcript must record a text reply from the same provider and model.
+Set `DSH_QA_MODEL_EVIDENCE` to save screenshots.
+
 Run `pnpm --filter @yadsh/dsh-qa-surface e2e:browser --chat-layout` to
 check the theme, reading width, document panel and private-chat bylines in
 Chromium on localhost. The default browser suite also exercises the LAN overlay.

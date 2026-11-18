@@ -13,6 +13,12 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runHistoryBrowserPass } from "./smoke-history-browser.mjs";
 import { runLanPass } from "./smoke-lan.mjs";
+import {
+  liveModelEndpoints,
+  liveModelPatch,
+  observeModelRequests,
+  runLiveModelSelection,
+} from "./smoke-live-model-selection.mjs";
 import { runUsageGuidePass } from "./smoke-usage-guide-browser.mjs";
 import { runIntegrationFolderBrowserPass } from "./smoke-integration-folder-browser.mjs";
 import { runFileDropBrowserPass } from "./smoke-file-drop-browser.mjs";
@@ -57,18 +63,21 @@ const fileWriteSettingsOnly = process.argv.includes("--file-write-settings");
 const discoverySettingsOnly = process.argv.includes(
   "--tool-discovery-settings",
 );
-const modelSelectionOnly = process.argv.includes("--model-selection");
+const liveModelSelection = process.argv.includes("--live-model-selection");
+const modelSelectionOnly =
+  liveModelSelection || process.argv.includes("--model-selection");
 const subagentModelsOnly = process.argv.includes("--subagent-models");
 const answerModesOnly = process.argv.includes("--answer-modes");
 const questionSoundsOnly = process.argv.includes("--question-sounds");
 const formReaderOnly = process.argv.includes("--form-reader");
 const readerModel = process.env.DSH_QA_READER_MODEL;
 if (modelSelectionOnly && !withBrowser)
-  throw new Error("--model-selection requires --browser");
+  throw new Error("model selection requires --browser");
 if (chatLayoutOnly && !withBrowser)
   throw new Error("--chat-layout requires --browser");
 const presetScopedTool = process.platform === "win32" ? "pwsh" : "bash";
 const keepFailedSmoke = process.env.DSH_QA_KEEP_SMOKE === "1";
+const liveModels = liveModelSelection ? await liveModelEndpoints() : undefined;
 const temporaryRoot = await mkdtemp(join(tmpdir(), "dsh-qa-packed-smoke-"));
 const packageDirectory = join(temporaryRoot, "package");
 const supportDirectory = join(temporaryRoot, "support-packages");
@@ -797,6 +806,7 @@ async function runBrowserPass({
 
 let completed = false;
 let host;
+let modelObserver;
 try {
   await Promise.all([
     mkdir(packageDirectory, { recursive: true }),
@@ -858,6 +868,7 @@ try {
     ),
     DSH_HOME: dshHome,
     ...(formReaderOnly && { DSH_QA_READER_KEY: "local-reader-fixture" }),
+    ...(liveModels && { QA_MODEL_FIXTURE_KEY: "local-model-fixture" }),
   };
   await run(
     process.execPath,
@@ -1006,21 +1017,24 @@ try {
     return { token, cookie };
   }
   let { token, cookie } = await startWeb();
-  if (formReaderOnly) {
+  if (formReaderOnly || liveModels) {
     const registered = await rpc(
       origin,
       "workspace/create",
       { args: { request: { path: workspacePath } } },
       cookie,
     );
-    const patch = join(temporaryRoot, "form-reader.patch.yml");
+    const patch = join(temporaryRoot, "local-model.patch.yml");
+    if (liveModels) modelObserver = await observeModelRequests(liveModels);
     await writeFile(
       patch,
-      formReaderPatch(
-        process.env.DSH_QA_READER_URL,
-        readerModel,
-        registered.workspace.workspaceId,
-      ),
+      liveModels
+        ? liveModelPatch(modelObserver.models, registered.workspace.workspaceId)
+        : formReaderPatch(
+            process.env.DSH_QA_READER_URL,
+            readerModel,
+            registered.workspace.workspaceId,
+          ),
     );
     await stopProcess(host);
     hostLog.length = 0;
@@ -1138,7 +1152,15 @@ try {
         process.env.DSH_QA_FILE_WRITE_EVIDENCE ??
         join(temporaryRoot, "file-write-evidence"),
     });
-  if (withBrowser) {
+  if (liveModels) {
+    await runLiveModelSelection({
+      models: liveModels,
+      beginTurn: modelObserver.beginTurn,
+      origin,
+      cookie,
+      authenticatedUrl: `${origin}/?token=${encodeURIComponent(token)}`,
+    });
+  } else if (withBrowser) {
     if (fullBrowser || answerModesOnly || usageGuideOnly)
       await runBrowserPass({
         origin,
@@ -1226,6 +1248,7 @@ try {
   );
 } finally {
   await stopProcess(host);
+  await modelObserver?.close();
   if (!completed)
     console.error(
       hostLog.join("").replace(/([?&]token=)[^\s&#]+/gu, "$1[redacted]"),
