@@ -30,12 +30,16 @@ interface Waiter {
   finish: (outcome?: CollectionOutcome) => void;
 }
 
+const CLIENT_TTL_MS = 30_000;
+const EXPIRY_BATCH_SIZE = 128;
+
 /** A parked tool call is transient. Never reconstruct one from a saved draft. */
 export class QaFormGate {
   private readonly waiters = new Map<string, Waiter>();
   private readonly disposers: (() => void)[] = [];
   private closed = false;
   private readonly clients = new Map<string, number>();
+  private clientExpiry: NodeJS.Timeout | undefined;
   constructor(
     readonly service: () => QaFormService,
     private readonly rootOf: (id: string) => string | undefined,
@@ -49,7 +53,7 @@ export class QaFormGate {
         this.cancel(String(agent.session.id)),
       ),
       ctx.on("agent/status", ({ agent, status }) => {
-        if (status === "idle") this.cancel(String(agent.session.id));
+        if (status === "idle") this.cancelWaiters(String(agent.session.id));
       }),
     );
   }
@@ -57,10 +61,35 @@ export class QaFormGate {
     return this.waiters.has(id);
   }
   touch(session: string): void {
-    this.clients.set(session, Date.now());
+    if (this.closed) return;
+    // Reinsert on each poll so iteration follows monotonic expiry order.
+    this.clients.delete(session);
+    this.clients.set(session, performance.now() + CLIENT_TTL_MS);
+    if (!this.clientExpiry) this.scheduleClientExpiry(CLIENT_TTL_MS);
+  }
+  private scheduleClientExpiry(delay: number): void {
+    this.clientExpiry = setTimeout(() => {
+      this.clientExpiry = undefined;
+      const now = performance.now();
+      let removed = 0;
+      for (const [session, expiresAt] of this.clients) {
+        if (expiresAt > now || removed === EXPIRY_BATCH_SIZE) {
+          this.scheduleClientExpiry(Math.max(1, Math.ceil(expiresAt - now)));
+          break;
+        }
+        this.clients.delete(session);
+        removed++;
+      }
+    }, delay);
+    this.clientExpiry.unref();
+  }
+  private stopClientExpiry(): void {
+    clearTimeout(this.clientExpiry);
+    this.clientExpiry = undefined;
   }
   private clientReady(session: string): boolean {
-    return Date.now() - (this.clients.get(session) ?? 0) < 30000;
+    const expiresAt = this.clients.get(session);
+    return expiresAt !== undefined && performance.now() < expiresAt;
   }
   hasSession(session: string): boolean {
     return [...this.waiters.values()].some((w) => w.session === session);
@@ -191,16 +220,23 @@ export class QaFormGate {
         reason: "Draft saved. Resume this form; collection is not complete.",
       });
   }
-  cancel(session: string): void {
+  private cancelWaiters(session: string): void {
     for (const w of [...this.waiters.values()])
       if (w.session === session) w.finish();
   }
+  cancel(session: string): void {
+    this.clients.delete(session);
+    if (this.clients.size === 0) this.stopClientExpiry();
+    this.cancelWaiters(session);
+  }
   cancelAll(): void {
+    this.clients.clear();
+    this.stopClientExpiry();
     for (const w of [...this.waiters.values()]) w.finish();
   }
   dispose(): void {
     this.closed = true;
-    for (const w of [...this.waiters.values()]) w.finish();
+    this.cancelAll();
     for (const d of this.disposers.splice(0)) d();
   }
 }

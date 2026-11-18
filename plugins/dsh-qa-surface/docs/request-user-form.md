@@ -17,7 +17,10 @@ first prompt; it does not rely on the renderer mounting before the agent runs.
 The renderer also polls while mounted, refreshes on focus/visibility restoration,
 and displays failures with a retry action even when no form exists yet. Existing
 drafts stay visible during a polling failure.
-Calls without a poll in the last 30 seconds fail immediately. This refusal means
+Creating or resuming a form requires a poll in the last 30 seconds. A poll
+from any owner tab refreshes the same chat. A parked form keeps waiting if polls
+stop. Disposing the session or disabling forms clears the poll record, so opening
+another form requires a fresh poll. A refusal for a missing poll means
 the server has no fresh form-client confirmation, not that it has identified the
 browser's surface. If it occurs inside QA, reload and retry, and inspect failed
 `listForms` requests or an outdated client bundle. Delegated agents cannot create
