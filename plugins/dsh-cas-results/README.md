@@ -42,7 +42,10 @@ dsh_cas_retrieve(ref="sha256:ac7819…e029")
   always leave the original tool result untouched; tool errors are never
   transformed by default.
 - **Bounded storage** — TTL plus quota garbage collection with oldest-access
-  eviction and orphan staging cleanup.
+  eviction and orphan staging cleanup. A saved chat keeps its preview and
+  digest even when GC reclaims the full result. Reopening the chat after
+  eviction lets you read the preview, but retrieving the original requires
+  running the tool again if its output can be reproduced.
 - **Zero core changes** — the plugin rides the public `tools/post-execute`
   seam and the public tool registry; DSH stays untouched.
 
