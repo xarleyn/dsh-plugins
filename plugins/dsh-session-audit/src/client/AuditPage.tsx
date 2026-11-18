@@ -15,6 +15,7 @@ import {
   AuditJsonTree,
   AuditLimitations,
   AuditMissedOpportunities,
+  AuditProvenance,
   AuditRecommendations,
   AuditScorecard,
   AuditStatusBar,
@@ -132,7 +133,6 @@ function SessionAuditPage(props: AuditPageProps): ReactNode {
           observation: value.observation,
           other: value.other,
         }}
-        {...(value.model.length === 0 ? {} : { model: value.model })}
         {...(value.agentPreset.length === 0
           ? {}
           : { agentPreset: value.agentPreset })}
@@ -143,6 +143,7 @@ function SessionAuditPage(props: AuditPageProps): ReactNode {
           : { modifiedAt: value.modifiedAt })}
       />
 
+      <AuditProvenance analysis={analysis} sessionModel={value.model} />
       <UnattachedAudits items={unattached} />
 
       <div className="dsh-audit-history">

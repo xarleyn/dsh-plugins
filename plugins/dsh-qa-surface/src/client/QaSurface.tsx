@@ -1876,6 +1876,7 @@ export function QaSurface(props: QaSurfaceProps) {
           />
         ) : null}
         <QaAuditDialog
+          key={auditTarget}
           open={auditTarget !== null}
           sessionId={auditTarget}
           title="Аудит чата"

@@ -4,11 +4,12 @@
  * The summary is what makes the SPEC §33 lazy-loading rule possible: opening a
  * session costs one of these, not the 25 KB analysis behind it.
  */
-import type {
-  AuditAnalysis,
-  AuditFinding,
-  AuditFindingCounts,
-  AuditSummary,
+import {
+  isKnownAnalysis,
+  type AuditAnalysis,
+  type AuditFinding,
+  type AuditFindingCounts,
+  type AuditSummary,
 } from "../types.js";
 import { normalizeSeverity } from "../schema/v1.js";
 
@@ -47,7 +48,7 @@ export function buildAuditSummary(input: BuildAuditSummaryInput): AuditSummary {
   // An unknown schema still gets a summary: the caller that reached here
   // resolved a session, and "there is an audit, its shape is newer than this
   // build" is a truthful answer that keeps the badge working.
-  if (analysis.kind !== "v1") {
+  if (!isKnownAnalysis(analysis)) {
     return {
       auditId,
       sessionId,

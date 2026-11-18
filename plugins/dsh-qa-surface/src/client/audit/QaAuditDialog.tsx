@@ -15,6 +15,7 @@ import {
   AuditJsonTree,
   AuditLimitations,
   AuditMissedOpportunities,
+  AuditProvenance,
   AuditRecommendations,
   AuditReport,
   AuditStatusBar,
@@ -33,6 +34,15 @@ const TABS: readonly { readonly id: AuditTab; readonly label: string }[] = [
   { id: "json", label: "JSON" },
 ];
 
+const PROVENANCE_LABELS = {
+  title: "Происхождение аудита",
+  producer: "Генератор отчёта",
+  producerVersion: "Версия генератора",
+  auditorType: "Тип аудитора",
+  auditorModel: "Модель аудитора",
+  sessionModel: "Модель сессии",
+};
+
 export interface QaAuditDialogProps {
   readonly open: boolean;
   readonly sessionId: string | null;
@@ -49,7 +59,7 @@ export function QaAuditDialog(props: QaAuditDialogProps): ReactNode {
     props.api,
     props.sessionId,
     props.open && props.api !== null,
-    props.summary?.modifiedAt ?? null,
+    props.summary?.revision ?? props.summary?.modifiedAt ?? null,
   );
 
   const parsed = useMemo(
@@ -91,6 +101,13 @@ export function QaAuditDialog(props: QaAuditDialogProps): ReactNode {
           />
         )}
 
+        {load.audit === null ? null : (
+          <AuditProvenance
+            analysis={analysis}
+            sessionModel={load.audit.summary.model}
+            labels={PROVENANCE_LABELS}
+          />
+        )}
         <AuditTabs
           tabs={TABS}
           active={tab}

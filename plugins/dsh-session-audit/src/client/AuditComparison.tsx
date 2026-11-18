@@ -1,5 +1,5 @@
 import { memo, useMemo, type ReactNode } from "react";
-import type { AuditAnalysisV1 } from "@yadsh/dsh-audit-core";
+import type { KnownAuditAnalysis } from "@yadsh/dsh-audit-core";
 import { AuditDownload } from "./AuditDocuments.js";
 import { diffFindings, diffReport, type FindingChange } from "./audit-diff.js";
 
@@ -47,8 +47,8 @@ function FindingChangeRow({
 }
 
 export const AuditComparison = memo(function AuditComparison(props: {
-  readonly baseline: AuditAnalysisV1 | null;
-  readonly selected: AuditAnalysisV1 | null;
+  readonly baseline: KnownAuditAnalysis | null;
+  readonly selected: KnownAuditAnalysis | null;
   readonly baselineReport: string;
   readonly selectedReport: string;
 }): ReactNode {

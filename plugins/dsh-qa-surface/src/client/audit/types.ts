@@ -27,6 +27,7 @@ export interface QaAuditSummary {
   readonly other: number;
   readonly schemaVersion: number;
   readonly modifiedAt: string;
+  readonly revision?: string;
 }
 
 /** The full audit, as two documents and their summary. */

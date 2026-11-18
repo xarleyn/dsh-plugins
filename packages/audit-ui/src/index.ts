@@ -35,6 +35,11 @@ export {
 } from "./json/AuditJsonTree.js";
 
 export {
+  AuditProvenance,
+  type AuditProvenanceProps,
+} from "./components/AuditProvenance.js";
+
+export {
   headingAnchor,
   parseReport,
   renderMarkdown,

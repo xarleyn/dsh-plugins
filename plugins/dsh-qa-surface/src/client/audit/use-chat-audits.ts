@@ -95,6 +95,8 @@ function sameMap(
       other.minor !== summary.minor ||
       other.observation !== summary.observation ||
       other.other !== summary.other ||
+      other.auditId !== summary.auditId ||
+      other.revision !== summary.revision ||
       other.modifiedAt !== summary.modifiedAt
     ) {
       return false;
@@ -114,36 +116,31 @@ export function useSessionAuditDocument(
   api: QaAuditApi | null,
   sessionId: string | null,
   open: boolean,
-  /** Reload key; the summary's `modifiedAt` changes exactly when bytes do. */
-  modifiedAt: string | null,
+  revision: string | null,
 ): QaAuditLoad {
   const [state, setState] = useState<QaAuditLoad>({
     loading: false,
     audit: null,
     error: null,
   });
-  const alive = useRef(true);
-
   useEffect(() => {
-    alive.current = true;
     if (!open || api === null || sessionId === null) {
       setState({ loading: false, audit: null, error: null });
-      return () => {
-        alive.current = false;
-      };
+      return;
     }
+    let live = true;
     setState({ loading: true, audit: null, error: null });
     void (async () => {
       try {
         const audit = await api.audit(sessionId);
-        if (!alive.current) return;
+        if (!live) return;
         setState({
           loading: false,
           audit: audit.available ? audit : null,
           error: null,
         });
       } catch (error) {
-        if (!alive.current) return;
+        if (!live) return;
         setState({
           loading: false,
           audit: null,
@@ -152,9 +149,9 @@ export function useSessionAuditDocument(
       }
     })();
     return () => {
-      alive.current = false;
+      live = false;
     };
-  }, [api, sessionId, open, modifiedAt]);
+  }, [api, sessionId, open, revision]);
 
   return state;
 }

@@ -146,6 +146,17 @@ export interface AuditAnalysisV1 {
   readonly limitations: readonly string[];
 }
 
+/** Schema v2 keeps the structured analysis and adds optional provenance. */
+export interface AuditAnalysisV2 extends Omit<
+  AuditAnalysisV1,
+  "kind" | "schemaVersion"
+> {
+  readonly kind: "v2";
+  readonly schemaVersion: 2;
+}
+
+export type KnownAuditAnalysis = AuditAnalysisV1 | AuditAnalysisV2;
+
 /**
  * An audit whose `schemaVersion` this build does not know.
  *
@@ -159,13 +170,13 @@ export interface UnknownAuditAnalysis {
 }
 
 /** Any parsed audit: known schema or not. */
-export type AuditAnalysis = AuditAnalysisV1 | UnknownAuditAnalysis;
+export type AuditAnalysis = KnownAuditAnalysis | UnknownAuditAnalysis;
 
 /** `true` when this build understands the analysis' schema. */
 export function isKnownAnalysis(
   analysis: AuditAnalysis,
-): analysis is AuditAnalysisV1 {
-  return analysis.kind === "v1";
+): analysis is KnownAuditAnalysis {
+  return analysis.kind === "v1" || analysis.kind === "v2";
 }
 
 /** A finding count broken out by the buckets the badge renders. */

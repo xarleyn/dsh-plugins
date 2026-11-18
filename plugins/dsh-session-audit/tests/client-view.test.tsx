@@ -306,6 +306,35 @@ describe("AuditPage", () => {
     expect(document.querySelector(".dsh-audit-md__table")).not.toBeNull();
   });
 
+  it("shows provenance belonging to the selected v2 audit", async () => {
+    const value = summaryValue({ schemaVersion: 2, model: "demo/session" });
+    const api = createAuditApi(
+      remoteOf(
+        value,
+        auditValue({
+          summary: value,
+          analysisJson: JSON.stringify({
+            schemaVersion: 2,
+            trajectory: { sessionId: SESSION, model: "demo/session" },
+            audit: {
+              producer: { name: "Demo report builder", version: "2.0.0" },
+            },
+            auditor: { type: "llm", model: "demo/auditor" },
+          }),
+        }),
+      ),
+    );
+    const view = render(<AuditPage sessionId={SESSION} api={api} />);
+    const provenance = within(await view.findByTestId("audit-provenance"));
+    await provenance.findByText("demo/auditor");
+    expect(
+      provenance.getByText("Session model").nextElementSibling?.textContent,
+    ).toBe("demo/session");
+    expect(
+      provenance.getByText("Report producer").nextElementSibling?.textContent,
+    ).toBe("Demo report builder");
+  });
+
   it("offers comparison and explains when there is no baseline", async () => {
     const api = createAuditApi(remoteOf());
     const { findByRole, getAllByRole } = render(

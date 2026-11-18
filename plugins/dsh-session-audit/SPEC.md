@@ -174,6 +174,9 @@ bindings waiting on it stay parked until it can be read again.
   audit, and a deleted baseline clears the comparison.
 - Finding comparison by unique producer ID. Missing and duplicate IDs are
   reported as unmatched. Unknown analysis schemas can still compare reports.
+- The audit header shows the producer and its version, the auditor type and
+  model, and the audited session model as separate fields. The view displays
+  only short labels and identifiers from those fields.
 - Size-bounded inline rendering and line comparison, with complete downloads
   for reports above the inline limit
 - Live add, update and delete, without restart
@@ -186,8 +189,6 @@ bindings waiting on it stay parked until it can be read again.
 - A session-header badge (`exposeHeaderBadge` is reserved, not implemented)
 - A global audit browser and cross-session analytics
 - Deep links from a finding's `seq:` evidence into the trajectory
-- Producer metadata (schema v2's `audit.producer`/`auditor` blocks are read but
-  not yet shown)
 
 ## 6. Required end-to-end scenarios
 
@@ -221,7 +222,7 @@ bindings waiting on it stay parked until it can be read again.
    then the audit is shown in no session.
 
 6. **A future schema stays readable.**
-   Given an audit with `schemaVersion: 2`,
+   Given an audit with an unknown `schemaVersion`,
    then its report and raw JSON are viewable and the semantic tabs explain
    that the schema is newer than the build.
 

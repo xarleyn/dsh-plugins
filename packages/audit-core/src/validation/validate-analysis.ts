@@ -67,7 +67,7 @@ export function validateAuditAnalysis(value: unknown): AuditAnalysisResult {
 
   // An unknown version is not a failure. The report and the raw JSON stay
   // viewable, which is the entire reason the artefact carries a version.
-  if (schemaVersion !== AUDIT_SCHEMA_VERSION) {
+  if (schemaVersion !== AUDIT_SCHEMA_VERSION && schemaVersion !== 2) {
     return {
       ok: true,
       analysis: { kind: "unknown", schemaVersion },
@@ -84,6 +84,22 @@ export function validateAuditAnalysis(value: unknown): AuditAnalysisResult {
   const trajectory = asRecord(root.trajectory);
   const sessionId = asString(trajectory?.sessionId);
   if (trajectory === undefined || sessionId === undefined) {
+    // v2 documents were previously readable through the raw viewer and
+    // directory binding. Retain that fallback for incomplete legacy exports.
+    if (schemaVersion === 2) {
+      return {
+        ok: true,
+        analysis: { kind: "unknown", schemaVersion },
+        errors: [
+          {
+            code: "INVALID_SCHEMA",
+            message:
+              "analysis.trajectory.sessionId is missing or is not a non-empty string",
+            severity: "warning",
+          },
+        ],
+      };
+    }
     return failure(
       "INVALID_SCHEMA",
       "analysis.trajectory.sessionId is missing or is not a non-empty string",
@@ -104,8 +120,9 @@ export function validateAuditAnalysis(value: unknown): AuditAnalysisResult {
     .filter((recommendation) => recommendation !== undefined);
 
   const analysis: AuditAnalysis = {
-    kind: "v1",
-    schemaVersion: AUDIT_SCHEMA_VERSION,
+    ...(schemaVersion === 2
+      ? { kind: "v2", schemaVersion: 2 }
+      : { kind: "v1", schemaVersion: AUDIT_SCHEMA_VERSION }),
     ...(audit === undefined || producer === undefined
       ? {}
       : {
