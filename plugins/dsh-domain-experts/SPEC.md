@@ -296,12 +296,16 @@ a resolved-scope inspector and an expert test screen; the scope-provider,
 memory-provider and worker registries as public extension APIs; an in-memory
 audit ring mirrored to the plugin log.
 
+For a foreground review that requests structured capture, the
+[executor](./src/host/execution.ts) passes `outputSchema` to a provider
+that declares support. A request that requires it is refused for a background
+run or an incapable provider. Ordinary text runs retain the lenient parser.
+
 **Deferred, with reasons**
 
 | Deferred | Why, and what v1 does instead |
 | --- | --- |
 | Durable execution audit storage | The audit ring plus the plugin log satisfy "clear audit trail of cross-domain delegation" without a third table. A queryable store is a separate concern. |
-| Native `outputSchema` on the child | The structured-answer contract is prompt-driven with a lenient parser, so a mistyped fence degrades to prose instead of failing a run. |
 | Jira / Wiki / Confluence / OpenViking adapters | The core stays product-agnostic; they register through `registerScopeProvider` / `registerMemoryProvider` / `registerWorker`. |
 | Per-provider typed configuration UI | `scope.providers` is an opaque JSON map validated by its owner; a provider-owned editor is a UI seam of its own. |
 | Automatic domain routing (`domain_route`) | Deliberately out of v1: routing stays separate from expert execution. |
@@ -361,7 +365,7 @@ audit ring mirrored to the plugin log.
 | Cross-domain delegation | Implemented | Same tool, policy-enforced; `domain_delegate` alias |
 | Tool policy → native tool mask | Implemented | Verified against the runtime's own refusal |
 | Background expert runs | Implemented | Continuable children; returns a receipt |
-| Structured expert output | Partial | Prompt contract with lenient parsing; native `outputSchema` deferred |
+| Structured expert output | Implemented | Optional native capture on supported foreground providers. The [execution tests](./tests/execution.test.ts) cover required capture and ordinary text runs. |
 | Execution audit | Partial | In-memory ring + plugin log; durable store deferred |
 | Bundle page UI | Implemented | `plugins.bundle.config`, keyed by the package name |
 | Resolved-scope inspector | Implemented | Per-entry enforcement labels |

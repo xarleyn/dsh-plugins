@@ -44,7 +44,9 @@ Restart the DeepSeek Harness host if bundle hot reload does not pick up the newl
 - scoped fallbacks for `placeholder`, `title`, `aria-label`, and `alt` attributes;
 - package and browser-bundle verification.
 
-The implementation is tested, but it is not considered ready for a public release until it has real translation packs and integration coverage in a live DSH browser session. See the [roadmap](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-l10n-overrides/ROADMAP.md).
+The package is [published on npm](https://www.npmjs.com/package/@yadsh/dsh-l10n-overrides).
+It bundles an example pack. Reviewed translations for target plugins and
+live-browser reload and disposal checks are tracked in the [roadmap](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-l10n-overrides/ROADMAP.md).
 
 ## Translation packs
 

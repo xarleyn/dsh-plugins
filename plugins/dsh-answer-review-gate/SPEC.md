@@ -2,7 +2,13 @@
 
 ## Status
 
-Backlog / planned.
+Phase 1 is implemented. Commit `6097585d` introduced the turn boundary.
+The shipped gate supports both reviewer backends, candidate hashes, bounded
+revision rounds and in-memory audit. The [packed Host smoke](../dsh-qa-surface/scripts/smoke-packed-dsh.mjs)
+exercises cancellation, timeout and a subsequent verdict with a scripted
+model on both backends. Provider-specific model quality requires separate
+evaluation. Durable replay, evidence bundles, full metrics export and a UI
+badge remain later-phase work. [Phase 1 scope](./README.md#scope-of-phase-1).
 
 ## Goal
 

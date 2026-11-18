@@ -2,12 +2,18 @@
 
 Public intentions only. v1 is the scope in [SPEC.md](./SPEC.md) §4.
 
+## Implemented
+
+Foreground expert calls can request native structured review output.
+Commit `03ee40e2` added the child schema and required capture. The
+[execution tests](./tests/execution.test.ts) cover captured output and refusal
+of a prose-only verdict. Qualifying each model provider remains a separate
+runtime check.
+
 ## Next
 
 - Durable, queryable execution audit (runs by domain, cross-domain
   delegations, worker usage, latency, failed scope checks).
-- Native structured output via the runtime's `outputSchema`, keeping the lenient
-  parser as the fallback.
 - Per-provider configuration UI contributed by the provider itself, replacing
   the opaque JSON map for third-party adapters.
 - Domain import/export as a documented YAML/JSON document, so a domain catalog
