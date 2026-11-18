@@ -33,6 +33,7 @@ export interface SnapshotManifest {
 
   readonly createdAt: string;
   readonly updatedAt: string;
+  readonly lastSavedAt?: string;
 
   /** Server-reported token/byte counters when known. */
   readonly tokens: number | null;
@@ -111,6 +112,8 @@ export function parseManifest(raw: unknown): SnapshotManifest {
   if (typeof raw.slotId !== "number") fail("slotId");
   if (!isIsoString(raw.createdAt)) fail("createdAt");
   if (!isIsoString(raw.updatedAt)) fail("updatedAt");
+  if (raw.lastSavedAt !== undefined && !isIsoString(raw.lastSavedAt))
+    fail("lastSavedAt");
   if (
     typeof raw.snapshotFilename !== "string" ||
     raw.snapshotFilename.length === 0
@@ -136,6 +139,9 @@ export function parseManifest(raw: unknown): SnapshotManifest {
     slotId: raw.slotId as number,
     createdAt: raw.createdAt as string,
     updatedAt: raw.updatedAt as string,
+    ...(typeof raw.lastSavedAt === "string"
+      ? { lastSavedAt: raw.lastSavedAt }
+      : {}),
     tokens: optionalInt(raw.tokens),
     bytes: optionalInt(raw.bytes),
     snapshotFilename: raw.snapshotFilename as string,

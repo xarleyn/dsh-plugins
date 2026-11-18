@@ -21,7 +21,7 @@ falls back to normal inference. The model never knows this plugin exists.
   dirty generations and save coalescing instead of a naive boolean.
 - Runtime compatibility gate: snapshots restored only when the server
   instance, provider, model, and `runtimeKey` generation match; the rest are
-  marked invalid and skipped, never deleted.
+  marked invalid and skipped on restore.
 - Cold fallback everywhere: persistence failures degrade to ordinary
   inference; optional strict mode is the only failure path.
 - Circuit breaker stops a broken backend from costing latency on every
@@ -83,9 +83,38 @@ providers listed under `providers` are ever coordinated.
 | `failure.maxConsecutiveFailures` | number | `3` | Failures before the circuit opens. |
 | `failure.cooldownMs` | number | `60000` | Circuit open duration. |
 | `metadata.path` | string | `<DSH home>/cache/dsh-kv-persist` | Manifest storage directory. DSH home is non-blank `$DSH_HOME`, otherwise `~/.dsh`. |
+| `retention.maxBytes` | integer | `0` | Byte budget for this instance's identifiable snapshot files. Zero disables retention. |
+| `retention.sharedDirectory` | string | empty | Absolute physical path by which the Host sees the server's dedicated `--slot-save-path`. |
+| `retention.mode` | string | `dry-run` | Set to `enforce` to apply the budget after checkpoint attempts. |
 | `logging.level` | `"debug" \| "info" \| "off"` | `"info"` | Structured `kv.*` event verbosity. |
 
 Full configuration rationale: [design doc §35](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-kv-persist/docs/specs/design.md).
+
+## Previewing and enforcing a byte budget
+
+Start with a positive limit and the dedicated shared directory. Call
+`await ctx.kvPersist.collectRetention()` for the candidate digests, actual bytes
+before collection and projected bytes afterward. A disabled policy returns
+`null`. Inspect the preview, then set `retention.mode` to `enforce`. The service
+now collects after checkpoint attempts. To apply it immediately call
+`await ctx.kvPersist.collectRetention("enforce")`. The no-argument call always previews.
+
+Both generations count at their actual file sizes. Eviction starts with the
+least recently **successfully saved** unused session/route. Inference, restore,
+save and collection share one slot lease. The resident session, a session being
+switched in, and a write whose backend response was lost are protected. A
+later successful save clears that write's protection. The result can exceed
+the limit while protected files occupy the space. Allow room for an in-flight
+write and the second generation. A failed checkpoint can be retried.
+
+Eviction first detaches the manifest, then removes its files. A cleanup receipt
+lets enforcement finish an interrupted deletion. A first save with retention
+enabled records ownership before writing, so an interrupted initial write can
+also be reclaimed. `unattributedBytes` reports snapshot-shaped files without
+ownership metadata separately. Older invalid manifests without a known save
+time are kept until refreshed. Enforcement requires one coordinator with exclusive
+access to the slot and dedicated directories. Use physical directory paths
+without symlinks. A remote-only deployment can use rotation with retention disabled.
 
 ## Compatibility
 
@@ -117,6 +146,17 @@ Optional end-to-end check against a live server (no GPU in CI):
 
 ```bash
 DSH_KV_TEST_LLAMA_URL=http://127.0.0.1:8080 pnpm --filter @yadsh/dsh-kv-persist test:llama
+```
+
+The owned-server interruption test runs with `DSH_KV_TEST_LLAMA_BIN` and
+`DSH_KV_TEST_LLAMA_MODEL` set to a local llama-server and GGUF model. It starts
+its own CPU server, interrupts a save and checks restore after restart. To test
+a real full disk from the repository root after building the package, run:
+
+```sh
+docker run --rm --network none --read-only --tmpfs /quota:size=1m \
+  --mount "type=bind,source=$PWD/plugins/dsh-kv-persist,target=/pkg,readonly" \
+  node:24-bookworm node --test /pkg/tests/integration/retention-full-disk.mjs
 ```
 
 See [SPEC.md](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-kv-persist/SPEC.md) for the product contract and implementation status.

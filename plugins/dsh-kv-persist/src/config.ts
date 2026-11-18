@@ -7,6 +7,7 @@
  */
 
 import z from "@deepseek-ai/schemastery";
+import { isAbsolute } from "node:path";
 import { KvPersistError } from "./errors.js";
 
 /** Raw user-facing configuration (SPEC §36). */
@@ -88,6 +89,12 @@ export interface KvPersistConfig {
     readonly path?: string;
   };
 
+  readonly retention?: {
+    readonly maxBytes?: number;
+    readonly sharedDirectory?: string;
+    readonly mode?: "dry-run" | "enforce";
+  };
+
   /** Structured logging verbosity. */
   readonly logging?: {
     /** `debug`, `info`, or `off`. Default: `info`. */
@@ -125,6 +132,11 @@ export interface ResolvedKvPersistConfig {
     readonly cooldownMs: number;
   };
   readonly metadataPath: string | null;
+  readonly retention: {
+    maxBytes: number;
+    sharedDirectory: string;
+    mode: "dry-run" | "enforce";
+  } | null;
   readonly logLevel: "debug" | "info" | "off";
 }
 
@@ -221,7 +233,22 @@ export function resolveKvPersistConfig(
     );
   }
 
+  const maxBytes = input.retention?.maxBytes ?? 0;
+  const sharedDirectory = input.retention?.sharedDirectory?.trim() ?? "";
+  const mode = input.retention?.mode ?? "dry-run";
+  if (
+    !Number.isSafeInteger(maxBytes) ||
+    maxBytes < 0 ||
+    (mode !== "dry-run" && mode !== "enforce") ||
+    (maxBytes > 0 && !isAbsolute(sharedDirectory))
+  ) {
+    throw new KvPersistError(
+      "KV_INVARIANT",
+      "retention requires a non-negative safe byte limit, a supported mode and an absolute sharedDirectory when enabled",
+    );
+  }
   return {
+    retention: maxBytes === 0 ? null : { maxBytes, sharedDirectory, mode },
     enabled: input.enabled ?? KV_PERSIST_DEFAULTS.enabled,
     backendType: input.backend?.type ?? "llama.cpp",
     baseURL: baseURL.replace(/\/+$/, ""),
@@ -366,6 +393,15 @@ export const KvPersistConfigSchema = z.object({
       path: z.string().default(""),
     })
     .default({ path: "" }),
+  retention: z
+    .object({
+      maxBytes: z.number().default(0),
+      sharedDirectory: z.string().default(""),
+      mode: z
+        .union([z.const("dry-run"), z.const("enforce")])
+        .default("dry-run"),
+    })
+    .default({ maxBytes: 0, sharedDirectory: "", mode: "dry-run" }),
   logging: z
     .object({
       level: z

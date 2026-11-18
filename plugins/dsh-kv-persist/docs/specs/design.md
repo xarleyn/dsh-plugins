@@ -1733,26 +1733,21 @@ This mode MUST be opt-in.
 
 # 43. Disk quota
 
-Future version:
+An opt-in byte budget applies to snapshots of the configured instance.
 
 ```yaml
 retention:
-  maxTotalBytes: 100GB
-  maxSessions: 50
-  maxAgeDays: 30
+  maxBytes: 1073741824
+  sharedDirectory: /srv/llama/slots
+  mode: dry-run
 ```
 
-Eviction policy:
-
-```text
-invalid first
-then oldest unused
-then LRU
-```
-
-Never remove the active slot state as part of disk cleanup.
-
-Only stored snapshots.
+Preview with `ctx.kvPersist.collectRetention()`. Enforcement completes detached
+cleanup receipts first and then selects unused snapshots by oldest successful
+save time until both generations fit the budget. The lease protects active I/O,
+the resident slot owner and the incoming session during a switch. Removing a
+manifest from the restore index precedes unlinking its binaries. Each remaining
+receipt can be retried after restart. Unknown files stay in place.
 
 ---
 

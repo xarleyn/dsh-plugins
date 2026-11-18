@@ -12,7 +12,12 @@ import type { StreamChunk } from "@deepseek-ai/dsh-llm";
 
 import type { KvPersistenceBackend } from "../backends/types.js";
 import type { ResolvedKvPersistConfig } from "../config.js";
-import { buildSnapshotIdentity } from "../snapshots/fingerprint.js";
+import {
+  buildSnapshotIdentity,
+  deriveServerInstanceKey,
+} from "../snapshots/fingerprint.js";
+import { collectSnapshots } from "../snapshots/retention.js";
+import type { RetentionReport } from "../snapshots/retention.js";
 import type { SnapshotIdentity } from "../snapshots/fingerprint.js";
 import {
   assertPluginGeneratedFilename,
@@ -24,6 +29,7 @@ import { abbreviateSessionId } from "../observability/diagnostics.js";
 import type { KvPersistMetrics } from "../observability/metrics.js";
 import {
   KvCoordinatorDisposedError,
+  KvBackendUnavailableError,
   KvPersistError,
   KvRestoreFailedError,
 } from "../errors.js";
@@ -87,6 +93,7 @@ export class SingleSlotCoordinator {
   #idleTimer: ReturnType<typeof setTimeout> | null = null;
   #idleTimerSession: string | null = null;
   #disposed = false;
+  readonly #uncertainWrites = new Set<string>();
 
   constructor(options: CoordinatorOptions) {
     this.#config = options.config;
@@ -244,7 +251,7 @@ export class SingleSlotCoordinator {
     if (owner !== null && owner !== sessionId) {
       this.#metrics.counters.slotSwitches += 1;
       if (this.#policy.shouldCheckpoint(this.#sessions.get(owner), "switch")) {
-        await this.#saveOwnedSession(owner, "switch");
+        await this.#saveOwnedSession(owner, "switch", sessionId);
       }
     }
 
@@ -401,6 +408,7 @@ export class SingleSlotCoordinator {
   async #saveOwnedSession(
     sessionId: string,
     trigger: CheckpointTrigger,
+    incomingSession?: string,
   ): Promise<SnapshotResult> {
     const runtime = this.#sessions.get(sessionId);
     if (runtime === undefined || !isDirty(runtime)) {
@@ -433,6 +441,13 @@ export class SingleSlotCoordinator {
     const attempt = (async (): Promise<SnapshotResult> => {
       try {
         const previous = await this.#repository.load(identity);
+        if (!previous && this.#config.retention) {
+          await this.#repository.recordPendingSave(
+            identity,
+            this.#slot.id,
+            this.#iso(),
+          );
+        }
         const filename = nextSnapshotFilename(
           identity,
           previous?.snapshotFilename,
@@ -450,6 +465,7 @@ export class SingleSlotCoordinator {
           now: this.#iso(),
         });
         markPersisted(runtime, generation);
+        this.#uncertainWrites.delete(sessionId);
         if (this.#slot.ownerSessionId === sessionId) this.#slot.state = "ready";
         this.#breaker.recordSuccess();
         const durationMs = this.#now() - startedAt;
@@ -469,6 +485,12 @@ export class SingleSlotCoordinator {
           error: null,
         };
       } catch (error) {
+        if (
+          this.#config.retention &&
+          error instanceof KvBackendUnavailableError
+        ) {
+          this.#uncertainWrites.add(sessionId);
+        }
         // Save failure never fails the session (SPEC §32): stay dirty, log.
         this.#breaker.recordFailure(this.#now());
         this.#metrics.counters.saveFailures += 1;
@@ -490,6 +512,14 @@ export class SingleSlotCoordinator {
         };
       } finally {
         runtime.saveInFlight = null;
+        if (this.#config.retention?.mode === "enforce") {
+          await this.#collect("enforce", incomingSession).catch(
+            (error: unknown) =>
+              this.#logger.warn("kv.retention.failed", {
+                error: String(error),
+              }),
+          );
+        }
       }
     })();
     runtime.saveInFlight = attempt;
@@ -660,9 +690,57 @@ export class SingleSlotCoordinator {
         this.#slot.ownerSessionId = null;
         this.#slot.state = "idle";
       }
-      await this.#repository.removeSession(sessionId);
+      await this.#repository.removeSession(
+        sessionId,
+        this.#config.retention
+          ? deriveServerInstanceKey(this.#config.baseURL)
+          : undefined,
+      );
       this.#sessions.delete(sessionId);
     });
+  }
+
+  /** Explicit collection previews by default, including on an enforcing host. */
+  collectRetention(
+    mode: "dry-run" | "enforce" = "dry-run",
+  ): Promise<RetentionReport | null> {
+    return this.#mutex.runExclusive(() => {
+      if (this.#disposed)
+        throw new KvCoordinatorDisposedError(COORDINATOR_DISPOSED);
+      return this.#collect(mode);
+    });
+  }
+
+  async #collect(
+    mode: "dry-run" | "enforce",
+    incomingSession?: string,
+  ): Promise<RetentionReport | null> {
+    const policy = this.#config.retention;
+    if (!policy || !this.#config.enabled) return null;
+    if (
+      (mode !== "enforce" && mode !== "dry-run") ||
+      (mode === "enforce" && policy.mode !== "enforce")
+    ) {
+      throw new Error("retention enforcement must be explicitly configured");
+    }
+    const protectedSessions = new Set(this.#uncertainWrites);
+    if (this.#slot.ownerSessionId !== null)
+      protectedSessions.add(this.#slot.ownerSessionId);
+    if (incomingSession !== undefined) protectedSessions.add(incomingSession);
+    const report = await collectSnapshots(
+      this.#repository.root,
+      deriveServerInstanceKey(this.#config.baseURL),
+      { ...policy, mode },
+      protectedSessions,
+    );
+    if (report.evicted.length || report.remainingBytes > policy.maxBytes) {
+      this.#logger.info("kv.retention.result", {
+        mode,
+        bytes: report.remainingBytes,
+        evicted: report.evicted.length,
+      });
+    }
+    return report;
   }
 
   /** Probe the backend (SPEC §34); resets the breaker on success. */

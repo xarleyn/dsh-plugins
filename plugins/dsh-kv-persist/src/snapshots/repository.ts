@@ -95,6 +95,24 @@ export class SnapshotRepository {
     }
   }
 
+  /** Record ownership before a first save can leave an unreferenced partial file. */
+  async recordPendingSave(
+    identity: SnapshotIdentity,
+    slotId: number,
+    now: string,
+  ): Promise<void> {
+    await this.#write(
+      createManifest({
+        identity,
+        slotId,
+        now,
+        sessionSeq: null,
+        snapshotFilename: snapshotFilename(identity),
+      }),
+      true,
+    );
+  }
+
   /** Create-or-update the manifest for an identity (atomic). */
   async put(input: RepositoryPutInput): Promise<SnapshotManifest> {
     const existing = await this.load(input.identity);
@@ -102,6 +120,7 @@ export class SnapshotRepository {
       ? {
           ...existing,
           updatedAt: input.now,
+          lastSavedAt: input.now,
           slotId: input.slotId,
           sessionSeq: input.sessionSeq,
           snapshotFilename: input.snapshotFilename ?? existing.snapshotFilename,
@@ -142,6 +161,7 @@ export class SnapshotRepository {
       ...existing,
       state: "invalid",
       invalidReason: reason,
+      lastSavedAt: existing.lastSavedAt ?? existing.updatedAt,
       updatedAt: now,
     });
   }
@@ -173,6 +193,7 @@ export class SnapshotRepository {
         ...manifest,
         state: "invalid",
         invalidReason: reason,
+        lastSavedAt: manifest.lastSavedAt ?? manifest.updatedAt,
         updatedAt: now,
       });
       count += 1;
@@ -181,7 +202,10 @@ export class SnapshotRepository {
   }
 
   /** Remove every manifest of a session across routes and instances. */
-  async removeSession(sessionId: string): Promise<number> {
+  async removeSession(
+    sessionId: string,
+    retainCleanupForInstance?: string,
+  ): Promise<number> {
     let count = 0;
     for (const manifest of await this.#listSessionManifests(sessionId)) {
       const identity: SnapshotIdentity = {
@@ -192,7 +216,11 @@ export class SnapshotRepository {
         serverInstanceKey: manifest.serverInstanceKey,
         compatibilityVersion: manifest.compatibilityVersion,
       };
-      if (await this.remove(identity)) count += 1;
+      if (identity.serverInstanceKey === retainCleanupForInstance) {
+        const path = this.#manifestPath(identity);
+        await rename(path, path.replace(/\.json$/, ".gc"));
+        count += 1;
+      } else if (await this.remove(identity)) count += 1;
     }
     return count;
   }
@@ -311,7 +339,7 @@ export class SnapshotRepository {
     return result;
   }
 
-  async #write(manifest: SnapshotManifest): Promise<void> {
+  async #write(manifest: SnapshotManifest, pending = false): Promise<void> {
     const identity: SnapshotIdentity = {
       sessionId: manifest.sessionId,
       provider: manifest.provider,
@@ -320,7 +348,8 @@ export class SnapshotRepository {
       serverInstanceKey: manifest.serverInstanceKey,
       compatibilityVersion: manifest.compatibilityVersion,
     };
-    const path = this.#manifestPath(identity);
+    const livePath = this.#manifestPath(identity);
+    const path = pending ? livePath.replace(/\.json$/, ".gc") : livePath;
     const tmpPath = `${path}.${process.pid}.${Date.now().toString(36)}.tmp`;
     try {
       await mkdir(dirname(path), { recursive: true });
