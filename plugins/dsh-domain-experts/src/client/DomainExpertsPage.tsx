@@ -9,6 +9,7 @@ import {
   type DraftInspectionResult,
   type MemoryInspectResult,
   type ResolvedExpertProfile,
+  type ScopeProviderFormEdit,
   type ValidationIssueView,
 } from "../types.js";
 import type { ApiOutcome } from "./remote.js";
@@ -20,6 +21,7 @@ import {
   type TestView,
 } from "./DomainEditor.js";
 import { StatusLine } from "./components.js";
+import type { EditProviderField } from "./ScopeProviderForms.js";
 
 /** The subset of the Remote surface this page uses. */
 export interface DomainExpertsApi {
@@ -36,11 +38,10 @@ export interface DomainExpertsApi {
   inspectDraft(
     definition: DomainDefinition,
   ): Promise<ApiOutcome<DraftInspectionResult>>;
-  createDomain(
+  saveDomainFromEditor(
     definition: DomainDefinition,
-  ): Promise<ApiOutcome<{ readonly domain: DomainDefinition | null }>>;
-  updateDomain(
-    definition: DomainDefinition,
+    create: boolean,
+    providerEdits: readonly ScopeProviderFormEdit[],
   ): Promise<ApiOutcome<{ readonly domain: DomainDefinition | null }>>;
   setDomainEnabled(
     id: string,
@@ -127,6 +128,9 @@ export function DomainExpertsPage({
   const [domains, setDomains] = useState<readonly DomainSummary[]>([]);
   const [catalog, setCatalog] = useState<CatalogInfo>(EMPTY_CATALOG);
   const [draft, setDraft] = useState<DomainDefinition | null>(null);
+  const [providerEdits, setProviderEdits] = useState<
+    readonly ScopeProviderFormEdit[]
+  >([]);
   const [isNew, setIsNew] = useState(false);
   const [issues, setIssues] = useState<readonly ValidationIssueView[]>([]);
   const [profile, setProfile] = useState<ResolvedExpertProfile | null>(null);
@@ -224,6 +228,7 @@ export function DomainExpertsPage({
   const openDomain = useCallback(
     async (domainId: string): Promise<void> => {
       setIsNew(false);
+      setProviderEdits([]);
       setStatus(QUIET);
       setPageStatus(QUIET);
       setProfile(null);
@@ -263,15 +268,20 @@ export function DomainExpertsPage({
    * cannot silently throw away a persona.
    */
   const confirmDiscard = useCallback((): boolean => {
-    if (draft === null || JSON.stringify(draft) === baseline) return true;
+    if (
+      draft === null ||
+      (providerEdits.length === 0 && JSON.stringify(draft) === baseline)
+    )
+      return true;
     return window.confirm(
       `Discard unsaved changes to "${draft.name || draft.id}"?`,
     );
-  }, [baseline, draft]);
+  }, [baseline, draft, providerEdits.length]);
 
   const backToList = useCallback((): void => {
     if (!confirmDiscard()) return;
     setDraft(null);
+    setProviderEdits([]);
     setBaseline("");
     setProfile(null);
     setProfileError("");
@@ -288,6 +298,7 @@ export function DomainExpertsPage({
     const next =
       seeded.ok && seeded.data.domain !== null ? seeded.data.domain : fallback;
     setDraft(next);
+    setProviderEdits([]);
     setBaseline(JSON.stringify(next));
     setIsNew(true);
     setIssues([]);
@@ -312,13 +323,30 @@ export function DomainExpertsPage({
     [api],
   );
 
+  const editProvider: EditProviderField = useCallback(
+    (providerId, revision, key, value) => {
+      setProviderEdits((current) => {
+        const fields =
+          current.find(
+            (edit) =>
+              edit.providerId === providerId && edit.revision === revision,
+          )?.fields ?? [];
+        const next = fields.filter((field) => field.key !== key);
+        if (value !== null) next.push({ key, value });
+        const others = current.filter((edit) => edit.providerId !== providerId);
+        return next.length === 0
+          ? others
+          : [...others, { providerId, revision, fields: next }];
+      });
+    },
+    [],
+  );
+
   const save = useCallback(async (): Promise<void> => {
     if (draft === null) return;
     setBusy(true);
     setStatus({ tone: "info", text: "Saving…" });
-    const outcome = isNew
-      ? await api.createDomain(draft)
-      : await api.updateDomain(draft);
+    const outcome = await api.saveDomainFromEditor(draft, isNew, providerEdits);
     setBusy(false);
     if (!outcome.ok) {
       setStatus({ tone: "error", text: `${outcome.code}: ${outcome.message}` });
@@ -332,6 +360,7 @@ export function DomainExpertsPage({
       return;
     }
     setDraft(outcome.data.domain);
+    setProviderEdits([]);
     setBaseline(JSON.stringify(outcome.data.domain));
     const created = isNew;
     setIsNew(false);
@@ -341,7 +370,7 @@ export function DomainExpertsPage({
     });
     await refresh();
     await loadProfile(outcome.data.domain.id);
-  }, [api, draft, isNew, loadProfile, refresh]);
+  }, [api, draft, isNew, loadProfile, providerEdits, refresh]);
 
   const remove = useCallback(async (): Promise<void> => {
     if (draft === null || isNew) return;
@@ -360,6 +389,7 @@ export function DomainExpertsPage({
       return;
     }
     setDraft(null);
+    setProviderEdits([]);
     setBaseline("");
     setProfile(null);
     setStatus(QUIET);
@@ -681,6 +711,8 @@ export function DomainExpertsPage({
             memory={memory}
             test={test}
             runs={runs}
+            providerEdits={providerEdits}
+            onProviderEdit={editProvider}
             onChange={change}
             onSave={() => {
               void save();

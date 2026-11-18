@@ -98,10 +98,10 @@ function createApi(namespace: DomainExpertsRemote): DomainExpertsApi {
     draftDomain: async (id) => toOutcome(await namespace.draftDomain(id)),
     inspectDraft: async (definition) =>
       toOutcome(await namespace.inspectDraft(definition)),
-    createDomain: async (definition) =>
-      toOutcome(await namespace.createDomain(definition)),
-    updateDomain: async (definition) =>
-      toOutcome(await namespace.updateDomain(definition)),
+    saveDomainFromEditor: async (definition, create, providerEdits) =>
+      toOutcome(
+        await namespace.saveDomainFromEditor(definition, create, providerEdits),
+      ),
     setDomainEnabled: async (id, enabled) =>
       toOutcome(await namespace.setDomainEnabled(id, enabled)),
     deleteDomain: async (id) => toOutcome(await namespace.deleteDomain(id)),

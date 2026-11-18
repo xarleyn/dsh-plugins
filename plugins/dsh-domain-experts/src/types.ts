@@ -390,6 +390,10 @@ export type DomainErrorCode =
   | "DOMAIN_DISABLED"
   | "DOMAIN_INVALID"
   | "DOMAIN_EXISTS"
+  | "DOMAIN_ACCESS_DENIED"
+  | "PROVIDER_CONFIG_INVALID"
+  | "PROVIDER_CONFIG_READ_ONLY"
+  | "PROVIDER_CONFIG_STALE"
   | "CATALOG_ACCESS_DENIED"
   | "CATALOG_INVALID"
   | "CATALOG_VERSION_UNSUPPORTED"
@@ -412,12 +416,52 @@ export type DomainErrorCode =
   | "TASK_REJECTED"
   | "STORAGE_UNAVAILABLE";
 
+export const SCOPE_PROVIDER_FORM_VERSION = 1;
+
+export interface ScopeProviderFormOption {
+  readonly value: string;
+  readonly label: string;
+}
+
+export interface ScopeProviderFormField {
+  readonly key: string;
+  readonly label: string;
+  readonly kind: "text" | "integer" | "boolean" | "choice";
+  readonly required: boolean;
+  readonly options: readonly ScopeProviderFormOption[];
+}
+
+export interface ScopeProviderDocumentVersion {
+  readonly key: string;
+  readonly current: number;
+}
+
+/** A provider-owned, serializable description of its editable fields. */
+export interface ScopeProviderForm {
+  readonly version: number;
+  readonly revision: number;
+  readonly documentVersion: ScopeProviderDocumentVersion | null;
+  readonly fields: readonly ScopeProviderFormField[];
+}
+
+export interface ScopeProviderFieldEdit {
+  readonly key: string;
+  readonly value: string;
+}
+
+export interface ScopeProviderFormEdit {
+  readonly providerId: string;
+  readonly revision: number;
+  readonly fields: readonly ScopeProviderFieldEdit[];
+}
+
 /** Domain-provider catalog surfaced to the browser. */
 export interface ScopeProviderInfo {
   readonly id: string;
   readonly title: string;
   readonly enforcement: ScopeEnforcement;
   readonly builtin: boolean;
+  readonly form: ScopeProviderForm | null;
 }
 
 export interface MemoryProviderInfo {

@@ -180,6 +180,16 @@ describe("wiring: remote contract", () => {
     await expect(
       service.applyCatalogImport("{}", "replace", ""),
     ).resolves.toMatchObject(refused);
+    const deniedEdit = { ok: false, code: "DOMAIN_ACCESS_DENIED" };
+    await expect(
+      service.saveDomainFromEditor(DEFINITION, false, []),
+    ).resolves.toMatchObject(deniedEdit);
+    await expect(service.createDomain(DEFINITION)).resolves.toMatchObject(
+      deniedEdit,
+    );
+    await expect(service.updateDomain(DEFINITION)).resolves.toMatchObject(
+      deniedEdit,
+    );
     expect(opened).toBe(false);
   });
 

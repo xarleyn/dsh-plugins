@@ -10,9 +10,14 @@ import {
   type ExpertAuditEntry,
   type MemoryInspectResult,
   type ResolvedExpertProfile,
+  type ScopeProviderFormEdit,
   type ValidationIssueView,
 } from "../types.js";
 import { ScopeInspector } from "./ScopeInspector.js";
+import {
+  ScopeProviderForms,
+  type EditProviderField,
+} from "./ScopeProviderForms.js";
 import {
   ListEditor,
   Section,
@@ -76,6 +81,8 @@ export interface EditorProps {
   readonly memory: MemoryView;
   readonly test: TestView;
   readonly runs: RunsView;
+  readonly providerEdits: readonly ScopeProviderFormEdit[];
+  readonly onProviderEdit: EditProviderField;
   readonly onChange: (next: DomainDefinition) => void;
   readonly onSave: () => void;
   readonly onDelete: () => void;
@@ -340,15 +347,13 @@ export function DomainEditor(props: EditorProps) {
               });
             }}
           />
-          <p
-            className="dx-section-note"
-            data-testid="domain-experts-editor-scope-providers"
-          >
-            Registered scope providers:{" "}
-            {props.catalog.scopeProviders
-              .map((provider) => provider.id)
-              .join(", ") || "none"}
-          </p>
+          <ScopeProviderForms
+            providers={props.catalog.scopeProviders}
+            configs={draft.scope.providers}
+            edits={props.providerEdits}
+            disabled={props.busy}
+            onEdit={props.onProviderEdit}
+          />
         </Section>
       ) : null}
 

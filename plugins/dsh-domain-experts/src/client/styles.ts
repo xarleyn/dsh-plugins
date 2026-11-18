@@ -44,6 +44,9 @@ export const DOMAIN_EXPERTS_STYLES = `
 .dx-tab:hover{background:var(--dsw-alias-bg-layer-2)}
 .dx-tab[aria-selected="true"]{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-2);border-color:var(--dsw-alias-border-l2);font-weight:600}
 .dx-field{display:flex;flex-direction:column;gap:4px;min-width:0}
+.dx-provider-form{display:grid;gap:8px;min-width:0;margin:0;padding:10px 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px}
+.dx-provider-form legend{padding:0 4px;font-weight:600}
+.dx-provider-form p{margin:0}
 .dx-label{color:var(--dsw-alias-label-secondary);font-size:12px;font-weight:500}
 .dx-hint{color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:1.5}
 .dx-input,.dx-textarea,.dx-select{width:100%;box-sizing:border-box;font:inherit;font-size:13px;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l2);border-radius:8px;padding:7px 9px}

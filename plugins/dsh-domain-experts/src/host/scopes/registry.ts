@@ -3,9 +3,12 @@ import type {
   ResolvedProviderEntry,
   ResolvedResourceEntry,
   ScopeProviderInfo,
+  ScopeProviderForm,
+  ScopeProviderFormEdit,
   ScopeEnforcement,
 } from "../../types.js";
 import { DomainExpertsError } from "../errors.js";
+import { patchScopeProviderDocument, scopeProviderForm } from "./form.js";
 
 /** Provider ids are lowercase slugs; they key `scope.providers[id]`. */
 const PROVIDER_ID_PATTERN = /^[a-z][a-z0-9-]*$/u;
@@ -50,6 +53,8 @@ export interface DomainScopeProvider {
   readonly enforcement: ScopeEnforcement;
   /** True only for providers shipped with this plugin. */
   readonly builtin: boolean;
+  /** Optional form contributed to the Host operator's domain editor. */
+  readonly configForm?: ScopeProviderForm;
   /** Reject a malformed config document; must throw, never repair silently. */
   validate(config: string): void;
   /** One-line human summary for the resources editor. */
@@ -60,6 +65,7 @@ export interface DomainScopeProvider {
 /** Registry of scope providers; the extension seam for other packages. */
 export class ScopeProviderRegistry {
   private readonly providers = new Map<string, DomainScopeProvider>();
+  private readonly forms = new Map<string, ScopeProviderForm>();
 
   register(provider: DomainScopeProvider): () => void {
     if (!PROVIDER_ID_PATTERN.test(provider.id)) {
@@ -74,13 +80,21 @@ export class ScopeProviderRegistry {
         `Scope provider "${provider.id}" is already registered.`,
       );
     }
+    if (provider.configForm !== undefined) {
+      this.forms.set(
+        provider.id,
+        scopeProviderForm(provider.id, provider.configForm),
+      );
+    }
     this.providers.set(provider.id, provider);
     let active = true;
     return () => {
       if (!active) return;
       active = false;
-      if (this.providers.get(provider.id) === provider)
+      if (this.providers.get(provider.id) === provider) {
         this.providers.delete(provider.id);
+        this.forms.delete(provider.id);
+      }
     };
   }
 
@@ -100,7 +114,69 @@ export class ScopeProviderRegistry {
       title: provider.title,
       enforcement: provider.enforcement,
       builtin: provider.builtin,
+      form: this.forms.get(provider.id) ?? null,
     }));
+  }
+
+  private validateConfig(id: string, config: string): void {
+    try {
+      this.providers.get(id)?.validate(config);
+    } catch {
+      throw new DomainExpertsError(
+        "PROVIDER_CONFIG_INVALID",
+        `Scope provider "${id}" rejected the configuration. Check the provider's documented requirements.`,
+      );
+    }
+  }
+
+  validateChanges(
+    draft: DomainDefinition,
+    existing: DomainDefinition | undefined,
+  ): DomainDefinition {
+    for (const [id, config] of Object.entries(draft.scope.providers)) {
+      if (config !== existing?.scope.providers[id])
+        this.validateConfig(id, config);
+    }
+    return draft;
+  }
+
+  prepareEditorDraft(
+    draft: DomainDefinition,
+    existing: DomainDefinition | undefined,
+    edits: readonly ScopeProviderFormEdit[],
+  ): DomainDefinition {
+    const configs = new Map(Object.entries(existing?.scope.providers ?? {}));
+    const baseline = new Map(Object.entries(draft.scope.providers));
+    const used = new Set<string>();
+    for (const edit of edits) {
+      const id = edit.providerId;
+      const form = this.forms.get(id);
+      if (form === undefined) {
+        throw new DomainExpertsError(
+          "PROVIDER_CONFIG_READ_ONLY",
+          "The scope provider is unavailable or supplies no editable form.",
+        );
+      }
+      if (used.has(id) || edit.fields.length === 0) {
+        throw new DomainExpertsError(
+          "PROVIDER_CONFIG_INVALID",
+          "The provider form submission is empty or duplicated.",
+        );
+      }
+      used.add(id);
+      const next = patchScopeProviderDocument(
+        form,
+        edit,
+        baseline.get(id) ?? "",
+        configs.get(id) ?? "",
+      );
+      this.validateConfig(id, next);
+      configs.set(id, next);
+    }
+    return {
+      ...draft,
+      scope: { ...draft.scope, providers: Object.fromEntries(configs) },
+    };
   }
 
   entryOf(id: string, config: string): ResolvedProviderEntry {

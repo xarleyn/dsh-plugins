@@ -25,6 +25,7 @@ import type {
   MemoryClearResult,
   MemoryInspectResult,
   ResolvedScopeResult,
+  ScopeProviderFormEdit,
 } from "../types.js";
 
 export interface DomainExpertsRemote {
@@ -49,6 +50,11 @@ export interface DomainExpertsRemote {
   ): Promise<RemoteResult<DomainWriteResult>>;
   updateDomain(
     definition: DomainDefinition,
+  ): Promise<RemoteResult<DomainWriteResult>>;
+  saveDomainFromEditor(
+    definition: DomainDefinition,
+    create: boolean,
+    providerEdits: readonly ScopeProviderFormEdit[],
   ): Promise<RemoteResult<DomainWriteResult>>;
   setDomainEnabled(
     domainId: string,

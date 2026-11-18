@@ -19,6 +19,7 @@ export const CATALOG: CatalogInfo = {
       title: "Filesystem",
       enforcement: "advisory",
       builtin: true,
+      form: null,
     },
   ],
   memoryProviders: [
@@ -179,8 +180,7 @@ export function apiOf(
           issues: [],
         }),
       ),
-    createDomain: () => Promise.resolve(ok({ domain: DEFINITION })),
-    updateDomain: () => Promise.resolve(ok({ domain: DEFINITION })),
+    saveDomainFromEditor: () => Promise.resolve(ok({ domain: DEFINITION })),
     setDomainEnabled: () => Promise.resolve(ok({ domain: DEFINITION })),
     deleteDomain: () => Promise.resolve(ok({ deleted: true })),
     resolveScope: () => Promise.resolve(ok({ profile: PROFILE })),

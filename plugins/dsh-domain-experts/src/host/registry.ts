@@ -12,7 +12,6 @@ import {
 import { DomainExpertsError } from "./errors.js";
 import {
   assertValidDomain,
-  normalizeDomainDefinition,
   parseDomainDefinition,
   summarizeDomain,
   validateDomainDefinition,
@@ -20,6 +19,11 @@ import {
 } from "./schema.js";
 import type { CatalogStore } from "./storage.js";
 import type { DomainSummary } from "../types.js";
+
+type PrepareDefinition = (
+  draft: DomainDefinition,
+  existing: DomainDefinition | undefined,
+) => DomainDefinition;
 
 /**
  * CRUD and imports over the durable catalog.
@@ -115,7 +119,10 @@ export class DomainRegistry {
     return { definition, issues, message: "" };
   }
 
-  async create(input: unknown): Promise<DomainDefinition> {
+  async create(
+    input: unknown,
+    prepare?: PrepareDefinition,
+  ): Promise<DomainDefinition> {
     const parsed = parseDomainDefinition(input, this.now());
     assertValidDomain(parsed);
     return this.enqueue(async () => {
@@ -127,7 +134,8 @@ export class DomainRegistry {
         );
       }
       const now = this.now();
-      return this.put({ ...parsed, createdAt: now, updatedAt: now });
+      const record = prepare?.(parsed, undefined) ?? parsed;
+      return this.put({ ...record, createdAt: now, updatedAt: now });
     });
   }
 
@@ -136,7 +144,10 @@ export class DomainRegistry {
    * itself editable — a rename would invalidate every delegation target and
    * memory namespace that references it.
    */
-  async update(input: unknown): Promise<DomainDefinition> {
+  async update(
+    input: unknown,
+    prepare?: PrepareDefinition,
+  ): Promise<DomainDefinition> {
     const parsed = parseDomainDefinition(input, this.now());
     return this.enqueue(async () => {
       const existing = this.get(parsed.id);
@@ -148,8 +159,9 @@ export class DomainRegistry {
         );
       }
       assertValidDomain(parsed);
+      const record = prepare?.(parsed, existing) ?? parsed;
       return this.put({
-        ...parsed,
+        ...record,
         createdAt: existing.createdAt,
         updatedAt: this.now(),
       });
@@ -173,8 +185,7 @@ export class DomainRegistry {
     });
   }
 
-  private async put(input: DomainDefinition): Promise<DomainDefinition> {
-    const record = normalizeDomainDefinition(input);
+  private async put(record: DomainDefinition): Promise<DomainDefinition> {
     const next = new Map(this.store.read());
     next.set(record.id, record);
     await this.store.write(next);

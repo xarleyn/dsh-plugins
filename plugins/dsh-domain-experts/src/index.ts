@@ -97,6 +97,7 @@ import type {
   MemoryClearResult,
   MemoryInspectResult,
   ResolvedScopeResult,
+  ScopeProviderFormEdit,
 } from "./types.js";
 
 export const name = "domain-experts";
@@ -411,7 +412,10 @@ export class DomainExpertsService extends TypertRemoteService {
 
   // -------------------------------------------------------- remote contract
 
-  private async operatorCatalog() {
+  private requireHostOperator(
+    code: "CATALOG_ACCESS_DENIED" | "DOMAIN_ACCESS_DENIED",
+    message: string,
+  ): void {
     // Gateway binds the Host-attested principal to each invocation. Calls
     // without a Remote invocation come from trusted in-process Host code.
     const invocation = this.ctx.invocation;
@@ -419,12 +423,23 @@ export class DomainExpertsService extends TypertRemoteService {
       invocation !== undefined &&
       invocation.peer.principal.kind !== "owner"
     ) {
-      throw new DomainExpertsError(
-        "CATALOG_ACCESS_DENIED",
-        "Only the Host operator can transfer a domain catalog.",
-      );
+      throw new DomainExpertsError(code, message);
     }
+  }
+
+  private async operatorCatalog() {
+    this.requireHostOperator(
+      "CATALOG_ACCESS_DENIED",
+      "Only the Host operator can transfer a domain catalog.",
+    );
     return (await this.stores.opened()).domains;
+  }
+
+  private requireDomainEditor(): void {
+    this.requireHostOperator(
+      "DOMAIN_ACCESS_DENIED",
+      "Only the Host operator can change domain settings.",
+    );
   }
 
   @Remote("exportCatalog")
@@ -509,16 +524,48 @@ export class DomainExpertsService extends TypertRemoteService {
   @Remote("createDomain")
   async createDomain(definition: DomainDefinition): Promise<DomainWriteResult> {
     return guarded(async () => {
+      this.requireDomainEditor();
       const handles = await this.stores.opened();
-      return accepted({ domain: await handles.domains.create(definition) });
+      return accepted({
+        domain: await handles.domains.create(definition, (draft, existing) =>
+          this.scopeProviders.validateChanges(draft, existing),
+        ),
+      });
     }, domainWriteRefusal);
   }
 
   @Remote("updateDomain")
   async updateDomain(definition: DomainDefinition): Promise<DomainWriteResult> {
     return guarded(async () => {
+      this.requireDomainEditor();
       const handles = await this.stores.opened();
-      return accepted({ domain: await handles.domains.update(definition) });
+      return accepted({
+        domain: await handles.domains.update(definition, (draft, existing) =>
+          this.scopeProviders.validateChanges(draft, existing),
+        ),
+      });
+    }, domainWriteRefusal);
+  }
+
+  @Remote("saveDomainFromEditor")
+  async saveDomainFromEditor(
+    definition: DomainDefinition,
+    create: boolean,
+    providerEdits: readonly ScopeProviderFormEdit[],
+  ): Promise<DomainWriteResult> {
+    return guarded(async () => {
+      this.requireDomainEditor();
+      const { domains } = await this.stores.opened();
+      const prepare = (
+        draft: DomainDefinition,
+        existing: DomainDefinition | undefined,
+      ) =>
+        this.scopeProviders.prepareEditorDraft(draft, existing, providerEdits);
+      return accepted({
+        domain: create
+          ? await domains.create(definition, prepare)
+          : await domains.update(definition, prepare),
+      });
     }, domainWriteRefusal);
   }
 
@@ -528,6 +575,7 @@ export class DomainExpertsService extends TypertRemoteService {
     enabled: boolean,
   ): Promise<DomainWriteResult> {
     return guarded(async () => {
+      this.requireDomainEditor();
       const handles = await this.stores.opened();
       return accepted({
         domain: await handles.domains.setEnabled(domainId.trim(), enabled),
@@ -538,6 +586,7 @@ export class DomainExpertsService extends TypertRemoteService {
   @Remote("deleteDomain")
   async deleteDomain(domainId: string): Promise<DomainDeleteResult> {
     return guarded(async () => {
+      this.requireDomainEditor();
       const handles = await this.stores.opened();
       return accepted({
         deleted: await handles.domains.remove(domainId.trim()),

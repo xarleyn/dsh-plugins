@@ -13,12 +13,13 @@ runtime check.
 The Host operator can [transfer a catalog](./README.md#import-and-export-a-catalog)
 using versioned JSON with a preview of conflicts and atomic apply.
 
+Scope providers can [contribute configuration fields](./README.md#edit-provider-scope-settings)
+to the Resources tab. The Host preserves opaque configuration when applying form edits.
+
 ## Next
 
 - Durable, queryable execution audit (runs by domain, cross-domain
   delegations, worker usage, latency, failed scope checks).
-- Per-provider configuration UI contributed by the provider itself, replacing
-  the opaque JSON map for third-party adapters.
 
 ## Later
 

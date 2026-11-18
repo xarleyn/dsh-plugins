@@ -196,6 +196,51 @@ account memory ownership: `domain_memory` continues to require a live expert
 record, and a cold delegation audit records only the known caller-to-target
 suffix.
 
+## Edit provider scope settings
+
+Open a domain in **Plugins → Domain Experts** and select **Resources**.
+A scope provider can contribute fields for its configuration. Changes use the
+domain's **Save** button. Provider entries without a form, unavailable providers
+and unsupported versions remain visible as read-only entries.
+
+A plugin can supply `configForm` on the provider passed to
+`ctx.domainExperts.registerScopeProvider(provider)`. Form version 1 supports
+`text`, `integer`, `boolean` and `choice` fields. Use a stable field key that
+matches a top-level JSON property. Set `required` for mandatory values and
+supply `options` with values and labels for choices. Use an empty options list
+for other fields. Increment the form's `revision` whenever its contract changes.
+
+```ts
+const configForm = {
+  version: 1,
+  revision: 1,
+  documentVersion: { key: "schemaVersion", current: 2 },
+  fields: [
+    {
+      key: "collection",
+      label: "Collection",
+      kind: "text",
+      required: true,
+      options: [],
+    },
+  ],
+} satisfies ScopeProviderForm
+```
+
+Import the `ScopeProviderForm` type from
+`@yadsh/dsh-domain-experts/types`. Set `documentVersion` to `null` for an
+unversioned document. With a version key, an existing object that lacks it
+receives the current version on the first successful form edit. A document
+with an unrecognized version remains read-only. Forms should describe operator
+settings. Credentials belong in the provider's credential configuration.
+
+The Host applies only edited keys and validates the resulting document with
+the provider's `validate(config)` callback. Clearing an optional field removes
+that key. Unknown fields remain in the document, including the numeric tokens
+of opaque data. Untouched provider documents keep their original bytes. Saving
+an edited provider whose configuration or form revision changed requires
+reopening the domain.
+
 ## Import and export a catalog
 
 In the Plugins panel, open Domain Experts and expand **Import or export
