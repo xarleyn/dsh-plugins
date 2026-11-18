@@ -89,6 +89,16 @@ Full configuration rationale: [design doc §35](https://github.com/xarleyn/dsh-p
 
 ## Compatibility
 
+Each session and route alternates between two server-side files. The original
+`<hash>.bin` stays readable across upgrades. A save writes the inactive file
+and publishes its name by renaming a local manifest after the server acknowledges
+the write. On restart the plugin restores only the published generation. A failed
+write or manifest update leaves the previous checkpoint available. The next
+attempt reuses the inactive name. Allow space for both files. This works with
+a remote slot directory and requires one coordinator per managed slot and store.
+Process interruption was tested on Windows with llama.cpp b12032. Recovery from
+device loss or power failure depends on the filesystems and backend.
+
 - DeepSeek Harness `>=0.1.7-rc.2 <0.3.0-0 || 0.2.1-rc.3 || 0.2.2-rc.3` (see `compatibility.json`)
 - Node.js >= 22
 - llama.cpp server with the slots management API enabled

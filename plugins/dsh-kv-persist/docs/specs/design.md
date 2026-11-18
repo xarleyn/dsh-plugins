@@ -1683,39 +1683,18 @@ A crash must not leave half-written metadata treated as valid.
 
 # 41. Snapshot naming generations
 
-Default strategy:
+Each route reuses two names. The first also serves existing manifests.
 
 ```text
-one rolling snapshot per session
-```
-
-rather than:
-
-```text
-snapshot-000001.bin
-snapshot-000002.bin
-snapshot-000003.bin
-...
-```
-
-because KV snapshots can be enormous.
-
-Conceptually:
-
-```text
-<sessionHash>.bin
-```
-
-If llama.cpp cannot safely atomically replace an existing file in a particular build/backend, support two rotating names:
-
-```text
-<hash>.a.bin
+<hash>.bin
 <hash>.b.bin
 ```
 
-Manifest points to the latest completed generation.
-
-This prevents an interrupted write from destroying the previous valid checkpoint.
+Write the inactive file, wait for the slot save acknowledgement, then publish
+the filename through the atomic manifest update. On restart restore the selected
+file. A failed write or manifest update leaves the previous generation selected.
+On llama.cpp b12032 an interrupted overwrite left the destination unreadable.
+The owned-server integration test exercises both the interrupted file and recovery.
 
 ---
 
@@ -2369,7 +2348,7 @@ restore snapshot
 
 Manifest must continue referencing the previous known-good generation.
 
-This is why two-file rotation may eventually be useful.
+The two-file rotation in §41 preserves the previous committed checkpoint.
 
 ---
 

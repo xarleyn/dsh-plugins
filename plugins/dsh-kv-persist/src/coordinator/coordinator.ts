@@ -16,7 +16,7 @@ import { buildSnapshotIdentity } from "../snapshots/fingerprint.js";
 import type { SnapshotIdentity } from "../snapshots/fingerprint.js";
 import {
   assertPluginGeneratedFilename,
-  snapshotFilename,
+  nextSnapshotFilename,
 } from "../snapshots/naming.js";
 import type { SnapshotRepository } from "../snapshots/repository.js";
 import type { KvPersistLogger } from "../observability/diagnostics.js";
@@ -432,13 +432,17 @@ export class SingleSlotCoordinator {
 
     const attempt = (async (): Promise<SnapshotResult> => {
       try {
-        assertPluginGeneratedFilename(snapshotFilename(identity));
-        const saved = await this.#backend.saveSlot(
-          this.#slot.id,
-          snapshotFilename(identity),
+        const previous = await this.#repository.load(identity);
+        const filename = nextSnapshotFilename(
+          identity,
+          previous?.snapshotFilename,
         );
+        const saved = await this.#backend.saveSlot(this.#slot.id, filename);
+        if (!saved.success)
+          throw new Error("backend did not acknowledge the checkpoint");
         await this.#repository.put({
           identity,
+          snapshotFilename: filename,
           slotId: this.#slot.id,
           sessionSeq: null,
           tokens: null,

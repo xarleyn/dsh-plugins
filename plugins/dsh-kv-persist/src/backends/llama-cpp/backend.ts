@@ -48,7 +48,7 @@ export class LlamaCppBackend implements KvPersistenceBackend {
     snapshotKey: string,
   ): Promise<BackendSaveResult> {
     const result = await this.#client.saveSlot(slotId, snapshotKey);
-    return { success: result.success, bytes: null };
+    return result;
   }
 
   async restoreSlot(

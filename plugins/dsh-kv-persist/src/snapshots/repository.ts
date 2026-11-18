@@ -23,11 +23,12 @@ import { KvMetadataIoError } from "../errors.js";
 import type { SnapshotInvalidationReason } from "../errors.js";
 import { parseManifest, createManifest } from "./manifest.js";
 import type { SnapshotManifest } from "./manifest.js";
-import { snapshotFilename } from "./naming.js";
+import { snapshotFilename, snapshotGenerations } from "./naming.js";
 import type { SnapshotIdentity } from "./fingerprint.js";
 
 export interface RepositoryPutInput {
   readonly identity: SnapshotIdentity;
+  readonly snapshotFilename?: string;
   readonly slotId: number;
   readonly sessionSeq: number | null;
   readonly tokens: number | null;
@@ -76,7 +77,17 @@ export class SnapshotRepository {
       });
     }
     try {
-      return parseManifest(JSON.parse(text));
+      const manifest = parseManifest(JSON.parse(text));
+      if (
+        manifest.sessionId !== identity.sessionId ||
+        manifest.provider !== identity.provider ||
+        manifest.model !== identity.model ||
+        manifest.serverInstanceKey !== identity.serverInstanceKey ||
+        !snapshotGenerations(identity).includes(manifest.snapshotFilename)
+      ) {
+        throw new Error("manifest identity does not match its storage key");
+      }
+      return manifest;
     } catch (error) {
       throw new KvMetadataIoError(`cannot parse manifest ${path}`, {
         cause: error,
@@ -93,8 +104,9 @@ export class SnapshotRepository {
           updatedAt: input.now,
           slotId: input.slotId,
           sessionSeq: input.sessionSeq,
-          tokens: input.tokens ?? existing.tokens,
-          bytes: input.bytes ?? existing.bytes,
+          snapshotFilename: input.snapshotFilename ?? existing.snapshotFilename,
+          tokens: input.tokens,
+          bytes: input.bytes,
           // The binary behind this manifest was just rewritten for `identity`,
           // so it is ready again for that runtime — even when an earlier
           // restore failure or fingerprint change had invalidated it.
@@ -106,7 +118,8 @@ export class SnapshotRepository {
           ...createManifest({
             identity: input.identity,
             slotId: input.slotId,
-            snapshotFilename: snapshotFilename(input.identity),
+            snapshotFilename:
+              input.snapshotFilename ?? snapshotFilename(input.identity),
             sessionSeq: input.sessionSeq,
             now: input.now,
           }),

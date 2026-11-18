@@ -84,7 +84,7 @@ Numbered, verifiable guarantees for release `0.1.0` (acceptance criteria §74):
   the plugin never silently resets metadata (guidelines §3.5).
 - **Binary snapshots** (server-owned, llama.cpp `--slot-save-path`, §17):
   the plugin only generates filenames; it never reads or deletes binaries.
-  One rolling snapshot per (session, route) pair (§41).
+  One committed snapshot per (session, route) pair with two rotating binary names (§41).
 - **Runtime state** (in memory, per session): route, `dirtyRevision`,
   `persistedRevision`, in-flight save handle (§27, §28).
 
@@ -145,7 +145,7 @@ automatic server startup, snapshot fingerprinting of request content (§30).
 | Structured logging, metrics counters, status, doctor (§45-§48) | Implemented (in-memory counters) |
 | `sessionSeq` metadata (§29) | Field present, not yet populated |
 | Request fingerprints (§30) | Planned (0.2) |
-| Snapshot rotation `<hash>.a/.b.bin` (§41) | Planned (0.2) |
+| Snapshot rotation (§41) | Implemented with legacy `<hash>.bin` and alternate `<hash>.b.bin`. A process-interruption test on llama.cpp b12032 covers restart and restore. |
 | Shared-filesystem binary cleanup (§42) | Planned (0.2) |
 | Disk quota / GC (§43) | Deferred |
 | Multi-slot, multi-server, transport adapter (§63-§66) | Deferred (0.3) |
