@@ -474,11 +474,30 @@ describe("QA administration", () => {
       "low",
       "high",
     ]);
+    fireEvent.change(effort, { target: { value: "low" } });
+    fireEvent.click(screen.getByTestId("qa-admin-role-model-inherit-models"));
+    const low = screen.getByRole("checkbox", {
+      name: /Chat · low/u,
+    }) as HTMLInputElement;
+    const high = screen.getByRole("checkbox", {
+      name: /Chat · high/u,
+    }) as HTMLInputElement;
+    fireEvent.click(low);
+    fireEvent.click(high);
+    expect(low.checked).toBe(true);
+    expect(high.checked).toBe(true);
+    fireEvent.click(low);
+    expect(high.checked).toBe(true);
     fireEvent.click(screen.getByTestId("qa-admin-role-save"));
     await waitFor(() => expect(updateSubrole).toHaveBeenCalled());
     expect(
       (updateSubrole.mock.calls[0] as readonly unknown[])[2],
-    ).toMatchObject({ model: { provider: "deepseek", model: "chat" } });
+    ).toMatchObject({
+      model: { provider: "deepseek", model: "chat", reasoningEffort: "low" },
+      allowedModels: [
+        { provider: "deepseek", model: "chat", reasoningEffort: "high" },
+      ],
+    });
   });
 
   it("uses administrator-facing names for role tool buckets and grants", async () => {

@@ -77,6 +77,48 @@ describe("the user chat model picker", () => {
       false,
     );
   });
+  it("lists the granted efforts once and marks the default independently of the selected effort", async () => {
+    const low = { ...local, reasoningEffort: "low" };
+    const high = { ...local, reasoningEffort: "high" };
+    const initial = {
+      models: [
+        {
+          ...local,
+          label: "Demo",
+          reasoningEfforts: ["low", "medium", "high"],
+        },
+      ],
+      choices: [low, low, high],
+      selected: low,
+      defaultModel: low,
+    };
+    const f = fixture(initial);
+    const defaultOption = await screen.findByRole<HTMLOptionElement>("option", {
+      name: /low · по умолчанию/u,
+    });
+    const highOption = screen.getByRole<HTMLOptionElement>("option", {
+      name: "Demo · high",
+    });
+    expect(screen.getAllByRole("option")).toHaveLength(2);
+    expect(defaultOption.selected).toBe(true);
+    f.api.mockResolvedValue(ok({ ...initial, selected: high }));
+    fireEvent.change(screen.getByRole("combobox"), {
+      target: { value: highOption.value },
+    });
+    await waitFor(() => expect(highOption.selected).toBe(true));
+    expect(f.onSelect).toHaveBeenCalledExactlyOnceWith(high);
+    expect(defaultOption.selected).toBe(false);
+    expect(screen.getByTestId("qa-model-selector-name").textContent).toBe(
+      "Demo · high",
+    );
+  });
+  it("matches a preset's resolved effort to an unpinned grant", async () => {
+    fixture({ ...options, selected: { ...local, reasoningEffort: "high" } });
+    const selected = await screen.findByRole<HTMLOptionElement>("option", {
+      name: "Qwen",
+    });
+    expect(selected.selected).toBe(true);
+  });
   it("retains the previous selection on refusal and lets a failed catalog reload recover", async () => {
     const f = fixture();
     const select = await screen.findByRole("combobox", { name: "Модель чата" });

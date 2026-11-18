@@ -9,8 +9,8 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import type { QaChatCodeSources } from "../../types/code-sources.js";
+import { qaModelKey } from "../model-choices.js";
 import {
-  qaModelKey,
   useQaModelSelection,
   type QaModelSelectionProps,
 } from "../use-model-selection.js";
@@ -142,7 +142,7 @@ export function QaComposerSettings(props: QaComposerSettingsProps) {
   const showModel =
     props.model !== undefined &&
     (model.options === undefined ||
-      model.options.models.length > 1 ||
+      model.choices.length > 1 ||
       model.error !== undefined);
   if (!showCode && !showModel) return null;
   const sourceLabel =
@@ -354,28 +354,28 @@ export function QaComposerSettings(props: QaComposerSettingsProps) {
                     }
                   >
                     {page === "model" ? (
-                      model.options?.models.map((entry) => (
+                      model.choices.map(({ pair, label }) => (
                         <button
-                          key={qaModelKey(entry)}
+                          key={qaModelKey(pair)}
                           type="button"
                           role="menuitemradio"
                           data-testid="qa-composer-settings-model-option"
-                          aria-checked={qaModelKey(entry) === model.selectedKey}
+                          aria-checked={qaModelKey(pair) === model.selectedKey}
                           disabled={modelDisabled}
-                          onClick={() => void choose(qaModelKey(entry))}
+                          onClick={() => void choose(qaModelKey(pair))}
                         >
                           <span className="dsh-qa-composer-settings__row-copy">
-                            <span>{entry.label}</span>
+                            <span>{label}</span>
                             <small>
-                              {entry.provider}
+                              {pair.provider}
                               {model.options?.defaultModel &&
-                              qaModelKey(entry) ===
+                              qaModelKey(pair) ===
                                 qaModelKey(model.options.defaultModel)
                                 ? " · по умолчанию"
                                 : ""}
                             </small>
                           </span>
-                          {qaModelKey(entry) === model.selectedKey ? (
+                          {qaModelKey(pair) === model.selectedKey ? (
                             <Check />
                           ) : null}
                         </button>

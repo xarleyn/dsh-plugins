@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { QaModelOptions, QaModelPair } from "../types.js";
 import type { QaAccessApi } from "./types.js";
+import { catalogModelChoices, qaModelKey } from "./model-choices.js";
 
-export const qaModelKey = (pair: QaModelPair): string =>
-  JSON.stringify([pair.provider, pair.model]);
 export interface QaModelSelectionProps {
   readonly api: NonNullable<QaAccessApi["userModels"]>;
   readonly token: string;
@@ -53,10 +52,26 @@ export function useQaModelSelection(props: QaModelSelectionProps | undefined) {
       generation.current++;
     };
   }, [api, token, sessionId, subroleId, preview, retry]);
-  const selectedKey =
-    options?.selected === undefined ? "" : qaModelKey(options.selected);
+  const grants = new Set(options?.choices.map(qaModelKey));
+  const choices = catalogModelChoices(options?.models ?? []).filter(
+    ({ pair }) => grants.has(qaModelKey(pair)),
+  );
+  const current = options?.selected;
+  const exactKey = current && qaModelKey(current);
+  // A native preset can resolve an unpinned grant to a concrete effort.
+  // Prefer an expressly granted match, then the unpinned row for that model.
+  const selected =
+    choices.find(({ pair }) => qaModelKey(pair) === exactKey) ??
+    choices.find(
+      ({ pair }) =>
+        current &&
+        pair.provider === current.provider &&
+        pair.model === current.model &&
+        pair.reasoningEffort === undefined,
+    );
+  const selectedKey = selected ? qaModelKey(selected.pair) : (exactKey ?? "");
   const select = async (key: string): Promise<boolean> => {
-    const pair = options?.choices.find((entry) => qaModelKey(entry) === key);
+    const pair = choices.find((entry) => qaModelKey(entry.pair) === key)?.pair;
     if (
       props === undefined ||
       props.disabled ||
@@ -97,13 +112,12 @@ export function useQaModelSelection(props: QaModelSelectionProps | undefined) {
   };
   return {
     options,
+    choices,
     busy,
     error,
     selectedKey,
     select,
-    selected: options?.models.find(
-      (entry) => qaModelKey(entry) === selectedKey,
-    ),
+    selected,
     disabled:
       props === undefined || props.disabled || busy || options === undefined,
     reload: () => setRetry((value) => value + 1),

@@ -88,6 +88,27 @@ previous single-model behavior until an administrator grants alternatives.
 The server filters the catalog and validates every selection against the
 owner's current policy, including model replacement rules.
 
+A provider can advertise several reasoning levels for one model. To offer
+specific levels, pin the default and add each alternative to the role or account
+policy. For example, this role starts new chats at `low` and also offers `high`.
+
+```json
+{
+  "model": { "provider": "demo", "model": "reasoner", "reasoningEffort": "low" },
+  "allowedModels": [
+    { "provider": "demo", "model": "reasoner", "reasoningEffort": "high" }
+  ]
+}
+```
+
+The menu shows two rows with the model name and level. The checkmark follows
+the current chat, and the default label stays on `low`. In `accessUserModels`,
+`models` describes the provider catalog and `choices` contains the policy
+grants. Even if the catalog also lists `medium`, the example policy excludes it
+from the menu and the server rejects it in `chatSelectModel`. A grant without
+`reasoningEffort` keeps one preset-controlled menu entry and permits any
+provider-supported effort via the API.
+
 Chat-local selection uses the Session controller's guarded selection commit
 capability, which records the native `model/selection` event and updates the
 next-request selection without saving the Host operator's global default.

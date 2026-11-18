@@ -1,13 +1,14 @@
 import {
   useQaModelSelection,
-  qaModelKey as keyOf,
   type QaModelSelectionProps,
 } from "../use-model-selection.js";
+import { qaModelKey as keyOf } from "../model-choices.js";
 
 /** The server filters choices and persists selection on the native session. */
 export function QaModelSelector(props: QaModelSelectionProps) {
   const {
     options,
+    choices,
     busy,
     error,
     selectedKey,
@@ -18,11 +19,7 @@ export function QaModelSelector(props: QaModelSelectionProps) {
   } = useQaModelSelection(props);
 
   // No picker for a fixed single model; failures remain visible and retryable.
-  if (
-    options !== undefined &&
-    options.models.length <= 1 &&
-    error === undefined
-  )
+  if (options !== undefined && choices.length <= 1 && error === undefined)
     return null;
   return (
     <div
@@ -53,23 +50,23 @@ export function QaModelSelector(props: QaModelSelectionProps) {
           disabled={disabled}
           onChange={(event) => void change(event.currentTarget.value)}
         >
-          {!options?.models.some((entry) => keyOf(entry) === selectedKey) ? (
+          {!choices.some(({ pair }) => keyOf(pair) === selectedKey) ? (
             <option value={selectedKey}>
               {options === undefined
                 ? "Загружаю модели…"
                 : "Текущая модель недоступна"}
             </option>
           ) : null}
-          {options?.models.map((entry) => (
-            <option key={keyOf(entry)} value={keyOf(entry)}>
+          {choices.map((entry) => (
+            <option key={keyOf(entry.pair)} value={keyOf(entry.pair)}>
               {entry.label}
-              {options.models.some(
+              {choices.some(
                 (other) => other !== entry && other.label === entry.label,
               )
-                ? ` (${entry.provider})`
+                ? ` (${entry.pair.provider})`
                 : ""}
-              {options.defaultModel !== undefined &&
-              keyOf(entry) === keyOf(options.defaultModel)
+              {options?.defaultModel !== undefined &&
+              keyOf(entry.pair) === keyOf(options.defaultModel)
                 ? " · по умолчанию"
                 : ""}
             </option>

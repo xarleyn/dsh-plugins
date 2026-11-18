@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { freePort, rpc, stopProcess, waitFor } from "./smoke-helpers.mjs";
+import { runReasoningEffortPass } from "./smoke-reasoning-effort.mjs";
 import {
   runReviewDockPass,
   startReviewProvider,
@@ -94,6 +95,9 @@ ${
             name: Qwen demo
           - id: blocked-demo
             name: Unassigned demo
+          - id: effort-demo
+            name: Reasoning demo
+            reasoningEfforts: { low: low, medium: medium, high: high }
 `
     : `    session:
       provider: qa-layout
@@ -704,6 +708,15 @@ ${
       console.log(
         "packed QA unified settings: nested model/source menus, draft transfer, filtered grants, rejection, reload persistence, new-chat defaults, themes and phone geometry passed",
       );
+      await runReasoningEffortPass({
+        browser,
+        origin,
+        launch,
+        cookie,
+        adminToken: session.token,
+        general,
+        evidence,
+      });
     }
     console.log(
       "packed QA integration folders: browser setting, server persistence, HTTP API routing, reload and clear passed",
