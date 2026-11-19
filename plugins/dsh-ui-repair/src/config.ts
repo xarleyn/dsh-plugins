@@ -4,12 +4,26 @@ import {
   REPAIR_RULE_IDS,
   type UIRepairIgnoreRule,
 } from "./shared/config.js";
+import { MAX_REPAIR_RECIPES, type RepairRecipe } from "./shared/recipes.js";
 
 const ignoreRuleSchema = z.object({
   plugin: z.string(),
   rule: z.union(REPAIR_RULE_IDS),
   selector: z.string(),
 }) as z<UIRepairIgnoreRule>;
+
+const recipeSchema = z.object({
+  schemaVersion: z.number().required(),
+  origin: z.string().required(),
+  packageName: z.string().required(),
+  rootKey: z.string().required(),
+  targetKey: z.string().required(),
+  targetTag: z.string().required(),
+  ruleId: z.string().required(),
+  originalVersion: z.string().required(),
+  checkedVersion: z.string().required(),
+  checkedAt: z.string().required(),
+}) as z<RepairRecipe>;
 
 /**
  * Every node is `.volatile()`: in `0.1.7` a volatile node is what makes a field a
@@ -26,4 +40,5 @@ export const ConfigSchema = z.object({
   scanAfterMutation: z.boolean().default(true).volatile(),
   scanAfterResize: z.boolean().default(true).volatile(),
   ignore: z.array(ignoreRuleSchema).default([]).volatile(),
+  recipes: z.array(recipeSchema).max(MAX_REPAIR_RECIPES).default([]).volatile(),
 });

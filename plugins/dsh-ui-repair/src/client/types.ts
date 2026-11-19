@@ -9,6 +9,7 @@ export type {
   RepairRuleId,
   UIRepairIgnoreRule,
 } from "../shared/config.js";
+export type { RepairRecipe } from "../shared/recipes.js";
 
 export type RepairIssueKind =
   | "icon-alignment"

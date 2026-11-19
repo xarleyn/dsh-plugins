@@ -33,6 +33,7 @@ describe("client entrypoint", () => {
     let registeredFace: Record<string, unknown> | undefined;
     const ctx = {
       provide,
+      inject: vi.fn(() => ({ dispose: vi.fn() })),
       configForms: { get: vi.fn(() => form) },
       slots: {
         inject: vi.fn((_slot: string, factory: () => unknown) => {

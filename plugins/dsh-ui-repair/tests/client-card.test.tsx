@@ -178,6 +178,7 @@ function mountEntry(
   const ctx = {
     provide: vi.fn(() => vi.fn(async () => undefined)),
     configForms: { get: vi.fn(() => form) },
+    inject: vi.fn(() => ({ dispose: vi.fn() })),
     slots: {
       inject: (_name: string, factory: () => unknown) => {
         factory();
