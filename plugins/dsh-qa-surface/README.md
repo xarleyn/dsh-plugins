@@ -1121,7 +1121,16 @@ Grant `qa_read_selected_source` to each reader role as an always-available
 tool, or declare it on the manual skill and include it in the role's
 skill-grantable tools. The tool accepts only a relative path within the
 directory selected for the current user message. It lists one directory,
-searches its entry names, reads paged UTF-8 text or checks a file address.
+searches its entry names, reads paged UTF-8 text or Word/PDF fragments, and checks a file address.
+DOCX fragments carry section, paragraph or table-row locations; binary DOC
+fragments carry text block numbers; PDF fragments carry page numbers.
+Install catdoc and Poppler's pdftotext in the isolated reader. A scan without
+a text layer returns `needs_ocr` for the affected page. Files over 16 MiB
+and PDFs over 1,000 pages exceed the direct-read limits.
+Read successive fragments with `nextOffset` and restart at zero if the
+returned SHA-256 changes. Each request opens and hashes the authorized
+original. The process retains up to 32 extracted results (8 MiB combined)
+for ten minutes after last use. Extraction creates no intermediate file.
 An optional inventory adds `find` over the full relative path and `tree`
 with a depth of one to four. Page with the returned offset and snapshot.
 In the isolated reader set `QA_ARCHIVE_POLICY` to a JSON file with arrays

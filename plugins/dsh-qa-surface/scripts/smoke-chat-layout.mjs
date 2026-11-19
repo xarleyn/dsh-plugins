@@ -28,21 +28,26 @@ export async function startLayoutProvider(archive) {
     const chunks = [];
     for await (const part of req) chunks.push(part);
     let call = false;
+    let reply = demoReply;
     if (archive) {
       const input = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-      if (
-        input.messages?.some(
-          (m) =>
-            m.role === "tool" &&
-            JSON.stringify(m.content).includes("Synthetic archive receipt."),
-        )
-      )
-        archive.delivered = true;
       const ordinary = input.messages?.some(
         (m) =>
           m.role === "user" &&
           JSON.stringify(m.content).includes(ordinaryPrompt),
       );
+      if (
+        !ordinary &&
+        input.messages?.some(
+          (m) =>
+            m.role === "tool" &&
+            JSON.stringify(m.content).includes("Pressure | 47.25 kPa") &&
+            JSON.stringify(m.content).includes("Equipment, table 1, row 1"),
+        )
+      ) {
+        archive.delivered = true;
+        reply += "\n\n47.25 kPa — Equipment, table 1, row 1";
+      }
       if (
         ordinary &&
         input.messages?.some(
@@ -82,7 +87,7 @@ export async function startLayoutProvider(archive) {
                     name: "qa_read_selected_source",
                     arguments: JSON.stringify({
                       action: "read",
-                      path: "sample.txt",
+                      path: "equipment.docx",
                     }),
                   },
                 },
@@ -95,7 +100,7 @@ export async function startLayoutProvider(archive) {
       : [
           {
             index: 0,
-            delta: { role: "assistant", content: demoReply },
+            delta: { role: "assistant", content: reply },
             finish_reason: null,
           },
           { index: 0, delta: {}, finish_reason: "stop" },
