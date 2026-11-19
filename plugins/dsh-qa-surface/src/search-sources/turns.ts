@@ -56,11 +56,12 @@ export class SourceTurns {
       grant: SourceGrant;
       end: AbortController;
       signal: AbortSignal;
+      disposeTool?: () => void;
     }
   >();
   private readonly stops: (() => void)[];
 
-  constructor(ctx: Context) {
+  constructor(ctx: Context, exposeTool?: (agent: Agent) => () => void) {
     this.stops = [
       ctx.on(
         "session/event",
@@ -131,7 +132,14 @@ export class SourceTurns {
             !signal.aborted &&
             decision.messages.some((row) => row.id === m.id)
           ) {
+            try {
+              await grant.verify();
+            } catch {
+              return decision;
+            }
+            if (signal.aborted) return decision;
             const end = new AbortController();
+            const disposeTool = exposeTool?.(agent);
             this.active.set(id, {
               agent,
               turn,
@@ -139,6 +147,7 @@ export class SourceTurns {
               request: String(m.id),
               end,
               signal: AbortSignal.any([signal, end.signal]),
+              ...(disposeTool === undefined ? {} : { disposeTool }),
             });
           }
           return decision;
@@ -190,6 +199,37 @@ export class SourceTurns {
     return state;
   }
 
+  has(agent: Agent | undefined): boolean {
+    const state = agent && this.active.get(String(agent.session.id));
+    return (
+      state !== undefined && state.agent === agent && !state.signal.aborted
+    );
+  }
+
+  /** The native skill injection belongs to the admitted user message in this batch. */
+  matchesSkill(agent: Agent, name: string, messages: readonly UserMessage[]) {
+    const human = messages.filter(
+      (message) =>
+        message.source.kind === "user" || message.source.kind === "retry",
+    );
+    const message = human.length === 1 ? human[0] : undefined;
+    if (message?.source.kind !== "user") return false;
+    const id = String(agent.session.id);
+    const request = String(message.id);
+    const active = this.active.get(id);
+    if (
+      active?.agent === agent &&
+      !active.signal.aborted &&
+      active.request === request
+    )
+      return active.grant.binding.skill === name;
+    const pending = this.pending.get(id)?.get(request);
+    return (
+      pending?.grant.binding.skill === name &&
+      pending.fingerprint === fingerprint(message)
+    );
+  }
+
   /** Report the selected reader only while this agent still owns a live grant. */
   async available(agent: Agent) {
     try {
@@ -208,8 +248,10 @@ export class SourceTurns {
   }
 
   cancel(session: string) {
-    this.active.get(session)?.end.abort();
+    const state = this.active.get(session);
     this.active.delete(session);
+    state?.end.abort();
+    state?.disposeTool?.();
   }
 
   private forget(session: string) {

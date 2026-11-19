@@ -48,6 +48,7 @@ async function setup() {
       ),
     { deniedSkills: ["withheld", "ordinary-skill"] },
   );
+  const nativeCatalog = vi.fn(async () => catalog);
   const transport = vi.fn(async () => ({}));
   const execute = vi.fn(async () => ({}));
   const config = {
@@ -59,13 +60,18 @@ async function setup() {
     getConfig: () =>
       resolveConfig({
         ...config,
+        slashCommands: { skills: { mode: "all" } },
         accounts: {
           ...config.accounts,
           perUserWorkspace: config.accounts.enabled,
         },
         session: { workspaceId: "demo" },
         lockdown: config.accounts.enabled
-          ? { enabled: true, sandboxMode: "workspace-write" }
+          ? {
+              enabled: true,
+              sandboxMode: "workspace-write",
+              allowSlashCommands: true,
+            }
           : {},
       }),
     source: () => config,
@@ -83,7 +89,7 @@ async function setup() {
       owner: (token: string) => ({ actorId: h.accounts.currentUser(token).id }),
     }),
     logger: { debug: vi.fn() },
-    slashRemotes: { catalog: async () => catalog, execute },
+    slashRemotes: { catalog: nativeCatalog, execute },
     chatTransport: {
       prompt: async (
         _token: string,
@@ -104,7 +110,7 @@ async function setup() {
       },
     },
   }) as QaSurface;
-  return { ...h, surface, config, transport, execute, admit };
+  return { ...h, surface, config, nativeCatalog, transport, execute, admit };
 }
 
 describe("search source admission", () => {
@@ -151,6 +157,58 @@ describe("search source admission", () => {
         ).entries,
       ).toEqual([]);
       expect(h.surface.getConfig()).not.toHaveProperty("searchSources");
+    } finally {
+      h.accounts.close();
+    }
+  });
+  it("uses other assigned roles for the source menu and refreshes the grant on each read", async () => {
+    const h = await setup();
+    try {
+      // The chat's native palette never listed the other role's skills.
+      h.nativeCatalog.mockResolvedValue(readySlash([]));
+      await h.service.updateAssignment(h.admin.token, h.user.user.id, {
+        allowedSubroles: ["general", "reader"],
+        defaultSubrole: "general",
+      });
+      h.service.reserveSession(h.user.token, "saved", "general", false);
+      for (const target of [slashDraftTarget("general", false), "saved"]) {
+        const view = await h.surface.slashCatalog(h.user.token, target);
+        expect(view.entries.map(({ name }) => name)).toEqual([
+          "demo-docs",
+          "demo-library",
+        ]);
+      }
+      expect(
+        (
+          await h.surface.slashCatalog(
+            h.admin.token,
+            slashDraftTarget("general", true),
+          )
+        ).entries,
+      ).toEqual([]);
+      const prompt = (text: string) =>
+        h.surface.chatPrompt(
+          h.user.token,
+          { sessionId: "saved", content: [{ type: "text", text }] } as never,
+          new AbortController().signal,
+        );
+      await prompt("Обычный вопрос");
+      expect(h.admit).not.toHaveBeenCalled();
+      const text =
+        "/demo-docs\nИсточник поиска: Документация\n\nНайти документ";
+      await prompt(text);
+      const grant = h.admit.mock.lastCall?.[0];
+      expect(grant.role).toBe("general");
+      await expect(grant.verify()).resolves.toBeUndefined();
+      await h.service.updateAssignment(h.admin.token, h.user.user.id, {
+        allowedSubroles: ["general"],
+        defaultSubrole: "general",
+      });
+      expect(
+        (await h.surface.slashCatalog(h.user.token, "saved")).entries,
+      ).toEqual([]);
+      await expect(grant.verify()).rejects.toThrow();
+      await expect(prompt(text)).rejects.toThrow("Источник поиска");
     } finally {
       h.accounts.close();
     }

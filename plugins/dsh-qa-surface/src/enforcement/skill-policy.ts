@@ -62,6 +62,10 @@ export interface QaSkillPolicyOptions {
   readonly grants: QaAgentToolGrants;
   /** Let a native discovery surface present only tools the skill actually obtained. */
   readonly onGrant?: (granted: readonly string[]) => void;
+  readonly selectedSourceSkill?: (
+    name: string,
+    messages: readonly UserMessage[],
+  ) => boolean;
   readonly logger: PluginLogger;
   /** Preview sessions exercise the real policy and label their own records. */
   readonly preview?: boolean;
@@ -203,6 +207,10 @@ export function installQaSkillPolicy(
         const nextMessages = decision.messages.flatMap((message) => {
           const name = invokedSkill(message);
           if (name === undefined) return [message];
+          // The reader is registered for this input by SourceTurns. Loading
+          // its instructions here must not activate any session-wide grants.
+          if (options.selectedSourceSkill?.(name, decision.messages))
+            return [message];
           if (!userAllowed.has(name)) {
             changed = true;
             grants.deny(
