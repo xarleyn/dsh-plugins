@@ -69,15 +69,20 @@ export function AdminExpertMemory(props: {
   );
   const available = useMemo(() => scopes.data ?? [], [scopes.data]);
 
-  // What the page reads is the selection or, before anyone picks, the first
-  // namespace the stand has. A namespace that stopped existing (an expert
-  // deleted while this page was open) falls back instead of asking the Host for
-  // something no expert claims.
+  // Before anyone picks, show a namespace with records: the domain's common
+  // namespace can be empty while its account namespaces hold every note.
+  // If a selected namespace disappears, stop requesting it rather than asking
+  // the Host for something no expert claims.
   const active = useMemo(() => {
     if (available.some((entry) => entry.namespace === namespace)) {
       return namespace;
     }
-    return namespace === "" ? (available[0]?.namespace ?? "") : "";
+    if (namespace !== "") return "";
+    return (
+      available.find((entry) => entry.records > 0)?.namespace ??
+      available[0]?.namespace ??
+      ""
+    );
   }, [available, namespace]);
   const scope = available.find((entry) => entry.namespace === active);
   const writable = canManage && scope?.access === "read-write";

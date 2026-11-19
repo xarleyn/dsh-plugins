@@ -151,7 +151,9 @@ Each numbered item is a verifiable guarantee, phrased as behaviour.
     over a row another writer deleted cannot leave a one-word record behind.
 33. Memory maintenance is a host-plane seam (`ctx.domainExperts.memoryAdmin`),
     not a Remote. The agent-facing tool sees one expert's namespaces; maintenance
-    sees every enabled expert's, refuses anything no enabled expert declares
+    sees every enabled expert's declared namespaces and existing account
+    namespaces (`<private namespace>/u/<account>`, one account segment), refuses
+    unrelated prefixes, deeper paths and namespaces of disabled experts
     (`MEMORY_SCOPE_DENIED`), writes only a namespace some expert owns as
     read-write, and deletes one record, a named set, or a whole namespace. It is
     not reachable from a browser because a Remote would carry no token and check

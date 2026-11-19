@@ -7,7 +7,7 @@ import type {
 import { DomainExpertsError } from "../errors.js";
 import type { LogSink } from "../execution.js";
 import { memoryEntries } from "../resolver.js";
-import { normalizeNamespace } from "../schema.js";
+import { isValidNamespace, normalizeNamespace } from "../schema.js";
 import { clampLimit, countHits, searchTextOf, tokenize } from "./shared.js";
 import type { DomainMemoryProvider } from "./registry.js";
 
@@ -52,7 +52,7 @@ export interface MemoryCorrection {
 }
 
 export interface MemoryAdmin {
-  /** Every namespace the enabled experts declare, with its record count. */
+  /** Declared and stored account namespaces of enabled experts, with counts. */
   scopes(): Promise<readonly MemoryScopeView[]>;
   /**
    * One namespace's records, newest first.
@@ -103,11 +103,32 @@ export function createMemoryAdmin(
   async function scopes(): Promise<readonly MemoryScopeView[]> {
     const definitions = await dependencies.definitions();
     const provider = dependencies.provider();
+    const storedNamespaces = provider.listNamespaces();
     const counts = new Map<string, number>();
     const views: MemoryScopeView[] = [];
     for (const definition of definitions) {
       if (!definition.enabled) continue;
-      for (const entry of memoryEntries(definition)) {
+      const entries = [...memoryEntries(definition)];
+      const own = entries.find((entry) => entry.access === "read-write");
+      if (own !== undefined) {
+        // Runtime writes to <base>/u/<account>, while an unattributed profile
+        // lists only <base>. Maintenance must discover those existing records
+        // through the configured provider. Match one exact account segment:
+        // unrelated prefixes, shared namespaces and deeper paths are not owned.
+        const prefix = `${own.namespace}/u/`;
+        for (const namespace of storedNamespaces) {
+          if (!namespace.startsWith(prefix)) continue;
+          const account = namespace.slice(prefix.length);
+          if (
+            account === "" ||
+            account.includes("/") ||
+            !isValidNamespace(namespace)
+          )
+            continue;
+          entries.push({ ...own, namespace });
+        }
+      }
+      for (const entry of entries) {
         let records = counts.get(entry.namespace);
         if (records === undefined) {
           records = (await provider.inspect(entry.namespace)).length;

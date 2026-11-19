@@ -189,7 +189,8 @@ storage unit no longer touches memory held by the `sqlite` provider.
 
 What an expert recorded is maintenance data, not a write-once log. The service
 exposes a host-plane seam for it — `ctx.domainExperts.memoryAdmin` — which lists
-every namespace the enabled experts declare, searches one, corrects a record in
+every namespace the enabled experts declare, including existing per-account
+namespaces in the configured memory provider, searches one, corrects a record in
 place, and deletes one record, a named set, or a whole namespace. It is not a
 Remote: a browser must not hold an unauthenticated write endpoint over the store
 that feeds every expert's prompt, so the calling surface — the QA console in
