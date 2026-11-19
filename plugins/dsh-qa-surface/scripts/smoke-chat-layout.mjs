@@ -141,7 +141,7 @@ export async function chooseProfileTheme(page, label) {
   }
 }
 
-/** Provision a shared manual skill and exercise two real role grants. */
+/** Provision an archive source reachable from the account's other role. */
 export async function grantLayoutSearchSource(origin, cookie, session) {
   const call = (method, args) =>
     rpc(
@@ -166,6 +166,11 @@ export async function grantLayoutSearchSource(origin, cookie, session) {
     },
   });
   const { config } = await call("accessAdminSnapshot", {});
+  const catalogFor = (role) =>
+    call("slashCatalog", {
+      sessionId: "qa-slash-draft:" + JSON.stringify([role, false]),
+    });
+  assert.ok(!JSON.stringify(await catalogFor("general")).includes(name));
   const general = config.subroles.find((role) => role.id === "general");
   const reader = {
     ...general,
@@ -188,21 +193,18 @@ export async function grantLayoutSearchSource(origin, cookie, session) {
     userId: session.user.id,
     input: {
       allowedSubroles: ["general", reader.id],
-      defaultSubrole: reader.id,
+      defaultSubrole: "general",
     },
   });
   for (const role of ["general", reader.id]) {
-    const catalog = await call("slashCatalog", {
-      sessionId: "qa-slash-draft:" + JSON.stringify([role, false]),
-    });
+    const catalog = await catalogFor(role);
     assert.equal(
       catalog.entries.some(
         (entry) =>
           entry.name === name && entry.searchSource?.label === "Документация",
       ),
-      role === reader.id,
+      true,
     );
-    if (role === "general") assert.ok(!JSON.stringify(catalog).includes(name));
   }
 }
 
