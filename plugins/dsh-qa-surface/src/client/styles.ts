@@ -679,7 +679,8 @@ a.dsh-qa-sources__title:hover{text-decoration:underline}
 .dsh-qa-preview__line{display:flex;min-height:18px}
 .dsh-qa-preview__line--highlight{background:var(--dsw-alias-interactive-bg-hover)}
 .dsh-qa-preview__block{scroll-margin-block:24px}
-.dsh-qa-preview__block--highlight{background:var(--dsw-alias-interactive-bg-hover);box-shadow:inset 3px 0 var(--dsh-qa-accent);border-radius:6px}
+/* Use the preview panel's padding for the accent without moving the text. */
+.dsh-qa-preview__block--highlight{margin-inline-start:-8px;padding-inline-start:5px;border-inline-start:3px solid var(--dsh-qa-accent);border-radius:6px;background:var(--dsw-alias-interactive-bg-hover)}
 .dsh-qa-docmeta{padding:14px;margin-bottom:18px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-3);overflow-wrap:anywhere}
 .dsh-qa-preview__markdown .dsh-qa-docmeta h2{margin:0 0 12px;font-size:17px}
 .dsh-qa-docmeta dl{margin:0;display:grid;gap:10px}
