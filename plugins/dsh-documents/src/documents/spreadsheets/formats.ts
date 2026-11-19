@@ -1,6 +1,7 @@
 import ExcelJS from "exceljs";
 import path from "node:path";
 import { DocumentError } from "../errors.js";
+import { xlsxReaderBytes } from "./reader-xlsx.js";
 import { readZipEntries } from "../inspect/zip.js";
 import { invalid, validateXlsx } from "./guards.js";
 import { readDelimited, writeDelimited } from "./delimited.js";
@@ -75,11 +76,13 @@ export async function decodeWorkbook(
     return { ...readDelimited(bytes, format, input.text, signal), format };
   if (format === "ods" || format === "fods")
     return { ...readOpenDocument(bytes, format, signal), format };
-  validateXlsx(bytes, signal);
   const workbook = new ExcelJS.Workbook();
   try {
-    await workbook.xlsx.load(bytes as unknown as ExcelJS.Buffer);
-  } catch {
+    const inputBytes = await xlsxReaderBytes(bytes, signal);
+    await workbook.xlsx.load(inputBytes as unknown as ExcelJS.Buffer);
+  } catch (error) {
+    signal?.throwIfAborted();
+    if (error instanceof DocumentError) throw error;
     throw new DocumentError(
       "EXTRACTION_FAILED",
       "XLSX workbook could not be parsed",
