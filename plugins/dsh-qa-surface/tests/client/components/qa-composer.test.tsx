@@ -14,6 +14,8 @@ import { DEFAULT_ATTACHMENT_LIMITS } from "../../helpers/attachments.js";
 import {
   DISABLED_SLASH_VIEW,
   DEFAULT_SLASH_POLICY,
+  readySlash,
+  slashEntry,
 } from "../../helpers/slash.js";
 import { settle } from "../../helpers/act.js";
 
@@ -55,6 +57,107 @@ function pasteText(input: HTMLElement, text: string): void {
 }
 
 describe("QA composer", () => {
+  const openMenu = () =>
+    fireEvent.click(
+      screen.getByRole("button", { name: "Добавить файл или источник" }),
+    );
+  it("opens the original multi-file picker, with no source section for an unentitled account", () => {
+    mount();
+    const picker = screen.getByTestId(
+      "qa-composer-file-input",
+    ) as HTMLInputElement;
+    const click = vi.spyOn(picker, "click");
+    openMenu();
+    expect(screen.queryByText("Источники поиска")).toBeNull();
+    const rows = screen.getAllByRole("menuitem");
+    expect(rows).toHaveLength(1);
+    fireEvent.click(rows[0]!);
+    expect(click).toHaveBeenCalledOnce();
+    expect(picker.multiple).toBe(true);
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("replaces only the source at the file limit and retains the draft when refused", async () => {
+    const manual = (name: string, label: string) =>
+      slashEntry("skill", name, {
+        searchSource: { label },
+      });
+    const a = manual("project-docs", "Проектная документация");
+    const library = manual("library", "Справочник");
+    const files: QaAttachmentDraft[] = [
+      {
+        kind: "file",
+        id: "a",
+        name: "a.md",
+        bytes: 5,
+        blob: new Blob(["hello"]),
+      },
+    ];
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true);
+    mount({
+      slash: readySlash([a, library]),
+      attachments: files,
+      limits: { ...DEFAULT_ATTACHMENT_LIMITS, maxPending: 1 },
+      onSend: send,
+    });
+    openMenu();
+    expect(
+      (
+        screen.getByRole("menuitem", {
+          name: "Прикрепить файл",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "Проектная документация" }),
+    );
+    expect(screen.getByText("Проектная документация")).toBeTruthy();
+    openMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Справочник" }));
+    expect(screen.queryByText("Проектная документация")).toBeNull();
+    const input = screen.getByRole("combobox") as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "Вопрос" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await settle();
+    expect(input.value).toBe("Вопрос");
+    expect(screen.getByText("Только для этого сообщения")).toBeTruthy();
+    expect(send).toHaveBeenCalledWith("Вопрос", files, null, library);
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() =>
+      expect(screen.queryByText("Только для этого сообщения")).toBeNull(),
+    );
+    expect(input.value).toBe("");
+  });
+
+  it("restores keyboard focus on Escape and dismisses on an outside pointer", () => {
+    mount({
+      slash: readySlash([
+        slashEntry("skill", "docs", {
+          searchSource: { label: "Документы" },
+        }),
+      ]),
+    });
+    const plus = screen.getByRole("button", {
+      name: "Добавить файл или источник",
+    });
+    fireEvent.keyDown(plus, { key: "ArrowDown" });
+    expect(document.activeElement?.textContent).toBe("Прикрепить файл");
+    fireEvent.keyDown(document.activeElement!, { key: "End" });
+    expect(document.activeElement?.textContent).toBe("Документы");
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    expect(document.activeElement).toBe(plus);
+    openMenu();
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByRole("menu")).toBeNull();
+    openMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Документы" }));
+    expect(screen.getByText("Документы")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Убрать источник" }));
+    expect(screen.queryByText("Только для этого сообщения")).toBeNull();
+  });
   it("explains Fast in the tooltip without a persistent mode hint", () => {
     const changed = vi.fn();
     mount({ answerModes: ["fast", "deep"], onAnswerModesChange: changed });

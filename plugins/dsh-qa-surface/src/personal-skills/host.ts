@@ -5,6 +5,7 @@ import type { ResolvedQaSurfaceConfig } from "../types.js";
 import { createQaUserSkillProvider } from "./provider.js";
 import { QaPersonalSkills } from "./service.js";
 import { QaSkillWatcher } from "./watcher.js";
+import { prepareQaUserWorkspace } from "../user-workspace.js";
 
 export interface QaPersonalSkillsHostOptions {
   readonly ctx: Context;
@@ -71,6 +72,17 @@ export class QaPersonalSkillsHost {
   /** Whether the DSH registry currently owns this deployment's provider. */
   get registered(): boolean {
     return this.disposeRegistration !== undefined;
+  }
+
+  /** Match the skill provider's account scope before the first chat exists. */
+  accountSkillWorkspace(userId: string): string | undefined {
+    const config = this.options.getConfig();
+    const root = this.registeredWorkspacePath();
+    if (!config.accounts.perUserWorkspace)
+      return root ?? config.session.cwd ?? process.cwd();
+    return root === undefined
+      ? undefined
+      : prepareQaUserWorkspace(root, userId);
   }
 
   dispose(): void {

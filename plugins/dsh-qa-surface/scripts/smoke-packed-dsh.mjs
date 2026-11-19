@@ -1161,6 +1161,16 @@ try {
       authenticatedUrl: `${origin}/?token=${encodeURIComponent(token)}`,
     });
   } else if (withBrowser) {
+    const sourceWorkspace = chatLayoutOnly
+      ? (
+          await rpc(
+            origin,
+            "workspace/create",
+            { args: { request: { path: workspacePath } } },
+            cookie,
+          )
+        ).workspace.workspaceId
+      : undefined;
     if (fullBrowser || answerModesOnly || usageGuideOnly)
       await runBrowserPass({
         origin,
@@ -1189,6 +1199,7 @@ try {
       await runIntegrationFolderBrowserPass({
         modelSelection: modelSelectionOnly,
         chatLayoutOnly,
+        sourceWorkspace,
         reviewDockOnly,
         dshBin,
         dshEnv,

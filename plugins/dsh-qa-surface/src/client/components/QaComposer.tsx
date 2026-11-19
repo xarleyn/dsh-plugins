@@ -30,6 +30,12 @@ import { isReviewInProgress } from "../answer-review.js";
 import { useQaFileDrop } from "../use-qa-file-drop.js";
 import type { QaAnswerMode } from "../../shared/answer-modes.js";
 import { QaAnswerModes } from "./QaAnswerModes.js";
+import { QaComposerAddMenu } from "./QaComposerAddMenu.js";
+import {
+  isSearchSource,
+  sourceLabel,
+  type QaSearchSourceEntry,
+} from "../../slash/source-prompt.js";
 
 export interface QaComposerProps {
   readonly modelSelector?: ReactNode;
@@ -63,6 +69,7 @@ export interface QaComposerProps {
     text: string,
     attachments: readonly QaAttachmentDraft[],
     pick: string | null,
+    source?: QaSearchSourceEntry,
   ) => Promise<boolean>;
   /** Called when the palette opens, so the caller can revalidate the catalog. */
   readonly onSlashOpen: () => void;
@@ -99,14 +106,6 @@ function focusComposer(
   input.focus();
 }
 
-function AttachIcon() {
-  return (
-    <svg viewBox="0 0 18 18" aria-hidden="true">
-      <path d="M16.08 8.29 9.19 15.18a4.5 4.5 0 0 1-6.37-6.37l6.89-6.89a3 3 0 0 1 4.25 4.25l-6.9 6.89a1.5 1.5 0 0 1-2.12-2.12l6.37-6.36" />
-    </svg>
-  );
-}
-
 function SendIcon() {
   return (
     <svg viewBox="0 0 18 18" aria-hidden="true">
@@ -123,6 +122,17 @@ function SendIcon() {
  */
 export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
   const [draft, setDraft] = useState("");
+  const [source, setSource] = useState<QaSearchSourceEntry>();
+  const visibleSource =
+    source &&
+    props.slash.enabled &&
+    props.slash.state === "ready" &&
+    props.slash.entries.some(
+      (entry) =>
+        isSearchSource(entry) &&
+        entry.id === source.id &&
+        entry.searchSource.label === source.searchSource.label,
+    );
   const [submitting, setSubmitting] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
@@ -220,7 +230,11 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
     const pick = textOverride === undefined ? navigation.picked : undefined;
     setSubmitting(true);
     try {
-      if (await props.onSend(text, attachments, pick?.id ?? null)) {
+      const accepted = source
+        ? await props.onSend(text, attachments, pick?.id ?? null, source)
+        : await props.onSend(text, attachments, pick?.id ?? null);
+      if (accepted) {
+        setSource(undefined);
         setDraft("");
         props.onAttachmentsChange([]);
         // The composer is empty again, so the refusal that emptied it is no
@@ -409,6 +423,29 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
             {attachmentError}
           </p>
         )}
+        {source && (
+          <div className="dsh-qa-source-chip">
+            <span>
+              {visibleSource
+                ? sourceLabel(source.searchSource)
+                : props.slash.state === "loading"
+                  ? "Проверяем доступ…"
+                  : "Источник недоступен"}
+            </span>
+            <small>Только для этого сообщения</small>
+            <button
+              type="button"
+              disabled={submitting}
+              aria-label="Убрать источник"
+              onClick={() => {
+                setSource(undefined);
+                textarea.current?.focus();
+              }}
+            >
+              ×
+            </button>
+          </div>
+        )}
         <label className="dsh-qa-sr-only" htmlFor="dsh-qa-prompt">
           Задать вопрос
         </label>
@@ -515,17 +552,20 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
               event.target.value = "";
             }}
           />
-          <button
-            type="button"
-            className="dsh-qa-composer__attach"
-            data-testid="qa-composer-attach"
-            aria-label="Прикрепить файл"
-            title="Прикрепить файл или изображение"
-            disabled={!props.canSend || attachments.length >= limits.maxPending}
-            onClick={() => fileInput.current?.click()}
-          >
-            <AttachIcon />
-          </button>
+          <QaComposerAddMenu
+            slash={props.slash}
+            disabled={!props.canSend || submitting}
+            filesFull={attachments.length >= limits.maxPending}
+            onOpen={() => {
+              navigation.dismiss();
+              props.onSlashOpen();
+            }}
+            onAttach={() => fileInput.current?.click()}
+            onSelect={(entry) => {
+              setSource(entry);
+              textarea.current?.focus();
+            }}
+          />
           <div
             className="dsh-qa-composer__context"
             data-testid="qa-composer-context"

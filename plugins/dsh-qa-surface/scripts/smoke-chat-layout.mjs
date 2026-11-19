@@ -70,10 +70,68 @@ export async function chooseProfileTheme(page, label) {
   }
 }
 
+/** Provision a shared manual skill and exercise two real role grants. */
+export async function grantLayoutSearchSource(origin, cookie, session) {
+  const call = (method, args) =>
+    rpc(
+      origin,
+      "qaSurface/" + method,
+      { args: { token: session.token, ...args } },
+      cookie,
+    );
+  const name = "search-demo-docs";
+  await call("adminSkillSave", {
+    scope: { kind: "shared" },
+    name: null,
+    input: {
+      name,
+      description: "Look up the demo documentation",
+      whenToUse: null,
+      modelInvocable: false,
+      userInvocable: true,
+      allowedTools: [],
+      body: "Answer the user's question using the demo documentation.",
+      expectedRevision: null,
+    },
+  });
+  const { config } = await call("accessAdminSnapshot", {});
+  const general = config.subroles.find((role) => role.id === "general");
+  const reader = {
+    ...general,
+    id: "demo-reader",
+    name: "Demo reader",
+    capabilities: {
+      ...general.capabilities,
+      skills: [...general.capabilities.skills, name],
+    },
+  };
+  await call("accessCreateSubrole", { input: reader });
+  await call("accessUpdateAssignment", {
+    userId: session.user.id,
+    input: {
+      allowedSubroles: ["general", reader.id],
+      defaultSubrole: reader.id,
+    },
+  });
+  for (const role of ["general", reader.id]) {
+    const catalog = await call("slashCatalog", {
+      sessionId: "qa-slash-draft:" + JSON.stringify([role, false]),
+    });
+    assert.equal(
+      catalog.entries.some(
+        (entry) =>
+          entry.name === name && entry.searchSource?.label === "Документация",
+      ),
+      role === reader.id,
+    );
+    if (role === "general") assert.ok(!JSON.stringify(catalog).includes(name));
+  }
+}
+
 /** Real reload goes through the account gate before it mounts the chat. */
 export async function runChatLayoutPass(
   page,
-  { origin, cookie, token, sessionId, ownerName },
+  { origin, cookie, token, sessionId, ownerName, withSearchSource },
 ) {
   const evidence = process.env.DSH_QA_LAYOUT_EVIDENCE_DIR;
   if (evidence) await mkdir(evidence, { recursive: true });
@@ -84,7 +142,29 @@ export async function runChatLayoutPass(
   await page.setViewportSize({ width: 1600, height: 900 });
   const chat = page.getByTestId("qa-surface-chat");
   const composer = page.locator(".dsh-qa-footer__inner");
-  await page.getByTestId("qa-composer-file-input").setInputFiles({
+  await page
+    .getByRole("button", { name: "Добавить файл или источник" })
+    .click();
+  if (withSearchSource) {
+    await page
+      .getByRole("menuitem", { name: "Документация", exact: true })
+      .waitFor();
+    await shot("composer-source-menu");
+    await page
+      .getByRole("menuitem", { name: "Документация", exact: true })
+      .click();
+    await composer.getByText("Документация").waitFor();
+    await shot("composer-source-selected");
+    await page
+      .getByRole("button", { name: "Добавить файл или источник" })
+      .click();
+  }
+  const [picker] = await Promise.all([
+    page.waitForEvent("filechooser"),
+    page.getByRole("menuitem", { name: "Прикрепить файл" }).click(),
+  ]);
+  assert.ok(picker.isMultiple());
+  await picker.setFiles({
     name: "agenda.md",
     mimeType: "text/markdown",
     buffer: Buffer.from(
@@ -95,6 +175,16 @@ export async function runChatLayoutPass(
   await page.getByTestId("qa-composer-send").click();
   const reply = page.getByRole("heading", { name: demoTitle, exact: true });
   await reply.waitFor();
+  if (withSearchSource) {
+    await page
+      .getByTestId("qa-message-content")
+      .getByText("Документация")
+      .waitFor();
+    assert.equal(
+      await composer.getByText("Только для этого сообщения").count(),
+      0,
+    );
+  }
   const handle = await page
     .getByTestId("qa-surface-width-handle-right")
     .boundingBox();
@@ -207,7 +297,7 @@ export async function runChatLayoutPass(
   await shot("phone");
   await page.setViewportSize({ width: 1280, height: 800 });
   const email = "layout-reader@example.test";
-  await rpc(
+  const readerAccount = await rpc(
     origin,
     "qaSurface/accountsRegister",
     { args: { email, password: "demo-password-two" } },
@@ -229,6 +319,82 @@ export async function runChatLayoutPass(
   );
   await setGrant(null);
   await byline.waitFor({ state: "detached" });
+  if (withSearchSource) {
+    const catalog = await rpc(
+      origin,
+      "qaSurface/slashCatalog",
+      {
+        args: {
+          token: readerAccount.token,
+          sessionId: "qa-slash-draft:[null,false]",
+        },
+      },
+      cookie,
+    );
+    assert.ok(
+      !JSON.stringify(catalog).includes("search-demo-docs"),
+      "another account cannot discover the project",
+    );
+    await page
+      .getByRole("button", { name: "Добавить файл или источник" })
+      .click();
+    await page
+      .getByRole("menuitem", { name: "Документация", exact: true })
+      .click();
+    const input = page.getByTestId("qa-composer-input");
+    await input.fill("Вопрос после отзыва доступа");
+    const { config } = await rpc(
+      origin,
+      "qaSurface/accessAdminSnapshot",
+      { args: { token } },
+      cookie,
+    );
+    const role = config.subroles.find(
+      (candidate) => candidate.id === "demo-reader",
+    );
+    await rpc(
+      origin,
+      "qaSurface/accessUpdateSubrole",
+      {
+        args: {
+          token,
+          id: role.id,
+          input: {
+            ...role,
+            capabilities: {
+              ...role.capabilities,
+              skills: role.capabilities.skills.filter(
+                (name) => name !== "search-demo-docs",
+              ),
+            },
+          },
+        },
+      },
+      cookie,
+    );
+    await page.getByTestId("qa-composer-send").click();
+    await composer.getByText("Источник недоступен", { exact: true }).waitFor();
+    assert.equal(await input.inputValue(), "Вопрос после отзыва доступа");
+    await assert.rejects(
+      rpc(
+        origin,
+        "qaSurface/chatPrompt",
+        {
+          args: {
+            token,
+            request: {
+              sessionId,
+              requestId: "revoked-source-check",
+              mode: "queue",
+              content: [{ type: "text", text: "/search-demo-docs Вопрос" }],
+            },
+          },
+        },
+        cookie,
+      ),
+      /Источник поиска/,
+    );
+  }
   const metrics = { readingWidth, headerHeight, panelWidth, chatWidth };
   if (evidence)
     await writeFile(

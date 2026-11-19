@@ -37,6 +37,13 @@ import type {
   ResolvedQaSurfaceConfig,
 } from "../types.js";
 import { slashDraftTarget } from "../slash/draft-target.js";
+import { slashInvocation } from "../slash/parser.js";
+import {
+  isSearchSource,
+  readSourcePrompt,
+  sourcePrompt,
+  type QaSearchSourceEntry,
+} from "../slash/source-prompt.js";
 import { resolveSlashRoute } from "./slash/slash-router.js";
 import {
   SLASH_DISABLED_COPY,
@@ -640,6 +647,7 @@ export class QaSessionController {
     attachments: readonly QaAttachmentDraft[] = [],
     pick: string | null = null,
     selection: readonly QaAnswerMode[] | boolean = QA_DEFAULT_ANSWER_MODES,
+    source?: QaSearchSourceEntry,
   ): Promise<boolean> {
     // Copy before the first await: later UI changes belong to later requests.
     const modes = qaAnswerModes(
@@ -650,7 +658,7 @@ export class QaSessionController {
         : selection,
     );
     const fastReview = modes.includes("fast");
-    const prompt = text.trim();
+    let prompt = text.trim();
     // Images ride the prompt inline; files must be staged first, because the
     // wire carries a receipt rather than bytes.
     const files = attachments.filter(
@@ -659,7 +667,7 @@ export class QaSessionController {
     if ((prompt === "" && attachments.length === 0) || !this.state.canSend) {
       return false;
     }
-    const route = resolveSlashRoute({
+    let route = resolveSlashRoute({
       text: prompt,
       enabled: this.config.slashCommands.enabled,
       catalogReady: this.slashCatalogReady(),
@@ -667,6 +675,46 @@ export class QaSessionController {
       deniedSkills: this.slashDenied,
       picked: pick,
     });
+    const selected =
+      source ??
+      (route.kind === "skill" && isSearchSource(route.entry)
+        ? route.entry
+        : undefined);
+    if (selected) {
+      const target = this.slashReadTarget();
+      await this.refreshSlashCatalog(true);
+      if (this.disposed || this.slashReadTarget() !== target) return false;
+      const current = this.slashEntries.find(
+        (entry) => entry.id === selected.id,
+      );
+      if (
+        this.slashState !== "ready" ||
+        !current ||
+        !isSearchSource(current) ||
+        current.searchSource.label !== selected.searchSource.label
+      ) {
+        this.refuseSend(
+          "Источник поиска недоступен. Уберите его или выберите доступный источник.",
+        );
+        return false;
+      }
+      const invocation = slashInvocation(prompt);
+      if (
+        invocation &&
+        (invocation.name !== current.name ||
+          (pick !== null && pick !== current.id))
+      ) {
+        this.refuseSend(
+          "Уберите выбранный источник, чтобы отправить другую slash-команду.",
+        );
+        return false;
+      }
+      prompt = sourcePrompt(
+        current,
+        readSourcePrompt(prompt)?.question ?? invocation?.args ?? prompt,
+      );
+      route = { kind: "skill", entry: current };
+    }
     if (route.kind === "command") {
       return this.sendCommand(
         prompt,

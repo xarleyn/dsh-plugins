@@ -77,6 +77,8 @@ export interface QaSlashCatalogEntry {
   readonly inputHint?: string;
   /** Command-only: whether the executor admits composer attachments. */
   readonly acceptsAttachments?: boolean;
+  /** Present only on search skills admitted for this account and active role. */
+  readonly searchSource?: { readonly label: string };
 }
 
 /**

@@ -10,6 +10,7 @@ import {
 } from "./smoke-review-dock.mjs";
 import {
   runChatLayoutPass,
+  grantLayoutSearchSource,
   startLayoutProvider,
 } from "./smoke-chat-layout.mjs";
 import {
@@ -29,6 +30,7 @@ export async function runIntegrationFolderBrowserPass(options) {
     hostLog,
     modelSelection = false,
     chatLayoutOnly = false,
+    sourceWorkspace,
     reviewDockOnly = false,
   } = options;
   const port = await freePort();
@@ -46,6 +48,14 @@ export async function runIntegrationFolderBrowserPass(options) {
       : await startLayoutProvider();
   const stableCode = join(workspacePath, "stable-code");
   const previewCode = join(workspacePath, "preview-code");
+  const searchConfig = sourceWorkspace
+    ? `      perUserWorkspace: true
+      skills: { enabled: true }
+    searchSources:
+      - { skill: search-demo-docs, label: Документация, directory: demo }
+    lockdown: { enabled: true, sandboxMode: workspace-write, approvalPolicy: never, permissionPreset: qa-layout-workspace, allowSlashCommands: true }
+    slashCommands: { skills: { mode: allow-list, allow: [search-demo-docs] } }`
+    : "";
   if (modelPass)
     await Promise.all([
       mkdir(stableCode, { recursive: true }),
@@ -58,6 +68,7 @@ export async function runIntegrationFolderBrowserPass(options) {
     accounts:
       enabled: true
       allowRegistration: true
+${searchConfig}
     integration:
       enabled: true
       requestTimeoutMs: 5000
@@ -100,8 +111,18 @@ ${
             reasoningEfforts: { low: low, medium: medium, high: high }
 `
     : `    session:
+${sourceWorkspace ? "      workspaceId: " + JSON.stringify(sourceWorkspace) : ""}
       provider: qa-layout
       model: layout-demo
+${
+  sourceWorkspace
+    ? `- id: permission
+  config:
+    defaultPreset: qa-layout-workspace
+    presets:
+      qa-layout-workspace: { sandbox: workspace-write, approval: never }`
+    : ""
+}
 - id: llm-pi-ai
   config:
     providers:
@@ -157,6 +178,7 @@ ${
       },
       cookie,
     );
+    if (sourceWorkspace) await grantLayoutSearchSource(origin, cookie, session);
     const formSession = await rpc(
       origin,
       "qaSurface/createSession",
@@ -386,6 +408,7 @@ ${
         token: session.token,
         sessionId: formSession,
         ownerName: session.user.displayName,
+        withSearchSource: Boolean(sourceWorkspace),
       });
     if (chatLayoutOnly) return;
     await sidebar.getByTestId("qa-history-create-folder").click();

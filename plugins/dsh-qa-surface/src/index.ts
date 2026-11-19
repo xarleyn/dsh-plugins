@@ -111,6 +111,12 @@ import { QaAccessService } from "./access/service.js";
 import { userModelOptions, selectUserModel } from "./access/model-choices.js";
 import type { QaModelOptions } from "./types.js";
 import { userInvocableSkillNames } from "./access/model.js";
+import { parseSlashDraftTarget } from "./slash/draft-target.js";
+import {
+  projectSearchSources,
+  requireSearchSourceAccess,
+} from "./slash/search-sources.js";
+import { QA_USER_SKILLS_SOURCE } from "./personal-skills/provider.js";
 import type { QaPresetScopeLease } from "./access/capability-catalog.js";
 import { createQaSlashRemotes } from "./slash/remotes.js";
 import type { QaSlashRemotes } from "./slash/remotes.js";
@@ -528,6 +534,10 @@ export class QaSurface extends TypertRemoteService {
       logger: this.logger,
       dynamicToolNames: () => this.tools?.catalogToolNames() ?? [],
       presetScope: () => this.qaPresetScope(),
+      accountSkillWorkspace: (userId) =>
+        this.source().searchSources?.length
+          ? this.personalSkills.accountSkillWorkspace(userId)
+          : undefined,
       sessionLog,
       // The record the sweep reclaims is the authorization boundary, not the
       // whole of what the deployment kept about a chat: the quality rows a
@@ -2326,7 +2336,13 @@ export class QaSurface extends TypertRemoteService {
     request: SessionPromptRequest,
     signal: AbortSignal,
   ): Promise<SessionPromptValue> {
-    return this.chatTransport.prompt(token, request, signal);
+    return this.chatTransport.prompt(token, request, signal, () =>
+      this.admitSourceContent(
+        token,
+        String(request.sessionId),
+        request.content,
+      ),
+    );
   }
 
   @Remote("chatAttachment")
@@ -2355,7 +2371,34 @@ export class QaSurface extends TypertRemoteService {
     token: string,
     request: SessionUpdateQueueRequest,
   ): Promise<SessionUpdateQueueValue> {
-    return this.chatTransport.updateQueue(token, request);
+    const action = request.action;
+    return this.chatTransport.updateQueue(
+      token,
+      request,
+      action.kind === "edit"
+        ? () =>
+            this.admitSourceContent(
+              token,
+              String(request.sessionId),
+              action.content,
+            )
+        : undefined,
+    );
+  }
+
+  private admitSourceContent(
+    token: string,
+    sessionId: string,
+    content: SessionPromptRequest["content"],
+  ) {
+    const text = content
+      .flatMap((part) => (part.type === "text" ? [part.text] : []))
+      .join("\n");
+    return requireSearchSourceAccess(
+      this.source().searchSources ?? [],
+      text,
+      () => this.slashCatalog(token, sessionId),
+    );
   }
 
   private async admitChatRead(
@@ -2956,8 +2999,50 @@ export class QaSurface extends TypertRemoteService {
    * empty palette forever.
    */
   @Remote("slashCatalog")
-  slashCatalog(token: string, sessionId: string): Promise<QaSlashCatalog> {
-    return this.slashRemotes.catalog(token, sessionId);
+  async slashCatalog(
+    token: string,
+    sessionId: string,
+  ): Promise<QaSlashCatalog> {
+    const catalog = await this.slashRemotes.catalog(token, sessionId);
+    const bindings = this.source().searchSources ?? [];
+    if (!bindings.length) return catalog;
+    const allowed = new Set<string>();
+    if (
+      this.getConfig().accounts.enabled &&
+      catalog.entries.some(
+        (entry) =>
+          entry.kind === "skill" &&
+          bindings.some((binding) => binding.skill === entry.name),
+      )
+    ) {
+      try {
+        const draft = parseSlashDraftTarget(sessionId);
+        const target = draft ?? this.access.session(token, sessionId);
+        const roleId =
+          "subroleId" in target ? target.subroleId : target.subrole.id;
+        const current = await this.access.slashDraftSkills(
+          token,
+          roleId,
+          target.adminPreview,
+          draft === undefined ? sessionId : undefined,
+        );
+        if (current.policy) {
+          const grants = new Set(userInvocableSkillNames(current.policy));
+          for (const skill of current.skills) {
+            if (
+              grants.has(skill.name) &&
+              skill.source !== QA_USER_SKILLS_SOURCE &&
+              !skill.invocation.modelInvocable
+            )
+              allowed.add(skill.name);
+          }
+        }
+      } catch {
+        // A revoked subrole or an unavailable registry hides every bound source.
+        this.logger.debug("slash.catalog.source-role-unavailable", {});
+      }
+    }
+    return projectSearchSources(catalog, bindings, allowed);
   }
 
   /**
@@ -2978,8 +3063,14 @@ export class QaSurface extends TypertRemoteService {
     attachments: readonly QaSlashSubmitAttachment[],
     modes?: readonly QaAnswerMode[],
   ): Promise<QaSlashExecution> {
-    const execute = () =>
-      this.slashRemotes.execute(token, sessionId, line, attachments);
+    const execute = async () => {
+      await requireSearchSourceAccess(
+        this.source().searchSources ?? [],
+        line,
+        () => this.slashCatalog(token, sessionId),
+      );
+      return this.slashRemotes.execute(token, sessionId, line, attachments);
+    };
     if (modes === undefined) return execute();
     const proof = await this.secureSession(token, sessionId);
     if (
