@@ -69,6 +69,19 @@ function readManifestVersion(): string | undefined {
 const nullableString = z.union([z.string(), z.const(null)]);
 
 const configSchema = z.object({
+  searchSources: z
+    .array(
+      z.object({
+        skill: z.string().required(),
+        label: z.string().required(),
+        directory: z.string().required(),
+      }),
+    )
+    .default([])
+    .description(
+      "One manual skill per optional directory under additional. Grant each skill to its intended QA roles.",
+    )
+    .volatile(),
   codeSources: z
     .object({
       defaultSource: z.string().default(""),

@@ -81,14 +81,24 @@ export function useSlashNavigation(
   // `groupPaletteRows` for why the two are not the same list.
   const rows = useMemo(() => {
     if (query === undefined) return [];
-    const ranked = rankSlashEntries(slash.entries, query, {
+    const entries =
+      slash.state === "ready"
+        ? slash.entries
+        : slash.entries.filter((entry) => !entry.searchSource);
+    const ranked = rankSlashEntries(entries, query, {
       fuzzy: options.fuzzySearch,
     });
     return flattenPaletteGroups(groupPaletteRows(ranked)).slice(
       0,
       options.maxVisible,
     );
-  }, [slash.entries, query, options.fuzzySearch, options.maxVisible]);
+  }, [
+    slash.entries,
+    slash.state,
+    query,
+    options.fuzzySearch,
+    options.maxVisible,
+  ]);
 
   // A new query re-ranks the rows, so the old index may point at a row that is
   // no longer the best match; the first row is always the right anchor.

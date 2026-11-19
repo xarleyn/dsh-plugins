@@ -123,6 +123,63 @@ function settle(built: ReturnType<typeof world>, text = "hello"): void {
 }
 
 describe("QA session controller slash routing", () => {
+  const docs = {
+    ...slashEntry("skill", "docs-demo"),
+    searchSource: { label: "Документация" },
+  };
+  it.each(["menu", "slash"])(
+    "sends the same per-message intent from %s",
+    async (origin) => {
+      const built = await ready({ entries: [docs] });
+      const selected = origin === "menu";
+      expect(
+        await built.controller.send(
+          selected ? "Вопрос" : "/docs-demo Вопрос",
+          [],
+          null,
+          ["deep"],
+          selected ? docs : undefined,
+        ),
+      ).toBe(true);
+      expect(built.faces.get("saved")?.prompt).toHaveBeenCalledWith(
+        [
+          {
+            type: "text",
+            text: "/docs-demo\nИсточник поиска: Документация\n\nВопрос",
+          },
+        ],
+        "queue",
+      );
+      built.controller.dispose();
+    },
+  );
+
+  it("refuses a stale source selection before uploading files or invoking the model", async () => {
+    const built = await ready({ entries: [docs] });
+    built.catalog.mockResolvedValue({
+      ok: true,
+      value: {
+        enabled: true,
+        entries: [],
+        deniedSkills: [],
+        commandSurface: "ready",
+      },
+    });
+    expect(
+      await built.controller.send(
+        "Вопрос",
+        [fileDraft()],
+        null,
+        ["deep"],
+        docs,
+      ),
+    ).toBe(false);
+    expect(built.faces.get("saved")?.prompt).not.toHaveBeenCalled();
+    expect(built.controller.getSnapshot().error).toContain(
+      "Источник поиска недоступен",
+    );
+    built.controller.dispose();
+  });
   it("keeps RAG selection on an explicitly typed no-review request", async () => {
     const built = await ready({ entries: [FAST_COMMAND] });
     expect(

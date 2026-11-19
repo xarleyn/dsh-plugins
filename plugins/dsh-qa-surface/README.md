@@ -1084,6 +1084,31 @@ full-bleed. The agents drawer keeps its own header drawer for now.
 
 ### Slash commands and skills
 
+The composer's **+** menu opens the attachment picker and lists optional search
+sources for the signed-in user's active QA subrole. Configure a manual,
+user-invocable skill for each immediate directory under `additional`. Give it a distinct name,
+set `disable-model-invocation: true`, admit it in the slash policy and grant
+it to the intended subroles in the QA administrator console. Personal skills
+cannot serve as search sources. Each directory is a single source, including all its project subdirectories. Ordinary documentation remains available by default through its existing role permissions.
+
+```yaml
+searchSources:
+  - { label: Project documentation, directory: project-docs, skill: search-demo-docs }
+  - { label: Reference library, directory: reference, skill: lookup-reference }
+```
+
+The menu reads catalog metadata. Picking a source attaches its skill to one
+message. The user can also invoke that skill with `/search-demo-docs`. Source
+visibility requires both a current role grant and a skill available in the
+chat. Revoking the grant takes effect on the next catalog read or submission.
+Start a new chat to use a newly granted skill missing from an existing chat's
+capability snapshot.
+
+Providers handling protected material must authorize each read for the
+request and directory. Keep this check independent of lasting chat tool grants.
+
+#### Enabling slash actions
+
 Off by default. Typing `/` in the composer normally gets the same refusal it
 always did («Команды со слешем недоступны в режиме помощника»), and nothing
 about that changes for a deployment that upgrades.

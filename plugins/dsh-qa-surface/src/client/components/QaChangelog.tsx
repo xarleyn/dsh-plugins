@@ -22,6 +22,18 @@ export interface QaChangelogEntry {
 
 export const QA_CHANGELOG: readonly QaChangelogEntry[] = [
   {
+    version: "0.23.6",
+    date: "2026-11-18",
+    sections: [
+      {
+        title: "Файлы и источники поиска",
+        items: [
+          "Кнопка «+» рядом с полем сообщения открывает выбор файлов и доступных вашей роли источников поиска. Выбранный дополнительный источник виден у вопроса и действует только для этого сообщения.",
+        ],
+      },
+    ],
+  },
+  {
     version: "0.23.5",
     date: "2026-11-17",
     sections: [
