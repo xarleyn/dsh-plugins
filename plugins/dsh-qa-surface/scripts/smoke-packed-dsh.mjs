@@ -28,6 +28,7 @@ import { runQuestionSoundsPass } from "./smoke-question-sounds.mjs";
 import { formReaderPatch, runFormReaderPass } from "./smoke-form-reader.mjs";
 import {
   installAnswerModePlugins,
+  installAnswerModeQuestionPlugins,
   runAnswerModesPass,
   runAnswerModesBrowserPass,
 } from "./smoke-answer-modes.mjs";
@@ -67,7 +68,19 @@ const liveModelSelection = process.argv.includes("--live-model-selection");
 const modelSelectionOnly =
   liveModelSelection || process.argv.includes("--model-selection");
 const subagentModelsOnly = process.argv.includes("--subagent-models");
-const answerModesOnly = process.argv.includes("--answer-modes");
+const compareAnswerModes = process.argv.includes("--compare-answer-modes");
+const answerModesOnly =
+  compareAnswerModes || process.argv.includes("--answer-modes");
+if (
+  compareAnswerModes &&
+  (!process.env.DSH_QA_BENCH_ENDPOINT ||
+    !process.env.DSH_QA_BENCH_MODEL ||
+    !process.env.DSH_QA_BENCH_RESULTS ||
+    withBrowser)
+)
+  throw new Error(
+    "--compare-answer-modes requires DSH_QA_BENCH_ENDPOINT, DSH_QA_BENCH_MODEL, DSH_QA_BENCH_RESULTS and API-only execution",
+  );
 const questionSoundsOnly = process.argv.includes("--question-sounds");
 const formReaderOnly = process.argv.includes("--form-reader");
 const readerModel = process.env.DSH_QA_READER_MODEL;
@@ -1228,7 +1241,7 @@ try {
       dshEnv,
       workspacePath,
     });
-    await runAnswerModesPass({
+    const modeOptions = {
       workspaceId: registered.workspace.workspaceId,
       dshBin,
       dshVersion,
@@ -1238,7 +1251,27 @@ try {
       launchToken,
       authenticateBrowser,
       hostLog,
-    });
+    };
+    if (compareAnswerModes) {
+      await installAnswerModeQuestionPlugins(modeOptions);
+      const { stdout } = await run(
+        "dotnet",
+        [
+          "run",
+          "--file",
+          join(repo, "scripts/benchmark-answer-modes.cs"),
+          "--",
+          dshBin,
+          temporaryRoot,
+          registered.workspace.workspaceId,
+          dshVersion,
+        ],
+        { cwd: repo, env: dshEnv },
+      );
+      console.log(stdout.trimEnd());
+    } else {
+      await runAnswerModesPass(modeOptions);
+    }
   }
   if (subagentModelsOnly) {
     await stopProcess(host);

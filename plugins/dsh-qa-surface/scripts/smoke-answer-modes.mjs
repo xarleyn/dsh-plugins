@@ -42,24 +42,12 @@ export async function installAnswerModePlugins({
   }
 }
 
-/** Packed Host, native tool guard and actual QA question RPC; scripted local LLM. */
-export async function runAnswerModesPass(options) {
-  const {
-    dshBin,
-    dshEnv,
-    root,
-    workspacePath,
-    workspaceId,
-    launchToken,
-    authenticateBrowser,
-    hostLog,
-    dshVersion,
-  } = options;
-  assert.equal(
-    typeof workspaceId,
-    "string",
-    "The fixture needs a registered workspace identity",
-  );
+export async function installAnswerModeQuestionPlugins({
+  dshBin,
+  dshEnv,
+  workspacePath,
+  dshVersion,
+}) {
   await run(
     process.execPath,
     [
@@ -84,6 +72,26 @@ export async function runAnswerModesPass(options) {
     ],
     { cwd: workspacePath, env: dshEnv },
   );
+}
+
+/** Packed Host, native tool guard and actual QA question RPC; scripted local LLM. */
+export async function runAnswerModesPass(options) {
+  const {
+    dshBin,
+    dshEnv,
+    root,
+    workspacePath,
+    workspaceId,
+    launchToken,
+    authenticateBrowser,
+    hostLog,
+  } = options;
+  assert.equal(
+    typeof workspaceId,
+    "string",
+    "The fixture needs a registered workspace identity",
+  );
+  await installAnswerModeQuestionPlugins(options);
   const phases = new Map();
   const expertReview =
     process.env.DSH_QA_RAG_REVIEW_BACKEND === "domain-expert";
