@@ -51,4 +51,20 @@ const client: UserConfig = {
   },
 };
 
-export default [client];
+// The isolated worker mounts only lib/search-sources. Keep the OOXML extractor
+// with its adapter, leaving the inventory CLI as a separate executable module.
+const documentReader: UserConfig = {
+  name: "dsh-qa-surface/archive-documents",
+  entry: { "document-reader": "src/search-sources/document-reader.ts" },
+  outDir: "lib/search-sources",
+  format: ["esm"],
+  platform: "node",
+  target: "node22",
+  dts: false,
+  sourcemap: true,
+  clean: false,
+  deps: { alwaysBundle: ["@yadsh/dsh-documents/docx"] },
+  outputOptions: { codeSplitting: false, entryFileNames: "document-reader.js" },
+};
+
+export default [client, documentReader];

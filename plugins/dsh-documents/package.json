@@ -45,6 +45,10 @@
     "./types": {
       "types": "./lib/types/documents/types.d.ts"
     },
+    "./docx": {
+      "types": "./lib/types/documents/comparison/extractors/docx.d.ts",
+      "default": "./lib/documents/comparison/extractors/docx.js"
+    },
     "./locale/en.json": "./locale/en.json",
     "./package.json": "./package.json"
   },

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
 import { spawn } from "node:child_process";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { freePort, rpc, stopProcess, waitFor } from "./smoke-helpers.mjs";
 import { runReasoningEffortPass } from "./smoke-reasoning-effort.mjs";
@@ -46,7 +46,11 @@ export async function runIntegrationFolderBrowserPass(options) {
     ? { operations: [], requested: false, env: {}, reader: undefined }
     : undefined;
   if (archive) {
-    const { archiveReader } = await import("../lib/search-sources/reader.js");
+    const { archiveReader, extractArchiveDocument } =
+      await import("../lib/search-sources/reader.js");
+    const word = await readFile(
+      new URL("../tests/fixtures/archive/equipment.docx", import.meta.url),
+    );
     const { privateKey, publicKey } = generateKeyPairSync("ed25519");
     const issuer = join(root, "reader-test.pem");
     await writeFile(
@@ -54,9 +58,13 @@ export async function runIntegrationFolderBrowserPass(options) {
       privateKey.export({ format: "pem", type: "pkcs8" }),
     );
     const authPort = await freePort();
-    archive.reader = archiveReader(authPort, publicKey, async (op) => {
+    archive.reader = archiveReader(authPort, publicKey, async (op, signal) => {
       archive.operations.push(op);
-      return { text: "Synthetic archive receipt.", nextOffset: null };
+      return {
+        format: "docx",
+        fragments: await extractArchiveDocument("docx", word, signal),
+        nextOffset: null,
+      };
     });
     await new Promise((resolve) =>
       archive.reader.listen(0, "127.0.0.1", resolve),
@@ -440,7 +448,7 @@ ${
       assert.equal(
         archive.delivered,
         true,
-        "selected archive bytes reached the model",
+        "the selected DOCX value and original table location reached the model",
       );
       assert.equal(
         archive.denied,
@@ -448,16 +456,18 @@ ${
         "next unselected request refused before archive I/O",
       );
     }
-    if (archive)
+    if (archive) {
+      await page.getByText("47.25 kPa — Equipment, table 1, row 1").waitFor();
       assert.deepEqual(archive.operations, [
         {
           action: "read",
           directory: "demo",
-          path: "sample.txt",
+          path: "equipment.docx",
           query: "",
           offset: 0,
         },
       ]);
+    }
     if (chatLayoutOnly) return;
     await sidebar.getByTestId("qa-history-create-folder").click();
     await page

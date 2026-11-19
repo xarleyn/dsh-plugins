@@ -10,7 +10,13 @@ import { openArchivePath } from "./archive-path.js";
 import { browseInventory, unavailableEntry } from "./inventory.js";
 import { inventoryPolicy } from "./inventory-policy.js";
 import { createServer } from "node:http";
+import { extname } from "node:path";
 import { pathToFileURL } from "node:url";
+import { ArchiveDocumentReader } from "./document-reader.js";
+export {
+  ArchiveDocumentReader,
+  extractArchiveDocument,
+} from "./document-reader.js";
 import {
   archivePort,
   archiveHost,
@@ -21,6 +27,7 @@ import {
 } from "./protocol.js";
 
 const limit = 64 * 1024;
+const documents = new ArchiveDocumentReader();
 
 /** Linux descriptor-relative traversal. Operator mounts are read-only and only
  * visible to this worker. No symlink component or special file is followed. */
@@ -32,6 +39,7 @@ export async function readArchive(
     policy: process.env.QA_ARCHIVE_POLICY,
     inventory: process.env.QA_ARCHIVE_INVENTORY,
   },
+  documentReader = documents,
 ) {
   if (
     !["list", "search", "link", "read", "find", "tree"].includes(op.action) ||
@@ -134,6 +142,15 @@ export async function readArchive(
     const stat = await handle.stat();
     if (!stat.isFile()) throw new Error("A regular file is required.");
     if (op.action === "link") return { path: op.path };
+    const format = extname(op.path).slice(1).toLowerCase();
+    if (format === "doc" || format === "docx" || format === "pdf") {
+      return await documentReader.read(handle, stat, format, op.offset, signal);
+    }
+    if (format === "docm")
+      return {
+        status: "unsupported_format",
+        message: "Choose a DOCX copy of this macro-enabled Word document.",
+      };
     const data = Buffer.alloc(
       Math.min(limit, Math.max(0, stat.size - op.offset)),
     );
