@@ -40,29 +40,35 @@ export interface QaQueueInput {
   readonly failures?: readonly QaToolFailureSignal[];
 }
 
-function statusOf(
+export function reviewStateOf(
   reviews: readonly QaConversationReview[],
   conversationId: string,
-  messageId: string | undefined,
+  messageId?: string,
 ): {
   readonly status: QaReviewStatus;
   readonly review: QaConversationReview | undefined;
 } {
-  const covering = reviews.filter(
-    (row) =>
-      row.conversationId === conversationId &&
-      (messageId === undefined ||
-        row.messageId === undefined ||
-        row.messageId === messageId),
-  );
-  if (covering.length === 0) return { status: "unreviewed", review: undefined };
-  const followUp = covering.find((row) => row.status === "needs_followup");
-  if (followUp !== undefined)
-    return { status: "needs_followup", review: followUp };
-  const newest = [...covering].sort((left, right) =>
-    right.createdAt.localeCompare(left.createdAt),
-  )[0];
-  return { status: "reviewed", review: newest };
+  let newest: QaConversationReview | undefined;
+  for (const review of reviews) {
+    if (
+      review.conversationId !== conversationId ||
+      (messageId !== undefined &&
+        review.messageId !== undefined &&
+        review.messageId !== messageId)
+    )
+      continue;
+    if (review.status === "needs_followup")
+      return { status: "needs_followup", review };
+    if (
+      newest === undefined ||
+      review.createdAt.localeCompare(newest.createdAt) > 0
+    )
+      newest = review;
+  }
+  return {
+    status: newest === undefined ? "unreviewed" : "reviewed",
+    review: newest,
+  };
 }
 
 function priorityOf(
@@ -102,7 +108,7 @@ export function deriveQueue({
 
   for (const row of feedback) {
     if (row.rating !== "negative") continue;
-    const { status, review } = statusOf(
+    const { status, review } = reviewStateOf(
       reviews,
       row.conversationId,
       row.messageId,
@@ -122,7 +128,7 @@ export function deriveQueue({
   }
 
   for (const entry of manual) {
-    const { status, review } = statusOf(
+    const { status, review } = reviewStateOf(
       reviews,
       entry.conversationId,
       entry.messageId,
@@ -141,7 +147,7 @@ export function deriveQueue({
   }
 
   for (const failure of failures) {
-    const { status, review } = statusOf(
+    const { status, review } = reviewStateOf(
       reviews,
       failure.conversationId,
       failure.messageId,

@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { QaConversationReviewInput } from "../../../src/types.js";
 import {
   CONVERSATION,
+  accessApi,
   adminApi,
   renderConsole,
 } from "./qa-admin-console.helpers.js";
@@ -54,13 +55,15 @@ describe("admin console", () => {
   });
 
   it("keeps the section out of reach for a role that may not open it", async () => {
-    renderConsole(adminApi(), "/qa/admin", "reviewer");
+    const access = accessApi();
+    renderConsole(adminApi(), "/qa/admin/common", "reviewer", access);
     expect(await screen.findByRole("heading", { name: "Обзор" })).toBeTruthy();
+    expect(access.admin).not.toHaveBeenCalled();
     // Access administration is not a reviewer's business.
     expect(screen.queryByTestId("qa-admin-nav-common")).toBeNull();
   });
 
-  it("classifies a conversation and sends it to the review queue", async () => {
+  it("saves a classification and follow-up link on the selected answer", async () => {
     const saveReview = vi.fn(
       async (_token: string, input: QaConversationReviewInput) => ({
         ok: true as const,
@@ -77,12 +80,17 @@ describe("admin console", () => {
     const issues = within(await screen.findByTestId("qa-admin-review-issues"));
     // The option is still ticked through the name a screen reader reads.
     fireEvent.click(issues.getByRole("checkbox", { name: "Неверный ответ" }));
+    fireEvent.change(screen.getByTestId("qa-admin-review-follow-up"), {
+      target: { value: "https://tracker.example.test/issues/PROJ-123" },
+    });
     fireEvent.click(screen.getByTestId("qa-admin-review-save"));
     await waitFor(() => expect(saveReview).toHaveBeenCalledTimes(1));
     expect(saveReview.mock.calls[0]?.[1]).toMatchObject({
       conversationId: "session-alice",
+      messageId: "3",
       status: "reviewed",
       issues: ["answer.incorrect"],
+      followUpUrl: "https://tracker.example.test/issues/PROJ-123",
     });
   });
 

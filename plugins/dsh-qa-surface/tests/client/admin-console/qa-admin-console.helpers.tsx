@@ -263,11 +263,12 @@ export function renderConsole(
   api: QaAdminApi,
   path = "/qa/admin",
   role: "admin" | "reviewer" = "admin",
+  access: QaAccessApi = accessApi(),
 ): ReturnType<typeof render> {
   window.history.pushState(null, "", path);
   return render(
     <QaAdmin
-      api={accessApi()}
+      api={access}
       adminApi={api}
       token="token"
       routePath="/qa"

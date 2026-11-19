@@ -364,6 +364,24 @@ function optionalText(
   return trimmed;
 }
 
+function followUpLink(value: unknown): string | undefined {
+  const text = optionalText(value, "followUpUrl", 2_048);
+  if (text === undefined) return undefined;
+  const url = URL.parse(text);
+  if (
+    !url ||
+    !/^https?:\/\//iu.test(text) ||
+    /\p{Cc}/u.test(text) ||
+    url.username ||
+    url.password
+  ) {
+    throw new TypeError(
+      "followUpUrl must be an HTTP(S) URL without credentials",
+    );
+  }
+  return url.href;
+}
+
 function oneOf<T extends string>(
   value: unknown,
   allowed: readonly T[],
@@ -571,6 +589,10 @@ export class QaQualityStore {
         row.reviewerId === reviewerId &&
         row.messageId === messageId,
     );
+    const followUpUrl =
+      input.followUpUrl === undefined
+        ? existing?.followUpUrl
+        : followUpLink(input.followUpUrl);
     const now = new Date().toISOString();
     const review: QaConversationReview = Object.freeze({
       id: existing?.id ?? randomUUID(),
@@ -587,6 +609,7 @@ export class QaQualityStore {
             target: oneOf(input.target, QA_REMEDIATION_TARGETS, "target"),
           }),
       ...(suggestedAction === undefined ? {} : { suggestedAction }),
+      ...(followUpUrl === undefined ? {} : { followUpUrl }),
       createdAt: existing?.createdAt ?? now,
       ...(existing === undefined ? {} : { updatedAt: now }),
     });
@@ -998,6 +1021,7 @@ function restoreReview(value: unknown): QaConversationReview {
     MAX_ACTION_LENGTH,
   );
   const updatedAt = optionalText(source.updatedAt, "updatedAt", 64);
+  const followUpUrl = followUpLink(source.followUpUrl);
   return Object.freeze({
     id: requiredText(source.id, "id", MAX_ID_LENGTH),
     conversationId: requiredText(
@@ -1015,6 +1039,7 @@ function restoreReview(value: unknown): QaConversationReview {
       ? {}
       : { target: oneOf(source.target, QA_REMEDIATION_TARGETS, "target") }),
     ...(suggestedAction === undefined ? {} : { suggestedAction }),
+    ...(followUpUrl === undefined ? {} : { followUpUrl }),
     createdAt: requiredText(source.createdAt, "createdAt", 64),
     ...(updatedAt === undefined ? {} : { updatedAt }),
   });

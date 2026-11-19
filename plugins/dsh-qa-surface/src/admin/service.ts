@@ -51,7 +51,6 @@ import type {
   QaQualityMetrics,
   QaReviewQueueItem,
   QaReviewQueueRow,
-  QaReviewStatus,
   QaSkillDocument,
   QaSkillDraftInput,
   QaSkillRemoval,
@@ -78,7 +77,11 @@ import {
   type QaReadBudget,
 } from "./read-budget.js";
 import { paginate } from "./paging.js";
-import { deriveQueue, type QaToolFailureSignal } from "./queue.js";
+import {
+  deriveQueue,
+  reviewStateOf,
+  type QaToolFailureSignal,
+} from "./queue.js";
 import { QA_FEEDBACK_RATINGS, type QaQualityStore } from "./quality-store.js";
 import type { QaAdminRedactor } from "./redaction.js";
 import { defaultAdminRedactor } from "./redaction.js";
@@ -267,21 +270,6 @@ function matches(
  */
 function given<T>(value: T | null | undefined): T | undefined {
   return value === null ? undefined : value;
-}
-
-/**
- * Review state of a conversation as a whole: a needs-followup verdict outranks
- * a completed one, and no review at all is the unreviewed default.
- */
-function reviewStatusOf(
-  reviews: readonly QaConversationReview[],
-  conversationId: string,
-): QaReviewStatus {
-  const mine = reviews.filter((row) => row.conversationId === conversationId);
-  if (mine.length === 0) return "unreviewed";
-  return mine.some((row) => row.status === "needs_followup")
-    ? "needs_followup"
-    : "reviewed";
 }
 
 /**
@@ -1262,7 +1250,7 @@ export class QaAdminService {
       }
       if (
         reviewFilter !== undefined &&
-        reviewStatusOf(reviews, row.conversationId) !== reviewFilter
+        reviewStateOf(reviews, row.conversationId).status !== reviewFilter
       ) {
         continue;
       }
@@ -1348,7 +1336,7 @@ export class QaAdminService {
         .length,
       negativeFeedback: mine.filter(({ rating }) => rating === "negative")
         .length,
-      reviewStatus: reviewStatusOf(reviews, row.conversationId),
+      reviewStatus: reviewStateOf(reviews, row.conversationId).status,
     });
   }
 
@@ -1733,7 +1721,8 @@ export class QaAdminService {
       if (to !== undefined && (at === undefined || at > to)) return false;
       if (
         reviewFilter !== undefined &&
-        reviewStatusOf(reviews, row.conversationId) !== reviewFilter
+        reviewStateOf(reviews, row.conversationId, row.messageId).status !==
+          reviewFilter
       ) {
         return false;
       }
@@ -1795,7 +1784,8 @@ export class QaAdminService {
         displayName: conversation?.displayName ?? row.userId,
         subroleId: conversation?.subroleId ?? "",
         ...(title === undefined ? {} : { conversationTitle: title }),
-        reviewStatus: reviewStatusOf(reviews, row.conversationId),
+        reviewStatus: reviewStateOf(reviews, row.conversationId, row.messageId)
+          .status,
       });
     });
   }
