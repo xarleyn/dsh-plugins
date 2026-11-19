@@ -190,6 +190,17 @@ export class SourceTurns {
     return state;
   }
 
+  /** Report the selected reader only while this agent still owns a live grant. */
+  async available(agent: Agent) {
+    try {
+      const state = this.current(agent);
+      await state.grant.verify();
+      return this.current(agent) === state;
+    } catch {
+      return false;
+    }
+  }
+
   drop(session: string, id: string) {
     const q = this.pending.get(session);
     q?.delete(id);

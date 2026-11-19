@@ -55,6 +55,16 @@ function setup() {
 }
 
 describe("message-scoped source access", () => {
+  it("checks the live grant before reporting the reader to selfcheck", async () => {
+    const h = setup();
+    expect(await h.turns.available(h.agent)).toBe(false);
+    await h.submit("chosen");
+    await h.step(h.msg("chosen"));
+    expect(await h.turns.available(h.agent)).toBe(true);
+    vi.mocked(h.grant.verify).mockRejectedValue(new Error("revoked"));
+    expect(await h.turns.available(h.agent)).toBe(false);
+    h.turns.dispose();
+  });
   it("requires the exact admitted message, agent and turn, including on regeneration", async () => {
     const h = setup();
     await h.step(h.msg("plain"));

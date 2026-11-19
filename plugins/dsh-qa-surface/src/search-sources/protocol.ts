@@ -1,12 +1,16 @@
 import type { IncomingMessage } from "node:http";
 
-export type ArchiveAction = "list" | "search" | "read" | "link";
+export type ArchiveAction =
+  "list" | "search" | "read" | "link" | "find" | "tree";
 export interface ArchiveOperation {
   readonly directory: string;
   readonly action: ArchiveAction;
   readonly path: string;
   readonly query: string;
   readonly offset: number;
+  readonly depth?: number;
+  readonly kind?: "directory" | "file";
+  readonly snapshot?: string;
 }
 
 export function archivePort(
