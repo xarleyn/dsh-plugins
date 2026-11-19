@@ -183,11 +183,12 @@ describe("package hygiene (SPEC §25)", () => {
     expect(manifest.description).toMatch(/deepseek harness/i);
     expect(compatibility.node).toBe(manifest.engines.node);
     expect(compatibility.deepseekHarness.range).toBe(
-      ">=0.1.7-rc.2 <0.3.0-0 || 0.2.1-rc.3 || 0.2.2-rc.3",
+      ">=0.1.7-rc.2 <0.3.0-0 || 0.2.1-rc.3 || 0.2.2-rc.3 || 0.2.2-rc.5",
     );
     expect(compatibility.deepseekHarness.testedReleases).toEqual([
       "0.1.7-rc.2",
       "0.2.2-rc.3",
+      "0.2.2-rc.5",
     ]);
   });
 });

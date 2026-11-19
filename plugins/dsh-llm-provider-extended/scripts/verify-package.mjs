@@ -20,7 +20,7 @@ await runVerifyPackage({
   ],
   compatibility: {
     range: true,
-    testedReleases: ["0.2.2-rc.3"],
+    testedReleases: ["0.2.2-rc.3", "0.2.2-rc.5"],
     clientFeatures: ["plugins.row.config", "configForms"],
   },
   client: {
