@@ -83,23 +83,36 @@ export async function runUsageGuidePass(page, settings) {
   await opener.waitFor();
   assert.equal(await guide.count(), 0);
   assert.equal(await stock.count(), 0);
-  await opener.click();
-  await guide.getByRole("button", { name: "Закрыть" }).waitFor();
-  assert.equal(await checkbox.count(), 0);
-  await page.keyboard.press("Escape");
-  await guide.waitFor({ state: "hidden" });
-  const focusAfterClose = await opener.evaluate((node) => {
-    const doc = node.ownerDocument;
-    const focused = doc.activeElement;
-    return {
-      onOpener: node === focused,
-      focused: focused?.getAttribute("data-testid") ?? focused?.tagName,
-      inert: !!node.closest("[inert]"),
-      dialogs: [...doc.querySelectorAll('[role="dialog"]')].map((element) =>
-        element.getAttribute("aria-label"),
-      ),
-    };
-  });
+  const reopenAndClose = async () => {
+    await opener.click();
+    await guide.getByRole("button", { name: "Закрыть" }).waitFor();
+    assert.equal(await checkbox.count(), 0);
+    await page.keyboard.press("Escape");
+    await guide.waitFor({ state: "hidden" });
+    return opener.evaluate((node) => {
+      const doc = node.ownerDocument;
+      const focused = doc.activeElement;
+      return {
+        onOpener: node === focused,
+        focused: focused?.getAttribute("data-testid") ?? focused?.tagName,
+        inert: !!node.closest("[inert]"),
+        dialogs: [...doc.querySelectorAll('[role="dialog"]')].map((element) =>
+          element.getAttribute("aria-label"),
+        ),
+      };
+    });
+  };
+  let focusAfterClose = await reopenAndClose();
+  // A late native startup dialog can take focus just as the guide closes.
+  // Defer it through the opener's locator handlers and recheck the focus round.
+  if (
+    !focusAfterClose.onOpener &&
+    focusAfterClose.dialogs.some(
+      (name) =>
+        name === "Get started" || name === "Add an API key to get started",
+    )
+  )
+    focusAfterClose = await reopenAndClose();
 
   if (settings) {
     const operator = await page.context().newPage();
@@ -202,6 +215,7 @@ export async function runImplementerGuidePass({
     const shot = (name) =>
       page.screenshot({ path: join(evidenceDirectory, name) });
     await page.goto(authenticatedUrl);
+    await page.getByRole("button", { name: "Plugins", exact: true }).waitFor();
     await page.goto(origin + "/qa");
     await page.getByTestId("qa-surface-welcome-continue").click();
     const guide = page.getByRole("dialog", { name: "Как работать с агентом" });
