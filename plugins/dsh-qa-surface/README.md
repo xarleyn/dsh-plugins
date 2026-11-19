@@ -1178,6 +1178,18 @@ tool, or declare it on the manual skill and include it in the role's
 skill-grantable tools. The tool accepts only a relative path within the
 directory selected for the current user message. It lists one directory,
 searches its entry names, reads paged UTF-8 text or checks a file address.
+An optional inventory adds `find` over the full relative path and `tree`
+with a depth of one to four. Page with the returned offset and snapshot.
+In the isolated reader set `QA_ARCHIVE_POLICY` to a JSON file with arrays
+`sensitiveNames`, `directories`, `files`, `excludedExtensions`, and
+`allowedExtensions`. Name patterns accept `*` and are case-insensitive.
+Denied extensions take precedence. Set `QA_ARCHIVE_INVENTORY` to the
+operator-built JSON inventory for the source. Run
+`node lib/search-sources/inventory.js <directory>` in the reader's mount
+namespace and atomically publish its successful stdout outside the workspace.
+The scan records names only, prunes excluded directories, and skips symlinks.
+Search and tree require the same mount and policy revision. Live listing,
+reading, and link lookup also enforce the policy.
 An optional `linkBase` such as `file://files.example.corp/archive/` returns
 addresses usable outside the chat. Without it, addresses use the source label.
 Both ends use loopback ports 18791 (reader) and 18792 (Host authorization);

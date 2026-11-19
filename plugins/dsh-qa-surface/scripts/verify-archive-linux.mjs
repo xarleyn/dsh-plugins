@@ -14,8 +14,166 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { readArchive } from "../lib/search-sources/reader.js";
+import { buildInventory } from "../lib/search-sources/inventory.js";
+import { inventoryPolicy } from "../lib/search-sources/inventory-policy.js";
 import { setTimeout } from "node:timers/promises";
 import { ArchiveGateway } from "../lib/search-sources/gateway.js";
+
+test("path inventory, live tree, pagination, exclusions and policy refresh", async () => {
+  const root = await mkdtemp(join(tmpdir(), "qa-index-"));
+  try {
+    const source = join(root, "docs");
+    const config = {
+      policy: join(root, "rules.json"),
+      inventory: join(root, "inventory.json"),
+    };
+    const rules = {
+      directories: ["#recycle"],
+      files: ["~$*", "desktop.ini"],
+      sensitiveNames: ["*password*", "*учетн*запис*"],
+      excludedExtensions: [".log"],
+      allowedExtensions: [".txt", ".docx", ".pdf", ".log"],
+    };
+    await writeFile(config.policy, JSON.stringify(rules));
+    const signal = new globalThis.AbortController().signal;
+    for (const path of [
+      "ID 12345 ID 54321/ID12345/Acts",
+      "ID 12345 ID 54321/ID 54321/Acts",
+      "snap/ACME",
+      "closed/ACME",
+      "2025/ID 12345/Contract 3001",
+      "#Recycle",
+      "УЧЁТНЫЕ ЗАПИСИ",
+      "empty",
+    ]) {
+      await mkdir(join(source, path), { recursive: true });
+    }
+    const visible = "ID 12345 ID 54321/ID12345/Acts";
+    for (const path of [
+      visible + "/Report.PDF",
+      "snap/ACME/project.docx",
+      "#Recycle/hidden.txt",
+      "УЧЁТНЫЕ ЗАПИСИ/test.txt",
+      "passwords.txt",
+      "~$temp.docx",
+      "desktop.ini",
+      "dump.log",
+      "other.exe",
+    ])
+      await writeFile(join(source, path), "fixture");
+    for (let i = 0; i < 105; i++)
+      await writeFile(join(source, visible, i + ".txt"), "text");
+    await symlink(join(source, "#Recycle"), join(source, "alias"));
+    const index = await buildInventory(
+      root,
+      "docs",
+      inventoryPolicy(config.policy),
+      signal,
+    );
+    await writeFile(config.inventory, JSON.stringify(index));
+    const run = (action, options = {}) =>
+      readArchive(
+        root,
+        {
+          directory: "docs",
+          path: "",
+          query: "",
+          offset: 0,
+          action,
+          ...options,
+        },
+        signal,
+        config,
+      );
+    const matches = await run("find", {
+      query: "12345 Acts",
+      kind: "directory",
+    });
+    assert.deepEqual(
+      matches.entries.map((e) => e.path),
+      [visible],
+    );
+    const contract = "2025/ID 12345/Contract 3001";
+    assert.deepEqual(
+      (
+        await run("find", { query: "2025 ID №12345 Contract 3001" })
+      ).entries.map((e) => e.path),
+      [contract],
+    );
+    assert.deepEqual(
+      (await run("find", { query: "ID 2025 Contract" })).entries,
+      [],
+    );
+    assert.deepEqual(
+      (await run("find", { query: "acme", kind: "directory" })).entries.map(
+        (e) => e.path,
+      ),
+      ["closed/ACME", "snap/ACME"],
+    );
+    const page = await run("tree", { path: visible, depth: 1 });
+    const paths = page.entries.map((e) => e.path);
+    let offset = page.nextOffset;
+    while (offset !== null) {
+      const next = await run("tree", {
+        path: visible,
+        depth: 1,
+        offset,
+        snapshot: page.snapshot,
+      });
+      paths.push(...next.entries.map((e) => e.path));
+      offset = next.nextOffset;
+    }
+    assert.deepEqual(
+      paths.sort(),
+      (await readdir(join(source, visible)))
+        .map((n) => visible + "/" + n)
+        .sort(),
+    );
+    const first = await run("list", { path: visible });
+    assert.equal(first.entries.length, 100);
+    assert.equal(
+      (await run("list", { path: visible, offset: first.nextOffset })).entries
+        .length,
+      6,
+    );
+    assert.deepEqual((await run("list", { path: "empty" })).entries, []);
+    assert.ok(
+      (await run("tree", { depth: 1 })).entries.every(
+        (e) => !e.path.includes("/"),
+      ),
+    );
+    for (const name of [
+      "#Recycle",
+      "УЧЁТНЫЕ ЗАПИСИ",
+      "alias",
+      "passwords.txt",
+      "~$temp.docx",
+      "desktop.ini",
+      "dump.log",
+      "other.exe",
+    ]) {
+      assert.ok(!index.entries.some((e) => e.path.split("/").includes(name)));
+      assert.ok(!(await run("list")).entries.some((e) => e.name === name));
+      for (const action of ["link", "read"])
+        await assert.rejects(
+          run(action, {
+            path: name.includes(".") ? name : name + "/hidden.txt",
+          }),
+        );
+    }
+    await rm(join(source, visible, "Report.PDF"));
+    assert.deepEqual((await run("find", { query: "report" })).entries, []);
+    await assert.rejects(run("tree", { snapshot: "different" }));
+    await writeFile(
+      config.policy,
+      JSON.stringify({ ...rules, directories: [...rules.directories, "snap"] }),
+    );
+    await assert.rejects(run("tree"));
+    await assert.rejects(run("link", { path: "snap/ACME/project.docx" }));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test(
   "isolated QA namespace sees ordinary docs and redeems selected reads only through its reader",

@@ -4,8 +4,11 @@ import {
   verify,
   type KeyObject,
 } from "node:crypto";
-import { readFileSync, constants } from "node:fs";
-import { open, opendir, type FileHandle } from "node:fs/promises";
+import { readFileSync } from "node:fs";
+import { opendir } from "node:fs/promises";
+import { openArchivePath } from "./archive-path.js";
+import { browseInventory, unavailableEntry } from "./inventory.js";
+import { inventoryPolicy } from "./inventory-policy.js";
 import { createServer } from "node:http";
 import { pathToFileURL } from "node:url";
 import {
@@ -17,10 +20,6 @@ import {
   type ArchiveOperation,
 } from "./protocol.js";
 
-const directoryFlags =
-  constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW;
-const fileFlags =
-  constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
 const limit = 64 * 1024;
 
 /** Linux descriptor-relative traversal. Operator mounts are read-only and only
@@ -29,9 +28,13 @@ export async function readArchive(
   root: string,
   op: ArchiveOperation,
   signal: AbortSignal,
+  config = {
+    policy: process.env.QA_ARCHIVE_POLICY,
+    inventory: process.env.QA_ARCHIVE_INVENTORY,
+  },
 ) {
   if (
-    !["list", "search", "link", "read"].includes(op.action) ||
+    !["list", "search", "link", "read", "find", "tree"].includes(op.action) ||
     segments(op.directory).length !== 1 ||
     !Number.isSafeInteger(op.offset) ||
     op.offset < 0 ||
@@ -40,42 +43,93 @@ export async function readArchive(
   )
     throw new Error("Invalid source operation.");
   const path = segments(op.path);
-  const listing = op.action === "list" || op.action === "search";
+  const browsing = op.action === "find" || op.action === "tree";
+  const listing = browsing || op.action === "list" || op.action === "search";
   if (!listing && !path.length) throw new Error("A file is required.");
   signal.throwIfAborted();
-  let handle: FileHandle = await open(root, directoryFlags);
+  if (config.inventory && !config.policy)
+    throw new Error("Missing archive exclusion policy.");
+  const policy = config.policy ? inventoryPolicy(config.policy) : undefined;
+  const handle = await openArchivePath(
+    root,
+    op.directory,
+    op.path,
+    listing ? "directory" : "file",
+    signal,
+    policy,
+  );
   try {
-    const parts = [op.directory, ...path];
-    for (const [i, part] of parts.entries()) {
-      signal.throwIfAborted();
-      const next = await open(
-        "/proc/self/fd/" + handle.fd + "/" + part,
-        listing || i + 1 < parts.length ? directoryFlags : fileFlags,
-      );
-      await handle.close();
-      handle = next;
-    }
     signal.throwIfAborted();
+    if (browsing) {
+      if (!policy || !config.inventory)
+        throw new Error("Archive inventory unavailable.");
+      return await browseInventory(root, op, signal, policy, config.inventory);
+    }
     if (listing) {
       const entries = [];
-      let matched = 0;
+      const candidates = [];
       const query = op.query.toLowerCase();
       const dir = await opendir("/proc/self/fd/" + handle.fd);
       for await (const entry of dir) {
         signal.throwIfAborted();
         if (
           (!entry.isFile() && !entry.isDirectory()) ||
+          (policy &&
+            !policy.permits(
+              entry.name,
+              entry.isDirectory() ? "directory" : "file",
+            )) ||
           (op.action === "search" && !entry.name.toLowerCase().includes(query))
         )
           continue;
-        if (matched++ < op.offset) continue;
-        if (entries.length === 100) return { entries, nextOffset: matched - 1 };
-        entries.push({
+        candidates.push({
           name: entry.name,
-          kind: entry.isDirectory() ? "directory" : "file",
+          kind: entry.isDirectory()
+            ? ("directory" as const)
+            : ("file" as const),
         });
       }
-      return { entries, nextOffset: null };
+      candidates.sort((a, b) =>
+        a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
+      );
+      let cursor = op.offset;
+      while (cursor < candidates.length && entries.length < 100) {
+        signal.throwIfAborted();
+        const entry = candidates[cursor++]!;
+        if (policy) {
+          const child = [...path, entry.name].join("/");
+          try {
+            segments(child);
+          } catch {
+            continue;
+          }
+          try {
+            const live = await openArchivePath(
+              root,
+              op.directory,
+              child,
+              entry.kind,
+              signal,
+              policy,
+            );
+            try {
+              const s = await live.stat();
+              if (entry.kind === "file" ? !s.isFile() : !s.isDirectory())
+                continue;
+            } finally {
+              await live.close();
+            }
+          } catch (error) {
+            if (unavailableEntry(error)) continue;
+            throw error;
+          }
+        }
+        entries.push(entry);
+      }
+      return {
+        entries,
+        nextOffset: cursor < candidates.length ? cursor : null,
+      };
     }
     const stat = await handle.stat();
     if (!stat.isFile()) throw new Error("A regular file is required.");
