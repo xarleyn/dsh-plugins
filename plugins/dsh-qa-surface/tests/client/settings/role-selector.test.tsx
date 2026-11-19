@@ -2,7 +2,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import {
-  QaAdminPreviewBanner,
+  QaAdminPreviewExit,
   QaRoleSelector,
 } from "../../../src/client/role/RoleSelector.js";
 
@@ -62,18 +62,11 @@ describe("QA role selector", () => {
   });
 });
 
-describe("administrator preview banner", () => {
-  it("names the previewed profile without an exit while only reporting", () => {
-    render(<QaAdminPreviewBanner role="Аналитик" />);
-    expect(screen.getByRole("status").textContent).toContain("Аналитик");
-    expect(
-      screen.queryByRole("button", { name: "Выйти из просмотра" }),
-    ).toBeNull();
-  });
-
-  it("offers the way out of the preview", () => {
+describe("administrator preview exit", () => {
+  it("offers the way out without a role banner", () => {
     const onExit = vi.fn();
-    render(<QaAdminPreviewBanner role="Аналитик" onExit={onExit} />);
+    render(<QaAdminPreviewExit onExit={onExit} />);
+    expect(screen.queryByRole("status")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Выйти из просмотра" }));
     expect(onExit).toHaveBeenCalledTimes(1);
   });
@@ -83,7 +76,7 @@ describe("administrator preview banner", () => {
     // the screen from the question on its way in — the one departure between
     // chats that the surface cannot undo once it has happened.
     const onExit = vi.fn();
-    render(<QaAdminPreviewBanner role="Аналитик" onExit={onExit} disabled />);
+    render(<QaAdminPreviewExit onExit={onExit} disabled />);
     const exit = screen.getByRole("button", { name: "Выйти из просмотра" });
     expect((exit as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(exit);

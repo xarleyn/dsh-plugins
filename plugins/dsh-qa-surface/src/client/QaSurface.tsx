@@ -30,7 +30,6 @@ import type {
   QaAttachmentDraft,
   QaQuestionAnswerItem,
   QaCurrentAccess,
-  QaSubrole,
   QaFeedbackReason,
 } from "../types.js";
 import { effectiveQuickQuestions } from "../starters.js";
@@ -137,7 +136,7 @@ import { QaAuditDialog } from "./audit/QaAuditDialog.js";
 import { useChatAudits } from "./audit/use-chat-audits.js";
 import { QaAdmin } from "./admin/QaAdmin.js";
 import { isAdminPath } from "./admin/routes.js";
-import { QaAdminPreviewBanner, QaRoleSelector } from "./role/RoleSelector.js";
+import { QaAdminPreviewExit, QaRoleSelector } from "./role/RoleSelector.js";
 import { useQaAdminPreview } from "./role/preview.js";
 import { QaChatSharing, qaChatModeLabel } from "./components/QaChatSharing.js";
 import type { QaSharingApi } from "./chat-sharing-api.js";
@@ -313,7 +312,6 @@ export function QaSurface(props: QaSurfaceProps) {
   const adminRoute = isAdminPath(route.pathname, config.route.path);
   const [access, setAccess] = useState<QaCurrentAccess>();
   const [selectedSubrole, setSelectedSubrole] = useState<string | null>(null);
-  const [sessionRole, setSessionRole] = useState<QaSubrole>();
   /** Whether the chat on screen was itself created as an administrator preview. */
   const [sessionPreview, setSessionPreview] = useState(false);
   const [controller, setController] = useState<QaSessionController>();
@@ -730,6 +728,12 @@ export function QaSurface(props: QaSurfaceProps) {
     controller?.getSnapshot ?? (() => QA_SESSION_IDLE_STATE),
     controller?.getSnapshot ?? (() => QA_SESSION_IDLE_STATE),
   );
+  const previewExit = previewing ? (
+    <QaAdminPreviewExit
+      onExit={exitPreview}
+      disabled={state.phase === "creating"}
+    />
+  ) : undefined;
   const failureDiagnostic = controller?.failureDiagnostic();
   useEffect(() => {
     if (
@@ -737,7 +741,6 @@ export function QaSurface(props: QaSurfaceProps) {
       accountsSnapshot.stage !== "authed" ||
       adminRoute
     ) {
-      setSessionRole(undefined);
       return;
     }
     let live = true;
@@ -745,7 +748,6 @@ export function QaSurface(props: QaSurfaceProps) {
       .session(accounts?.token() ?? "", state.sessionId)
       .then((result) => {
         if (!live || !result.ok) return;
-        setSessionRole(result.value.subrole);
         setSessionPreview(result.value.adminPreview);
         if (result.value.adminPreview) return;
         // An ordinary chat is not a preview. Opening one leaves the mode the
@@ -1847,19 +1849,6 @@ export function QaSurface(props: QaSurfaceProps) {
         tabIndex={-1}
         onKeyDown={trapSurfaceKeys}
       >
-        {previewing || sessionPreview ? (
-          <QaAdminPreviewBanner
-            role={
-              preview?.name ??
-              sessionRole?.name ??
-              sessionRole?.id ??
-              selectedSubrole ??
-              ""
-            }
-            {...(previewing ? { onExit: exitPreview } : {})}
-            disabled={state.phase === "creating"}
-          />
-        ) : null}
         {showSidebar && historyOpen ? (
           // The tap-outside half of the drawer, painted beside it rather than
           // inside it: the sheet switches the sidebar subtree off when the drawer
@@ -1931,6 +1920,9 @@ export function QaSurface(props: QaSurfaceProps) {
           onClose={closeAudit}
         />
         <div className="dsh-qa-body" data-testid="qa-surface-body">
+          {!config.ui.showHeader && previewExit !== undefined ? (
+            <div className="dsh-qa-preview-toolbar">{previewExit}</div>
+          ) : null}
           {state.viewingSubagent !== null && !config.ui.showHeader ? (
             <QaSubagentBanner onClose={handleCloseSubagent} />
           ) : null}
@@ -1949,9 +1941,9 @@ export function QaSurface(props: QaSurfaceProps) {
               viewingSubagent={state.viewingSubagent !== null}
               onCloseSubagent={handleCloseSubagent}
               roleSelector={
-                access === undefined ||
-                selectedSubrole === null ||
-                previewing ? undefined : (
+                previewExit ??
+                (access === undefined ||
+                selectedSubrole === null ? undefined : (
                   <QaRoleSelector
                     roles={access.subroles}
                     selected={selectedSubrole}
@@ -1970,13 +1962,10 @@ export function QaSurface(props: QaSurfaceProps) {
                       clear();
                       setSessionPreview(false);
                       setSelectedSubrole(id);
-                      setSessionRole(
-                        access.subroles.find((role) => role.id === id),
-                      );
                       void controller?.selectSubrole(id, false);
                     }}
                   />
-                )
+                ))
               }
               administration={
                 accountsSnapshot.stage === "authed" &&
