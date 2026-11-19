@@ -61,7 +61,7 @@ describe("integration token clarification settings", () => {
       });
       const db = new DatabaseSync(accounts.filePath);
       db.exec(
-        "BEGIN; DROP TABLE qa_pending_session_removals; DROP TABLE qa_account_removals;",
+        "BEGIN; DROP TABLE qa_deleted_chats; ALTER TABLE qa_ownership DROP COLUMN qa_owner_delete; DROP TABLE qa_pending_session_removals; DROP TABLE qa_account_removals;",
       );
       if (version < 6)
         db.exec(
@@ -92,7 +92,7 @@ describe("integration token clarification settings", () => {
         schema
           .prepare("SELECT value FROM qa_meta WHERE key='schema_version'")
           .get(),
-      ).toEqual({ value: "7" });
+      ).toEqual({ value: "8" });
       expect(
         schema
           .prepare(

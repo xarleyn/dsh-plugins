@@ -1683,23 +1683,28 @@ export class QaSessionController {
   }
 
   /**
-   * Remove one chat from this browser's index. Deleting the chat that is
-   * currently open also forgets the persisted id and starts a fresh attested
-   * session (when the deployment allows session resets); the Host-side
-   * session itself is not touched — no host deletion seam exists.
+   * Clear the local view after a Host deletion was accepted, or remove a
+   * browser-only history entry on a deployment without accounts.
    */
   async deleteChat(id: string): Promise<void> {
+    const saved = this.chats.activeId() === id;
+    const showing =
+      this.activeSessionId() === id ||
+      this.state.sessionId === id ||
+      (saved &&
+        this.session === undefined &&
+        !this.drafting &&
+        this.state.phase !== "creating") ||
+      (this.viewingSubagent !== null && this.chatSessionId === id);
     this.forgetChat(id);
     this.chatsRevision += 1;
-    if (
-      this.activeSessionId() === id &&
-      this.config.session.policy !== "fixed"
-    ) {
+    if (saved) this.chats.clearActive();
+    if (showing && this.config.session.policy !== "fixed") {
       // No replacement session is created: deleting the open chat falls back
       // to a draft, and the next prompt materializes a fresh one. The stale
       // persisted id is dropped so a reload cannot resurrect the deleted chat.
-      this.chats.clearActive();
-      await this.startDraft();
+      this.viewingSubagent = null;
+      await this.startDraft(this.accounts !== undefined);
       return;
     }
     this.publish();

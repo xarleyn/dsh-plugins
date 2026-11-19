@@ -176,7 +176,7 @@ export function LockdownSection(props: ConfigProps) {
                 note: "allowSettingsMutation",
               },
               {
-                label: "Переименование и удаление сессий",
+                label: "Нативное переименование и удаление сессий",
                 value: "запрещены",
                 note: "allowSessionRename, allowSessionDelete",
               },

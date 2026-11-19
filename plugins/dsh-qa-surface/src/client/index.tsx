@@ -1064,6 +1064,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
         });
       };
       const sharingApi: QaSharingApi = {
+        delete: (token, id) => sharingRemote.chatDelete(token, id),
         attachmentPath: (token, id, attachmentId) =>
           sharingRemote.chatAttachmentPath(token, id, attachmentId),
         access: (token, id) => sharingRemote.chatAccess(token, id),

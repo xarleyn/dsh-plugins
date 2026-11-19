@@ -36,6 +36,7 @@ export type QaAccountsErrorReason =
   | "conversation-unknown"
   /** The Harness still holds the conversation open, so its log would come back. */
   | "conversation-live"
+  | "conversation-shared"
   /** This deployment cannot remove stored conversations at all. */
   | "conversation-not-removable"
   /** The record an operator edited is no longer the one stored. */

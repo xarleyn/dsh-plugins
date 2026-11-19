@@ -635,6 +635,11 @@ export class QaAccounts {
   ): QaAccountUserPublic {
     this.reloadIfChanged();
     const user = this.requireUser(token);
+    if (this.database.chatDeletions.chatDeleted(sessionId))
+      throw new QaAccountsError(
+        "conversation-unknown",
+        "This chat is unavailable.",
+      );
     const owner = this.file.ownership[sessionId];
     if (owner === undefined) {
       if (facts?.hasParent === true) {
@@ -744,7 +749,7 @@ export class QaAccounts {
       ...(access === undefined ? {} : { subroleId: access.subroleId }),
       ...(access?.adminPreview === true ? { adminPreview: true } : {}),
     };
-    this.database.insertOwnership(sessionId, reserved);
+    this.database.insertOwnership(sessionId, reserved, true);
     this.file = {
       ...this.file,
       ownership: { ...this.file.ownership, [sessionId]: reserved },
@@ -778,6 +783,10 @@ export class QaAccounts {
       const sessionId = typeof raw === "string" ? raw.trim() : "";
       if (sessionId === "" || sessionId.length > MAX_SESSION_ID_LENGTH)
         continue;
+      if (this.database.chatDeletions.chatDeleted(sessionId)) {
+        conflicts.push(sessionId);
+        continue;
+      }
       const owner = ownership[sessionId];
       if (owner === undefined) {
         const claim: StoredOwnership = { userId: user.id, claimedAt };
@@ -793,6 +802,70 @@ export class QaAccounts {
       this.file = { ...this.file, ownership };
     }
     return { claimed, conflicts };
+  }
+
+  chatDeletionActor(
+    token: string,
+    rootId: string,
+  ): {
+    readonly ownerId: string;
+    readonly previous: "pending" | "deleted" | undefined;
+  } {
+    this.reloadIfChanged();
+    const actor = this.requireUser(token);
+    const deletion = this.database.chatDeletions.chatDeletion(rootId);
+    if ((deletion?.ownerId ?? this.file.ownership[rootId]?.userId) !== actor.id)
+      throw new QaAccountsError(
+        "conversation-unknown",
+        "This chat is unavailable.",
+      );
+    if (
+      deletion === undefined &&
+      !this.database.chatDeletions.ownerCanDeleteChat(rootId)
+    )
+      throw new QaAccountsError(
+        "conversation-not-removable",
+        "A browser history claim does not authorize deleting this session.",
+      );
+    return {
+      ownerId: actor.id,
+      previous:
+        deletion === undefined
+          ? undefined
+          : deletion.pending
+            ? "pending"
+            : "deleted",
+    };
+  }
+
+  pendingChatDeletions(): readonly string[] {
+    return this.database.chatDeletions.pendingChatDeletions();
+  }
+
+  chatDeletionTargets(rootId: string): readonly string[] {
+    return this.database.chatDeletions.chatDeletionTargets(rootId);
+  }
+
+  pendingChatOwner(rootId: string): string | undefined {
+    const deletion = this.database.chatDeletions.chatDeletion(rootId);
+    return deletion?.pending === 1 ? deletion.ownerId : undefined;
+  }
+
+  markChatDeletion(
+    rootId: string,
+    ownerId: string,
+    targets: readonly string[],
+  ): void {
+    this.database.chatDeletions.markChatDeletion(rootId, ownerId, targets);
+    this.file = this.database.loadAll();
+  }
+
+  finishChatDeletion(
+    rootId: string,
+    erase: (targets: readonly string[]) => boolean,
+  ): void {
+    this.database.chatDeletions.finishChatDeletion(rootId, erase);
+    this.file = this.database.loadAll();
   }
 
   /** Session ids owned by the token's user, most recently claimed first. */

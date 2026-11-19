@@ -890,10 +890,13 @@ export function QaSurface(props: QaSurfaceProps) {
   const [sharingTarget, setSharingTarget] = useState<QaChatAccess | null>(null);
   const [sharingError, setSharingError] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [deletionNotice, setDeletionNotice] = useState<string | null>(null);
+  const deleting = useRef(new Set<string>());
   const sharingToken = accounts?.token() ?? "";
   useEffect(() => {
     setSharingTarget(null);
     setSharingError(null);
+    setDeletionNotice(null);
   }, [sharingToken]);
   const openSharing = useCallback(
     (sessionId: string) => {
@@ -923,9 +926,44 @@ export function QaSurface(props: QaSurfaceProps) {
   const closeAudit = useCallback(() => setAuditTarget(null), []);
   const handleDelete = useCallback(
     (sessionId: string) => {
-      void controller?.deleteChat(sessionId);
+      if (!config.accounts.enabled) {
+        void controller?.deleteChat(sessionId);
+        return;
+      }
+      const token = accounts?.token();
+      const remove = props.sharingApi?.delete;
+      if (!token || remove === undefined || deleting.current.has(sessionId))
+        return;
+      deleting.current.add(sessionId);
+      void (async () => {
+        try {
+          const result = await remove(token, sessionId);
+          if (accounts?.token() !== token) return;
+          if (!result.ok) {
+            setDeletionNotice(
+              result.error.message.includes("(reason: conversation-shared)")
+                ? "Сначала отзовите доступ к этому чату у всех получателей."
+                : "Не удалось удалить чат. Попробуйте ещё раз.",
+            );
+            return;
+          }
+          if (result.value.state === "pending")
+            setDeletionNotice(
+              "Доступ к чату закрыт. История удалится, когда сервер освободит сессию.",
+            );
+          await controller?.deleteChat(sessionId);
+          void accounts.refreshOwned();
+        } catch {
+          if (accounts?.token() === token)
+            setDeletionNotice(
+              "Не удалось подтвердить удаление чата. Обновите список и попробуйте ещё раз.",
+            );
+        } finally {
+          deleting.current.delete(sessionId);
+        }
+      })();
     },
-    [controller],
+    [accounts, config.accounts.enabled, controller, props.sharingApi],
   );
   const handleSend = useCallback(
     (
@@ -1853,7 +1891,13 @@ export function QaSurface(props: QaSurfaceProps) {
             onDrawerClose={closeHistory}
             onSwitch={handleSwitch}
             onNewChat={handleNewChat}
-            onDelete={handleDelete}
+            {...(config.session.policy !== "fixed" &&
+            (!config.accounts.enabled || props.sharingApi?.delete !== undefined)
+              ? {
+                  onDelete: handleDelete,
+                  deleteFromHost: config.accounts.enabled,
+                }
+              : {})}
             {...(props.sharingApi === undefined
               ? {}
               : { onShare: openSharing })}
@@ -2012,6 +2056,14 @@ export function QaSurface(props: QaSurfaceProps) {
             onClose={() => setDownloadError(null)}
           >
             <p role="alert">{downloadError}</p>
+          </QaModal>
+          <QaModal
+            open={deletionNotice !== null}
+            title="Удаление чата"
+            closeLabel="Закрыть сообщение об удалении"
+            onClose={() => setDeletionNotice(null)}
+          >
+            <p role="status">{deletionNotice}</p>
           </QaModal>
           <div
             className="dsh-qa-workspace"

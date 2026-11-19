@@ -92,6 +92,8 @@ import { formFailure, QaFormError } from "./forms/errors.js";
 import type { QaFormCommand, QaFormResult, QaFormView } from "./forms/types.js";
 import { QaSessionOwnership } from "./session-ownership.js";
 import { createSessionPurge } from "./admin/session-purge.js";
+import { QaChatDeletion } from "./chat-deletion.js";
+import { QaAccountsError } from "./accounts/errors.js";
 import { QaLlmIdentity } from "./llm-identity.js";
 import { registerTurnFailureLog } from "./turn-failure-log.js";
 import { entryRedirectRow } from "./entry-redirect.js";
@@ -190,6 +192,7 @@ import type {
   QaCapabilitySelection,
   QaConversationDetail,
   QaConversationDeletion,
+  QaChatDeletionResult,
   QaConversationQuery,
   QaConversationReview,
   QaConversationReviewInput,
@@ -345,6 +348,7 @@ export class QaSurface extends TypertRemoteService {
    * stored logs, quality records and their aggregations.
    */
   private readonly admin: QaAdminService;
+  private readonly chatDeletion: QaChatDeletion;
   /** Personal skills: storage, the DSH provider and the manual-edit watcher. */
   private readonly personalSkills: QaPersonalSkillsHost;
   /** Personal-skill remote bodies; the wire signatures stay on this class. */
@@ -468,7 +472,13 @@ export class QaSurface extends TypertRemoteService {
       deferRemoval,
     );
     this.accountRemotes = createQaAccountRemotes({
-      onOpen: (accounts) => sessionPurge.recover(accounts),
+      onOpen: (accounts) => {
+        const restored = sessionPurge.recover(accounts);
+        queueMicrotask(() => {
+          void this.chatDeletion.recover(accounts).catch(deferRemoval);
+        });
+        return restored;
+      },
       onRemovalRecoveryError: deferRemoval,
       getConfig: () => this.getConfig(),
       logger: this.logger,
@@ -482,6 +492,7 @@ export class QaSurface extends TypertRemoteService {
             accounts.recoverAccountRemovals();
           } finally {
             sessionPurge.recover(accounts);
+            void this.chatDeletion.recover(accounts).catch(deferRemoval);
           }
         } catch (error) {
           deferRemoval(error);
@@ -494,6 +505,23 @@ export class QaSurface extends TypertRemoteService {
     // deployment's conversations with it, and the access service tells a chat
     // from a delegated child with it.
     const sessionLog = createSessionLogReader(ctx);
+    const sessionFiles = createSessionEraser();
+    this.chatDeletion = new QaChatDeletion({
+      log: sessionLog,
+      files: sessionFiles,
+      sharing: () => this.sharing(),
+      logger: this.logger,
+      fenceLive: (id) => this.admission.rejectSession(id),
+      dropMetadata: (ids) => {
+        this.quality().dropConversations(ids);
+        for (const id of ids) {
+          this.provenance.dropSession(id);
+          this.formGate?.cancel(id);
+          this.formService?.store.cancelSession(id);
+          this.admission.forgetRejectedSession(id);
+        }
+      },
+    });
     this.access = new QaAccessService(ctx, {
       accounts: () => this.accountRemotes.resolve(this.getConfig()),
       config: () => this.getConfig(),
@@ -519,9 +547,7 @@ export class QaSurface extends TypertRemoteService {
       roles: () => this.access.roles,
       access: () => this.access,
       sessionLog,
-      // Deletion is the console's alone: the sidebar's delete stays a
-      // per-browser row, and only an administrator removes the chat itself.
-      sessionFiles: createSessionEraser(),
+      sessionFiles,
       sessionPurge,
       onRemovalRecoveryError: deferRemoval,
       dropSources: (sessionId) => this.provenance.dropSession(sessionId),
@@ -2136,6 +2162,20 @@ export class QaSurface extends TypertRemoteService {
   @Remote("chatAccess")
   chatAccess(token: string, sessionId: string): QaChatAccess {
     return this.sharing().access(token, sessionId);
+  }
+
+  @Remote("chatDelete")
+  chatDelete(token: string, sessionId: string): Promise<QaChatDeletionResult> {
+    return this.accountRemotes.runAsync(async () => {
+      const config = this.getConfig();
+      const accounts = this.accountRemotes.resolve(config);
+      if (accounts === undefined || config.session.policy === "fixed")
+        throw new QaAccountsError(
+          "conversation-not-removable",
+          "Chat deletion is unavailable.",
+        );
+      return await this.chatDeletion.request(accounts, token, sessionId);
+    }, sessionId);
   }
 
   @Remote("chatGrants")

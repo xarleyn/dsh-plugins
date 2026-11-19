@@ -85,10 +85,11 @@ import {
   projectTranscript,
   type QaProjectedTranscript,
 } from "./conversation-log.js";
-import type {
-  QaSessionLogReader,
-  QaStoredSessionEraser,
-  QaStoredSessionHeader,
+import {
+  conversationSessions,
+  type QaSessionLogReader,
+  type QaStoredSessionEraser,
+  type QaStoredSessionHeader,
 } from "./session-log.js";
 
 /**
@@ -229,31 +230,6 @@ export interface QaAdminServiceOptions {
   readonly logger: PluginLogger;
   readonly redactor?: QaAdminRedactor;
   readonly clock?: QaServiceClock;
-}
-
-/**
- * Every session one conversation owns: the chat itself and everything
- * delegated from it, transitively. A subagent's session is part of the answer
- * it ran inside, so a conversation does not leave its children behind.
- */
-function conversationSessions(
-  roots: readonly string[],
-  headers: readonly QaStoredSessionHeader[],
-): readonly string[] {
-  const children = new Map<string, string[]>();
-  for (const header of headers) {
-    if (header.parentSessionId === undefined || header.isFork === true)
-      continue;
-    const siblings = children.get(header.parentSessionId);
-    if (siblings) siblings.push(header.id);
-    else children.set(header.parentSessionId, [header.id]);
-  }
-  // Set iteration visits newly added children and stops even on malformed cycles.
-  const targets = new Set(roots);
-  for (const parent of targets) {
-    for (const child of children.get(parent) ?? []) targets.add(child);
-  }
-  return [...targets];
 }
 
 function isoOf(epochMs: number): string {

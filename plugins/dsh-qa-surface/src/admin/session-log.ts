@@ -37,6 +37,26 @@ export interface QaStoredSessionHeader {
   readonly agentPreset?: string;
 }
 
+/** An independent fork keeps both its history and its own delegated sessions. */
+export function conversationSessions(
+  roots: readonly string[],
+  headers: readonly QaStoredSessionHeader[],
+): readonly string[] {
+  const children = new Map<string, string[]>();
+  for (const header of headers) {
+    if (header.parentSessionId === undefined || header.isFork === true)
+      continue;
+    const siblings = children.get(header.parentSessionId);
+    if (siblings) siblings.push(header.id);
+    else children.set(header.parentSessionId, [header.id]);
+  }
+  const targets = new Set(roots);
+  for (const parent of targets) {
+    for (const child of children.get(parent) ?? []) targets.add(child);
+  }
+  return [...targets];
+}
+
 export type QaSessionReadResult =
   | { readonly ok: true; readonly events: readonly StoredSessionEvent[] }
   | {

@@ -61,6 +61,21 @@ this browser's history and retains an existing server selection from another
 browser. New API chats can recreate a selected folder that was deleted locally;
 clear or change the token default to stop using that destination.
 
+### Delete a personal QA chat
+
+In an account-backed profile, open the chat menu and confirm **Удалить чат**.
+Only the owner can delete a personal QA chat. Revoke all sharing grants first.
+An older browser-imported chat with no recorded QA capability snapshot needs
+operator removal. The server removes the history and delegated subagent sessions.
+Independent forks retain their copied history. The chat disappears from the
+account list and the old QA URL loses access to its history as soon as the
+server accepts the deletion.
+
+If Harness still holds a session open, the UI reports a pending deletion.
+The server retries after the writer closes, including on the next Host start.
+This path supports the local directory-backed JSONL session store. The
+attachment store retains its file bytes independently of chat deletion.
+
 Corporate sign-in through Keycloak or another OpenID Connect provider is opt-in.
 The source tree includes `plugins/dsh-qa-surface/docs/oidc.md` with client settings,
 account linking, role admission, session limits and deployment acceptance.

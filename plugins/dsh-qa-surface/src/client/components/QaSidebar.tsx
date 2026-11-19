@@ -132,8 +132,9 @@ export interface QaSidebarProps {
   readonly busy: boolean;
   readonly onSwitch: (sessionId: string) => void;
   readonly onNewChat: () => void;
-  /** Removes a chat from this browser's index; omit to hide the control. */
+  /** Omit to hide the control. Only the owner can request a Host deletion. */
   readonly onDelete?: (sessionId: string) => void;
+  readonly deleteFromHost?: boolean;
   readonly onShare?: (sessionId: string) => void;
   /**
    * Whether the phone layout shows this sidebar as a drawer over the
@@ -369,6 +370,9 @@ export const QaSidebar = memo(
         : props.rows.find((row) => row.id === confirmingId);
     const renderRow = (row: QaChatRow, organization: QaHistoryRowActions) => {
       const name = nameOfChat(chatNames, row);
+      const canDelete =
+        props.onDelete !== undefined &&
+        (!props.deleteFromHost || row.shareable === true);
       return (
         <div
           key={row.id}
@@ -429,7 +433,7 @@ export const QaSidebar = memo(
                 return (
                   <QaAuditRowBadge
                     mark={mark}
-                    withDelete={props.onDelete !== undefined}
+                    withDelete={canDelete}
                     onOpen={() => props.onAudit?.(row.id)}
                   />
                 );
@@ -440,7 +444,7 @@ export const QaSidebar = memo(
             {...(row.shareable && props.onShare !== undefined
               ? {
                   onShare: () => props.onShare?.(row.id),
-                  ...(props.onDelete === undefined
+                  ...(!canDelete
                     ? {}
                     : {
                         onDelete: (trigger: HTMLButtonElement) => {
@@ -451,9 +455,7 @@ export const QaSidebar = memo(
                 }
               : {})}
           />
-          {row.shareable &&
-          props.onShare !== undefined ? null : props.onDelete ===
-            undefined ? null : (
+          {(!row.shareable || props.onShare === undefined) && canDelete ? (
             <button
               type="button"
               className="dsh-qa-sidebar__item-delete"
@@ -469,7 +471,7 @@ export const QaSidebar = memo(
                 <path d="M2.5 4h11M6.5 4V2.5h3V4m-6.2 0 .6 9.5h7.2L12 4" />
               </svg>
             </button>
-          )}
+          ) : null}
         </div>
       );
     };
@@ -691,7 +693,9 @@ export const QaSidebar = memo(
               />
               <QaSettingsButton
                 tone="danger"
-                label="Удалить из истории"
+                label={
+                  props.deleteFromHost ? "Удалить чат" : "Удалить из истории"
+                }
                 onClick={() => {
                   if (confirmingRow === undefined) return;
                   const sessionId = confirmingRow.id;
@@ -707,8 +711,9 @@ export const QaSidebar = memo(
           }
         >
           <p className="dsh-qa-settings__lead">
-            Удалить чат {nameOfChat(chatNames, confirmingRow)} из истории в этом
-            браузере? Сам разговор останется на стенде.
+            {props.deleteFromHost
+              ? `Удалить чат ${nameOfChat(chatNames, confirmingRow)} и его дочерние сессии? Самостоятельные ветки сохранятся.`
+              : `Удалить чат ${nameOfChat(chatNames, confirmingRow)} из истории в этом браузере? Сам разговор останется на стенде.`}
           </p>
         </QaModal>
       </nav>
@@ -728,6 +733,7 @@ export const QaSidebar = memo(
     prev.onSwitch === next.onSwitch &&
     prev.onNewChat === next.onNewChat &&
     prev.onDelete === next.onDelete &&
+    prev.deleteFromHost === next.deleteFromHost &&
     prev.onShare === next.onShare &&
     prev.onAudit === next.onAudit &&
     prev.audits === next.audits &&
