@@ -89,15 +89,40 @@ chat when that session is unavailable.
 The tab lists every domain with its scope counts and degradations. `Edit` — or
 the card itself — opens one in the same pane: identity and status, persona,
 filesystem and knowledge scope, memory namespaces, tool policy, cross-domain
-delegation, model route, the test screen and the run history. The history lists
-every execution of the domain whichever surface started it — a conversation,
-the agents panel or the test screen — with the caller session, the delegation
-path and the outcome. It is read from the host's bounded in-memory audit ring
-(mirrored to the plugin log), so it covers the running process. `All domains`
+delegation, model route, the test screen and the Runs tab. The current-process
+list reads the bounded audit ring and shows the caller session, delegation path
+and outcome. `All domains`
 goes back to the list,
 asking first when the form holds unsaved edits, and `Save` writes the record in
 place. Every domain is an ordinary record in the plugin's storage, no matter who
 created it: there is no built-in expert the UI refuses to change.
+
+### Search execution history
+
+Enable `executionAuditEnabled` in the Domain Experts Host settings, then open a
+domain's **Runs** tab and choose **Search archive**. For example, select
+`review`, `error` and `foreground` to find failed reviews and their durations
+across restarts. The Host operator can also call
+`domainExperts/queryExecutionAudits` with `domainId`, `runId`, `mode`, `status`,
+`execution`, `since`, `beforeId` and `limit`. Use empty strings for unused enum
+filters and zero for unused numeric filters. Pass the returned `nextBeforeId`
+to fetch an older page. The maximum page size is 100.
+
+The archive retains up to 7 days and 10,000 entries per Host home, across all
+domains. Each entry contains an archive-local run ID, event time, domain ID,
+mode, status, foreground or background, and duration in milliseconds. Task
+content, output, retrieved memory, credentials, session IDs and delegation paths
+are excluded. The Host writes foreground outcomes and accepted background
+dispatches. For a background run the duration covers dispatch. Rejections
+before subagent activation and background completion are outside this history.
+
+Committed entries survive restarts when the Host reopens the same
+`<DSH_HOME>/domain-experts-audit.db` file (working directory when no home is set).
+Expiry runs on open, on writes and every 15 minutes while the plugin runs,
+including when a previously enabled archive is disabled. Disabling it stops
+writes and queries. Host log configuration has its own retention and log level,
+and historical log files are never imported. Write failures are reported in the
+plugin log while the expert returns its original result.
 
 ## Tools
 
@@ -130,7 +155,8 @@ the Host serves their form for the `dsh-domain-experts` entry. The
 | `memoryDbPath` | string | `<DSH_HOME>/domain-experts-memory.db` | Database file the `sqlite` memory provider owns. |
 | `perUserMemory` | boolean | `true` | Keep a separate memory namespace per account, in a deployment that has accounts. Takes effect only while the host's accounts surface is mounted. |
 | `recallLimit` | number | `5` | Memory records recalled into an expert's persona. |
-| `auditLimit` | number | `200` | Execution audit entries kept in memory and mirrored to the log. |
+| `auditLimit` | number | `200` | Execution audit entries kept in the current process. |
+| `executionAuditEnabled` | boolean | `false` | Retain bounded execution metadata for the Host operator across restarts. |
 
 ### Where memory lives
 

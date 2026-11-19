@@ -123,6 +123,8 @@ function createApi(namespace: DomainExpertsRemote): DomainExpertsApi {
       toOutcome(await namespace.testExpert(id, task, parentSessionId, false)),
     recentAudits: async (limit) =>
       toOutcome(await namespace.recentAudits(limit)),
+    queryExecutionAudits: async (query) =>
+      toOutcome(await namespace.queryExecutionAudits(query)),
   };
 }
 

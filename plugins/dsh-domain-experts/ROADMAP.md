@@ -16,10 +16,9 @@ using versioned JSON with a preview of conflicts and atomic apply.
 Scope providers can [contribute configuration fields](./README.md#edit-provider-scope-settings)
 to the Resources tab. The Host preserves opaque configuration when applying form edits.
 
-## Next
-
-- Durable, queryable execution audit (runs by domain, cross-domain
-  delegations, worker usage, latency, failed scope checks).
+The Host operator can [archive and query execution metadata](./README.md#search-execution-history)
+across restarts. The process ring shows recent delegation paths and the plugin
+log carries operational diagnostics.
 
 ## Later
 

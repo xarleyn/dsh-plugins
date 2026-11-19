@@ -21,6 +21,8 @@ import type {
   DomainListResult,
   DomainWriteResult,
   DraftInspectionResult,
+  ExecutionAuditQuery,
+  ExecutionAuditResult,
   ExpertRunResult,
   MemoryClearResult,
   MemoryInspectResult,
@@ -79,6 +81,9 @@ export interface DomainExpertsRemote {
     structuredOutput?: boolean,
   ): Promise<RemoteResult<ExpertRunResult>>;
   recentAudits(limit: number): Promise<RemoteResult<AuditListResult>>;
+  queryExecutionAudits(
+    query: ExecutionAuditQuery,
+  ): Promise<RemoteResult<ExecutionAuditResult>>;
 }
 
 /** The assembled Client Remote plus this plugin's own namespace. */

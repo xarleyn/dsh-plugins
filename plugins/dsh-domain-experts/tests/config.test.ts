@@ -31,6 +31,11 @@ describe("config: defaults", () => {
       perUserMemory: true,
       recallLimit: 5,
       auditLimit: 200,
+      executionAuditEnabled: false,
+      executionAuditDbPath: path.resolve(
+        path.dirname(defaultMemoryDbPath()),
+        "domain-experts-audit.db",
+      ),
     });
   });
 
@@ -56,6 +61,7 @@ describe("config: defaults", () => {
       "defaultMaxParallel",
       "defaultMemoryProvider",
       "enabled",
+      "executionAuditEnabled",
       "memoryDbPath",
       "perUserMemory",
       "recallLimit",
@@ -75,6 +81,7 @@ describe("config: overrides", () => {
       defaultMemoryProvider: "openviking",
       recallLimit: 12,
       auditLimit: 7,
+      executionAuditEnabled: true,
     });
     expect(resolved).toMatchObject({
       enabled: false,
@@ -85,6 +92,7 @@ describe("config: overrides", () => {
       defaultMemoryProvider: "openviking",
       recallLimit: 12,
       auditLimit: 7,
+      executionAuditEnabled: true,
     });
   });
 

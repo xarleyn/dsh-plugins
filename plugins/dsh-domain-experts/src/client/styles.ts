@@ -73,6 +73,9 @@ export const DOMAIN_EXPERTS_STYLES = `
 .dx-chip--enforced{color:var(--dx-ok)}
 .dx-chip--advisory{color:var(--dx-warn)}
 .dx-chip--error{color:var(--dx-danger)}
+.dx-archive-filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,8rem),1fr));gap:8px;min-width:0;margin:0 0 8px;padding:0;border:0}
+.dx-archive-results{max-width:100%;overflow-x:auto}
+.dx-archive-results .dx-table{white-space:nowrap}
 .dx-table{width:100%;border-collapse:collapse;font-size:12px}
 .dx-table th{text-align:left;color:var(--dsw-alias-label-tertiary);font-weight:500;padding:4px 8px 4px 0;border-bottom:1px solid var(--dsw-alias-border-l2)}
 .dx-table td{color:var(--dsw-alias-label-secondary);padding:5px 8px 5px 0;border-bottom:1px solid var(--dsw-alias-border-l2);vertical-align:top;word-break:break-word}

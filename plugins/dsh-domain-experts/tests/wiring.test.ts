@@ -361,6 +361,37 @@ describe("wiring: remote contract", () => {
       entries: [],
     });
   });
+
+  it("checks the Host principal before revealing execution archive availability", () => {
+    const { ctx } = harnessOf();
+    const query = {
+      domainId: "payments",
+      runId: 0,
+      mode: "",
+      status: "",
+      execution: "",
+      since: 0,
+      beforeId: 0,
+      limit: 10,
+    } as const;
+    const asPrincipal = (kind: "guest" | "owner") =>
+      ctx.extend({
+        invocation: {
+          peer: { principal: { kind } },
+        } as unknown as RemoteInvocation,
+      }).domainExperts;
+
+    expect(asPrincipal("guest").queryExecutionAudits(query)).toMatchObject({
+      ok: false,
+      code: "DOMAIN_ACCESS_DENIED",
+      entries: [],
+    });
+    expect(asPrincipal("owner").queryExecutionAudits(query)).toMatchObject({
+      ok: false,
+      code: "AUDIT_DISABLED",
+      entries: [],
+    });
+  });
 });
 
 describe("wiring: degraded storage", () => {

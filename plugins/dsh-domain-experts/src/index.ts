@@ -37,6 +37,10 @@ import {
   type StorageHandles,
 } from "./catalog.js";
 import { AuditRing } from "./host/audit.js";
+import {
+  ExecutionAuditArchive,
+  auditQueryRefused,
+} from "./host/audit-archive.js";
 import { DomainExpertsError } from "./host/errors.js";
 import {
   RunTracker,
@@ -93,6 +97,8 @@ import type {
   DomainListResult,
   DomainWriteResult,
   DraftInspectionResult,
+  ExecutionAuditQuery,
+  ExecutionAuditResult,
   ExpertRunResult,
   MemoryClearResult,
   MemoryInspectResult,
@@ -134,6 +140,7 @@ export class DomainExpertsService extends TypertRemoteService {
   private readonly memoryProviders = new MemoryProviderRegistry();
   private readonly workers = new WorkerRegistry();
   private readonly audits: AuditRing;
+  private readonly executionAudit: ExecutionAuditArchive;
   private readonly tracker = new RunTracker();
   private readonly tools: Map<string, ToolDefinition>;
   private toolDisposers: (() => void)[] = [];
@@ -166,6 +173,11 @@ export class DomainExpertsService extends TypertRemoteService {
     });
     const resolved = this.config();
     this.audits = new AuditRing(resolved.auditLimit);
+    this.executionAudit = new ExecutionAuditArchive(
+      resolved.executionAuditDbPath,
+      resolved.executionAuditEnabled,
+      this.logger,
+    );
 
     // Built-in providers arrive with the plugin; a third party adds its own
     // through the public registration methods below. The memory provider is
@@ -200,25 +212,28 @@ export class DomainExpertsService extends TypertRemoteService {
 
     /*
      * There is no settings section to install any more: a field is editable live
-     * exactly when its schema node carries `.volatile()`, which all ten do, and
+     * exactly when its schema node carries `.volatile()`, and
      * the namespace is the profile entry id. The Host therefore serves the form
      * this plugin used to install, and `settings.configure({ auto: false })` is
      * deliberately not called: the browser half here is the domain catalog, not
-     * a card over these ten fields, so the generated page is their only editor.
+     * a card over these fields, so the generated page is their only editor.
      *
      * A committed write moves the values inside the references this plugin was
-     * handed and no fiber is remounted, so `enabled` — the one knob with an
-     * effect beyond the next read — is re-applied here. Every other knob is read
-     * through `config()`, i.e. from a fresh snapshot, so it follows the document
-     * on its own.
+     * handed and no fiber is remounted. Apply toggles that change service state
+     * here; per-operation settings follow the document through `config()`.
      */
     ctx.effect(
-      () => ctx.on("loader/volatile-update", () => this.applyEnabled()),
+      () =>
+        ctx.on("loader/volatile-update", () => {
+          this.applyEnabled();
+          this.executionAudit.setEnabled(this.config().executionAuditEnabled);
+        }),
       "domain-experts.volatile-config",
     );
 
     ctx.effect(
       () => () => {
+        this.executionAudit.close();
         void this.stores.close();
       },
       "domain-experts.storage",
@@ -340,6 +355,7 @@ export class DomainExpertsService extends TypertRemoteService {
       parallelLimit: (callerSessionId, callerDomain) =>
         this.parallelLimit(callerSessionId, callerDomain),
       audits: this.audits,
+      executionAudit: this.executionAudit,
       logger: this.logger,
       now: Date.now,
       perUserMemory: this.principals.perUserMemory(),
@@ -713,6 +729,20 @@ export class DomainExpertsService extends TypertRemoteService {
   @Remote("recentAudits")
   recentAudits(limit: number): AuditListResult {
     return accepted({ entries: this.audits.recent(limit > 0 ? limit : 50) });
+  }
+
+  @Remote("queryExecutionAudits")
+  queryExecutionAudits(query: ExecutionAuditQuery): ExecutionAuditResult {
+    try {
+      this.requireHostOperator(
+        "DOMAIN_ACCESS_DENIED",
+        "Only the Host operator can read the execution archive.",
+      );
+    } catch (error) {
+      if (!(error instanceof DomainExpertsError)) throw error;
+      return auditQueryRefused(error.code, error.message);
+    }
+    return this.executionAudit.query(query);
   }
 }
 

@@ -15,6 +15,10 @@ import {
 } from "../types.js";
 import { ScopeInspector } from "./ScopeInspector.js";
 import {
+  ExecutionAuditPanel,
+  type QueryExecutionAudits,
+} from "./ExecutionAuditPanel.js";
+import {
   ScopeProviderForms,
   type EditProviderField,
 } from "./ScopeProviderForms.js";
@@ -90,6 +94,7 @@ export interface EditorProps {
   readonly onClearMemory: () => void;
   readonly onRunTest: (task: string) => void;
   readonly onRefreshRuns: () => void;
+  readonly queryExecutionAudits: QueryExecutionAudits;
 }
 
 export function DomainEditor(props: EditorProps) {
@@ -679,10 +684,18 @@ export function DomainEditor(props: EditorProps) {
         </Section>
       ) : null}
 
+      {tab === "Runs" && !props.isNew ? (
+        <ExecutionAuditPanel
+          key={draft.id}
+          domainId={draft.id}
+          query={props.queryExecutionAudits}
+        />
+      ) : null}
+
       {tab === "Runs" ? (
         <Section
-          title="Run history"
-          note="Every run of this domain the process has recorded, whichever surface started it: a conversation, the agents panel or the Test tab. The host keeps a bounded in-memory ring and mirrors each run to the plugin log, so a restart begins a new list."
+          title="Current process runs"
+          note="Recent runs from the in-memory audit ring. This list resets when the plugin restarts."
           testId="domain-experts-editor-runs"
         >
           <div
@@ -727,7 +740,7 @@ export function DomainEditor(props: EditorProps) {
             >
               <thead>
                 <tr>
-                  <th>Started</th>
+                  <th>Recorded</th>
                   <th>Mode</th>
                   <th>Status</th>
                   <th>Duration</th>

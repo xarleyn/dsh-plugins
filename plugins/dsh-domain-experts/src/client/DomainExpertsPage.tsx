@@ -13,6 +13,7 @@ import {
   type ValidationIssueView,
 } from "../types.js";
 import type { ApiOutcome } from "./remote.js";
+import type { QueryExecutionAudits } from "./ExecutionAuditPanel.js";
 import { CatalogTransfer, type CatalogTransferApi } from "./CatalogTransfer.js";
 import {
   DomainEditor,
@@ -79,6 +80,7 @@ export interface DomainExpertsApi {
    * domain it is showing, so one answer serves every domain.
    */
   recentAudits(limit: number): Promise<ApiOutcome<AuditListResult>>;
+  readonly queryExecutionAudits: QueryExecutionAudits;
 }
 
 /**
@@ -711,6 +713,7 @@ export function DomainExpertsPage({
             memory={memory}
             test={test}
             runs={runs}
+            queryExecutionAudits={api.queryExecutionAudits}
             providerEdits={providerEdits}
             onProviderEdit={editProvider}
             onChange={change}

@@ -219,6 +219,12 @@ export function apiOf(
       ),
     recentAudits: () =>
       Promise.resolve(ok({ ok: true, code: "", message: "", entries: [] })),
+    queryExecutionAudits: () =>
+      Promise.resolve({
+        ok: false,
+        code: "AUDIT_DISABLED",
+        message: "Execution audit is disabled.",
+      }),
     ...overrides,
   };
 }

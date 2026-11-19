@@ -506,6 +506,42 @@ export interface ExpertAuditEntry {
   readonly degraded: readonly DomainDegradationCode[];
 }
 
+export interface ArchivedExpertRun {
+  /** ID local to this archive. */
+  readonly id: number;
+  /** Unix time in milliseconds when the outcome or dispatch was recorded. */
+  readonly at: number;
+  readonly domainId: string;
+  readonly mode: ExpertMode;
+  readonly background: boolean;
+  readonly status: DomainExpertStatus;
+  readonly durationMs: number;
+}
+
+export interface ExecutionAuditQuery {
+  readonly domainId: string;
+  /** Zero leaves the query unfiltered by run ID. */
+  readonly runId: number;
+  readonly mode: ExpertMode | "";
+  readonly status: DomainExpertStatus | "";
+  readonly execution: "foreground" | "background" | "";
+  /** Inclusive Unix time in milliseconds, or zero for all retained entries. */
+  readonly since: number;
+  /** Exclusive cursor from the previous page, or zero for the newest page. */
+  readonly beforeId: number;
+  /** 1–100 entries, ordered by descending ID. */
+  readonly limit: number;
+}
+
+export interface ExecutionAuditResult {
+  readonly ok: boolean;
+  readonly code: string;
+  readonly message: string;
+  readonly entries: readonly ArchivedExpertRun[];
+  /** Zero means the query has no older page. */
+  readonly nextBeforeId: number;
+}
+
 /**
  * Result envelopes. Remote method results use explicit `ok`/`code` fields
  * rather than throwing, so the UI can show a reason code instead of a carrier

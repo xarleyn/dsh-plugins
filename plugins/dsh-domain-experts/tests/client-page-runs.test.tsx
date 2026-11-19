@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { ok, renderPage } from "./client-page.helpers.js";
-import type { ExpertAuditEntry } from "../src/types.js";
+import type { ExecutionAuditQuery, ExpertAuditEntry } from "../src/types.js";
 
 /*
  * Three runs of two domains: one started straight from a conversation, one a
@@ -149,5 +149,66 @@ describe("client page: run history", () => {
       (await screen.findByTestId("domain-experts-editor-runs-error"))
         .textContent,
     ).toContain("STORAGE_UNAVAILABLE: domain storage is not open");
+  });
+
+  it("queries the archive with the selected filters and pages using the returned cursor", async () => {
+    const queries: ExecutionAuditQuery[] = [];
+    renderPage({
+      queryExecutionAudits: (query) => {
+        queries.push(query);
+        return Promise.resolve(
+          ok({
+            ok: true,
+            code: "OK",
+            message: "",
+            entries: [
+              {
+                id: query.beforeId === 0 ? 42 : 17,
+                at: 1_700_000_000_000,
+                domainId: query.domainId,
+                mode: "review",
+                background: false,
+                status: "error",
+                durationMs: 275,
+              },
+            ],
+            nextBeforeId: query.beforeId === 0 ? 42 : 0,
+          }),
+        );
+      },
+    });
+    await openRuns();
+    for (const [label, value] of [
+      ["Mode", "review"],
+      ["Status", "error"],
+      ["Execution", "foreground"],
+    ] as const) {
+      fireEvent.change(screen.getByRole("combobox", { name: label }), {
+        target: { value },
+      });
+    }
+    fireEvent.click(screen.getByRole("button", { name: "Search archive" }));
+    expect(await screen.findByRole("cell", { name: "42" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Older runs" }));
+    expect(await screen.findByRole("cell", { name: "17" })).toBeTruthy();
+    expect(queries).toMatchObject([
+      {
+        domainId: "payments",
+        mode: "review",
+        status: "error",
+        execution: "foreground",
+        beforeId: 0,
+      },
+      {
+        domainId: "payments",
+        mode: "review",
+        status: "error",
+        execution: "foreground",
+        beforeId: 42,
+      },
+    ]);
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Older runs" })).toBeNull(),
+    );
   });
 });
