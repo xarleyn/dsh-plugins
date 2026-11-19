@@ -35,7 +35,9 @@ function setup() {
     listeners.get(name)!(...(args as never[]));
   const event = (type: string, data: unknown = {}) =>
     emit("session/event", session, { type, data });
-  const step = async (...messages: ReturnType<typeof msg>[]) =>
+  const claim = (message: ReturnType<typeof msg>) =>
+    emit("agent/inbox/claimed", { agent, turn: 1, message });
+  const enter = async (...messages: ReturnType<typeof msg>[]) =>
     emit(
       "agent/pre-step",
       { agent, turn: 1, messages, signal: new AbortController().signal },
@@ -44,6 +46,10 @@ function setup() {
         messages,
       }),
     );
+  const step = async (...messages: ReturnType<typeof msg>[]) => {
+    for (const message of messages) claim(message);
+    return enter(...messages);
+  };
   const submit = (id: string) =>
     turns.submit(
       "chat",
@@ -53,7 +59,19 @@ function setup() {
         event("agent/inbox/spliced", { inserted: [msg(id)] });
       },
     );
-  return { grant, agent, turns, msg, event, step, submit, expose, remove };
+  return {
+    grant,
+    agent,
+    turns,
+    msg,
+    event,
+    claim,
+    enter,
+    step,
+    submit,
+    expose,
+    remove,
+  };
 }
 
 describe("message-scoped source access", () => {
@@ -74,10 +92,13 @@ describe("message-scoped source access", () => {
     await h.submit("picked");
     expect(() => h.turns.current(h.agent)).toThrow();
     h.event("turn/start", { turn: 1 });
-    await h.step(h.msg("picked"));
+    const picked = h.msg("picked");
+    h.claim(picked);
+    expect(h.expose).toHaveBeenCalledExactlyOnceWith(h.agent);
+    expect(h.turns.has(h.agent)).toBe(false);
+    await h.enter(picked);
     const active = h.turns.current(h.agent);
     expect(active.grant).toBe(h.grant);
-    expect(h.expose).toHaveBeenCalledExactlyOnceWith(h.agent);
     expect(() =>
       h.turns.current({ session: h.agent.session } as Agent),
     ).toThrow();
