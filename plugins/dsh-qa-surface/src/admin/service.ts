@@ -11,6 +11,7 @@ import {
 } from "../access/model-policy.js";
 import {
   defaultCapabilityConfig,
+  normalizeQueueSlots,
   normalizeUserAccess,
   resolveSkillAccess,
 } from "../access/model.js";
@@ -1034,6 +1035,19 @@ export class QaAdminService {
     update: QaAdminUserUpdate,
   ): Promise<QaAdminUserDetail> {
     const { accounts, actor } = this.require(token, "users.manage");
+    const nextRole = given(update.role);
+    const nextDisabled = given(update.disabled);
+    const nextAccess = given(update.access);
+    let access: QaUserAccess | undefined;
+    if (nextAccess !== undefined) {
+      await this.options
+        .access()
+        .assertPairServable(nextAccess.model, "assignment model");
+      await this.options
+        .access()
+        .assertAlternativesServable(nextAccess.allowedModels);
+      access = this.exactAssignment(nextAccess, userId);
+    }
     const config = this.options.roles().snapshot();
     const before = accounts.adminUser(userId, (value) =>
       normalizeUserAccess(value, config),
@@ -1041,9 +1055,6 @@ export class QaAdminService {
     if (before === undefined) {
       throw new QaAccountsError("invalid-credentials", "no such account");
     }
-    const nextRole = given(update.role);
-    const nextDisabled = given(update.disabled);
-    const nextAccess = given(update.access);
     if (nextRole !== undefined && nextRole !== before.role) {
       this.assertAdminSurvives(accounts, userId, nextRole);
       accounts.setAccessRole(userId, nextRole);
@@ -1066,14 +1077,7 @@ export class QaAdminService {
         targetId: userId,
       });
     }
-    if (nextAccess !== undefined) {
-      await this.options
-        .access()
-        .assertPairServable(nextAccess.model, "assignment model");
-      await this.options
-        .access()
-        .assertAlternativesServable(nextAccess.allowedModels);
-      const access = this.exactAssignment(nextAccess, userId);
+    if (access !== undefined) {
       accounts.setAccess(userId, access);
       this.options.quality().appendAudit({
         actorId: actor.id,
@@ -1183,11 +1187,16 @@ export class QaAdminService {
       input.allowedModels,
       "assignment allowedModels",
     );
+    const maxActiveRequests = normalizeQueueSlots(
+      input.maxActiveRequests,
+      "assignment maxActiveRequests",
+    );
     return Object.freeze({
       allowedSubroles: Object.freeze(allowed),
       defaultSubrole: input.defaultSubrole,
       ...(model === undefined ? {} : { model }),
       ...(allowedModels === undefined ? {} : { allowedModels }),
+      ...(maxActiveRequests === undefined ? {} : { maxActiveRequests }),
     });
   }
 
