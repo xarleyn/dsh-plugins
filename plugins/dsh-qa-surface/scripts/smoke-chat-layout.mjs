@@ -28,6 +28,7 @@ export async function startLayoutProvider(archive) {
     const chunks = [];
     for await (const part of req) chunks.push(part);
     let call = false;
+    let callId = "archive-read";
     let reply = demoReply;
     if (archive) {
       const input = JSON.parse(Buffer.concat(chunks).toString("utf8"));
@@ -48,28 +49,41 @@ export async function startLayoutProvider(archive) {
         archive.delivered = true;
         reply += "\n\n47.25 kPa — Equipment, table 1, row 1";
       }
-      if (
-        ordinary &&
-        input.messages?.some(
-          (m) =>
-            m.role === "tool" &&
-            JSON.stringify(m.content).includes("Не удалось получить данные"),
-        )
-      )
-        archive.denied = true;
-      call =
-        (ordinary ? !archive.ordinaryRequested : !archive.requested) &&
-        input.messages?.some(
-          (m) =>
-            m.role === "user" && JSON.stringify(m.content).includes(demoPrompt),
-        ) &&
-        input.tools?.some(
-          (t) => t.function?.name === "qa_read_selected_source",
+      const readerVisible = input.tools?.some(
+        (t) => t.function?.name === "qa_read_selected_source",
+      );
+      const toolResults = input.messages?.filter((m) => m.role === "tool");
+      if (!ordinary && toolResults?.length)
+        archive.selectedResults = toolResults.map((m) =>
+          JSON.stringify(m.content).slice(0, 500),
         );
+      if (ordinary) {
+        archive.ordinaryObserved = true;
+        if (
+          toolResults?.some(
+            (m) =>
+              m.tool_call_id === "ordinary-archive-read" &&
+              /unknown tool|Не удалось получить данные|not allowed|not available|outside the capability profile/iu.test(
+                JSON.stringify(m.content),
+              ),
+          )
+        )
+          archive.ordinaryRefused = true;
+      }
+      call =
+        (ordinary
+          ? !archive.ordinaryRequested
+          : !archive.requested &&
+            input.messages?.some(
+              (m) =>
+                m.role === "user" &&
+                JSON.stringify(m.content).includes(demoPrompt),
+            )) && readerVisible;
       if (call) {
         if (ordinary) archive.ordinaryRequested = true;
         else archive.requested = true;
       }
+      if (ordinary) callId = "ordinary-archive-read";
     }
     res.writeHead(200, { "Content-Type": "text/event-stream" });
     for (const choice of call
@@ -81,7 +95,7 @@ export async function startLayoutProvider(archive) {
               tool_calls: [
                 {
                   index: 0,
-                  id: "archive-read",
+                  id: callId,
                   type: "function",
                   function: {
                     name: "qa_read_selected_source",

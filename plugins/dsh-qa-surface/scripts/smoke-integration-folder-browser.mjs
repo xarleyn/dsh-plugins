@@ -444,12 +444,17 @@ ${
       assert.equal(
         archive.delivered,
         true,
-        "the selected DOCX value and original table location reached the model",
+        "the selected DOCX value and location reached the model: " +
+          JSON.stringify({
+            requested: archive.requested,
+            operations: archive.operations.length,
+            toolResults: archive.selectedResults,
+          }),
       );
-      assert.equal(
-        archive.denied,
-        true,
-        "next unselected request refused before archive I/O",
+      assert.ok(
+        archive.ordinaryObserved &&
+          (!archive.ordinaryRequested || archive.ordinaryRefused),
+        "the unselected request could not dispatch the archive reader",
       );
     }
     if (archive) {
