@@ -533,12 +533,24 @@ export class QaAccessService {
     liveSessionId?: string,
   ) {
     const accounts = this.options.accounts();
+    const userId = accounts?.currentUser(token).id;
+    if (this.ctx.get("skills") === undefined)
+      throw new Error("Draft skill catalog is unavailable");
+    const agent =
+      liveSessionId === undefined
+        ? undefined
+        : this.ctx.agents.get(SessionId(liveSessionId));
+    const cwd =
+      !agent && userId
+        ? this.options.accountSkillWorkspace?.(userId)
+        : undefined;
+    const catalog = await this.catalog.snapshot(agent, cwd);
+    // Skill discovery can yield. Apply current account and role grants after it.
     const config = this.roles.snapshot();
     let subroleId: string | undefined;
-    let userId: string | undefined;
     if (accounts !== undefined) {
       const user = accounts.currentUser(token);
-      userId = user.id;
+      if (user.id !== userId) throw new Error("Session account changed.");
       const assignment = normalizeUserAccess(
         accounts.accessOf(user.id),
         config,
@@ -562,21 +574,11 @@ export class QaAccessService {
         );
       }
     }
-    if (this.ctx.get("skills") === undefined)
-      throw new Error("Draft skill catalog is unavailable");
-    const agent =
-      liveSessionId === undefined
-        ? undefined
-        : this.ctx.agents.get(SessionId(liveSessionId));
-    const cwd =
-      !agent && userId
-        ? this.options.accountSkillWorkspace?.(userId)
-        : undefined;
-    const catalog = await this.catalog.snapshot(agent, cwd);
     return {
       skills: [...catalog.skills.values()].filter(
         (skill) => skill.invocation.userInvocable,
       ),
+      metadata: catalog.skillMetadata,
       policy:
         subroleId === undefined
           ? undefined

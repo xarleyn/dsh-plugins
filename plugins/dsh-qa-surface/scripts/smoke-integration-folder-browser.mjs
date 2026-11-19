@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { generateKeyPairSync } from "node:crypto";
 import { spawn } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -40,11 +41,36 @@ export async function runIntegrationFolderBrowserPass(options) {
     !reviewDockOnly &&
     (modelSelection || process.env.DSH_QA_MODEL_SMOKE === "1");
   const reviewControl = { answerReady: null, reviewRequested: false };
+  const archive = sourceWorkspace
+    ? { operations: [], requested: false, env: {}, reader: undefined }
+    : undefined;
+  if (archive) {
+    const { archiveReader } = await import("../lib/search-sources/reader.js");
+    const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+    const issuer = join(root, "reader-test.pem");
+    await writeFile(
+      issuer,
+      privateKey.export({ format: "pem", type: "pkcs8" }),
+    );
+    const authPort = await freePort();
+    archive.reader = archiveReader(authPort, publicKey, async (op) => {
+      archive.operations.push(op);
+      return { text: "Synthetic archive receipt.", nextOffset: null };
+    });
+    await new Promise((resolve) =>
+      archive.reader.listen(0, "127.0.0.1", resolve),
+    );
+    archive.env = {
+      QA_SOURCE_SIGNING_KEY: issuer,
+      QA_SOURCE_AUTH_PORT: String(authPort),
+      QA_SOURCE_READER_PORT: String(archive.reader.address().port),
+    };
+  }
   const layoutProvider = reviewDockOnly
     ? await startReviewProvider(reviewControl)
     : modelPass
       ? undefined
-      : await startLayoutProvider();
+      : await startLayoutProvider(archive);
   const stableCode = join(workspacePath, "stable-code");
   const previewCode = join(workspacePath, "preview-code");
   const searchConfig = sourceWorkspace
@@ -154,7 +180,7 @@ ${
       [dshBin, "web", "--patch", patch, "--no-open", "--port", String(port)],
       {
         cwd: workspacePath,
-        env: { ...dshEnv, QA_LAYOUT_DEMO_KEY: "local-demo" },
+        env: { ...dshEnv, ...archive?.env, QA_LAYOUT_DEMO_KEY: "local-demo" },
         windowsHide: true,
         stdio: ["ignore", "pipe", "pipe"],
       },
@@ -226,7 +252,7 @@ ${
       [dshBin, "web", "--patch", patch, "--no-open", "--port", String(port)],
       {
         cwd: workspacePath,
-        env: { ...dshEnv, QA_LAYOUT_DEMO_KEY: "local-demo" },
+        env: { ...dshEnv, ...archive?.env, QA_LAYOUT_DEMO_KEY: "local-demo" },
         windowsHide: true,
         stdio: ["ignore", "pipe", "pipe"],
       },
@@ -406,6 +432,28 @@ ${
         ownerName: session.user.displayName,
         withSearchSource: Boolean(sourceWorkspace),
       });
+    if (archive) {
+      assert.equal(
+        archive.delivered,
+        true,
+        "selected archive bytes reached the model",
+      );
+      assert.equal(
+        archive.denied,
+        true,
+        "next unselected request refused before archive I/O",
+      );
+    }
+    if (archive)
+      assert.deepEqual(archive.operations, [
+        {
+          action: "read",
+          directory: "demo",
+          path: "sample.txt",
+          query: "",
+          offset: 0,
+        },
+      ]);
     if (chatLayoutOnly) return;
     await sidebar.getByTestId("qa-history-create-folder").click();
     await page
@@ -735,6 +783,7 @@ ${
     hostLog.push(...log);
     throw error;
   } finally {
+    archive?.reader?.close();
     layoutProvider?.close();
     await browser?.close().catch(() => undefined);
     await stopProcess(host);

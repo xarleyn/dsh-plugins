@@ -1,5 +1,5 @@
 import type { QaSlashCatalog, QaSurfaceConfig } from "../types.js";
-import { skillGestures } from "./parser.js";
+import { parseSlashLine, skillGestures } from "./parser.js";
 import {
   isSearchSource,
   readSourcePrompt,
@@ -28,6 +28,10 @@ export function projectSearchSources(
       typeof dir === "string" &&
       /^[\p{L}\p{N}_-][\p{L}\p{N} ._-]*$/u.test(dir) &&
       !/[. ]$/u.test(dir) &&
+      (!binding.linkBase ||
+        /^(?:https?|file):\/\/[^?#@\s]+(?:\/[^?#@\s]*)?$/iu.test(
+          binding.linkBase,
+        )) &&
       !duplicates.has(dir.toLowerCase());
     configured.set(
       binding.skill,
@@ -62,8 +66,10 @@ export async function requireSearchSourceAccess(
     bindings.some((binding) => binding.skill === name),
   );
   if (!names.length && !receipt) return;
+  const explicit = parseSlashLine(text.replace(/^\/no-review\s+/u, ""));
   if (
     names.length === 1 &&
+    explicit?.name === names[0] &&
     (await catalog()).entries.some(
       (entry) =>
         isSearchSource(entry) &&

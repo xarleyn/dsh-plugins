@@ -1104,8 +1104,33 @@ chat. Revoking the grant takes effect on the next catalog read or submission.
 Start a new chat to use a newly granted skill missing from an existing chat's
 capability snapshot.
 
-Providers handling protected material must authorize each read for the
-request and directory. Keep this check independent of lasting chat tool grants.
+For protected directories, enable QA accounts with personal workspaces. The QA
+Host loads an Ed25519 PKCS#8 PEM from `QA_SOURCE_SIGNING_KEY` outside all
+agent, document and indexing roots. Run `node lib/search-sources/reader.js`
+from the **same package version** in a separate Linux container sharing the QA
+network namespace. Mount the archive read-only at `/archive` **only in the
+reader**, and mount the corresponding PEM public key at
+`/run/secrets/source-issuer.pub`. Mask the entire `workspace/additional`
+directory inside the Host if its parent is bind-mounted. Keep it out of
+every indexer, ordinary documentation root, shared agent filesystem and any
+other bind aliases. Mount any nested network shares read-only on the host
+before starting the worker. The worker needs read and directory traversal
+permissions. It never needs a write grant.
+
+Grant `qa_read_selected_source` to each reader role as an always-available
+tool, or declare it on the manual skill and include it in the role's
+skill-grantable tools. The tool accepts only a relative path within the
+directory selected for the current user message. It lists one directory,
+searches its entry names, reads paged UTF-8 text or checks a file address.
+An optional `linkBase` such as `file://files.example.corp/archive/` returns
+addresses usable outside the chat. Without it, addresses use the source label.
+Both ends use loopback ports 18791 (reader) and 18792 (Host authorization);
+override them together with `QA_SOURCE_READER_PORT` and `QA_SOURCE_AUTH_PORT`.
+Publish neither port. The Host checks current role and source rights before
+issuing a single-use ticket, on redemption and before returning data. The
+worker requires a signature over its fresh challenge. Ordinary questions
+do not contact the worker. Audit records contain the request, principal,
+role, source ID and outcome; document bodies and search terms are omitted.
 
 #### Enabling slash actions
 

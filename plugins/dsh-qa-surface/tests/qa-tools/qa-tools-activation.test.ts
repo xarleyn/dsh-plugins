@@ -84,6 +84,26 @@ function manager(catalog: QaToolDescriptor[]) {
 }
 
 describe("QA tool activation manager", () => {
+  it("registers only granted default docs before skill activation and cleans them up once", () => {
+    const { agent, registered, disposed } = fakeAgent("reader");
+    const { instance } = manager([
+      { ...tool("docs_read"), group: "documentation" },
+      { ...tool("docs_search"), group: "documentation" },
+      tool("other"),
+    ]);
+    instance.enableDefaultDocs(agent, []);
+    expect(registered).toEqual([]);
+    instance.enableDefaultDocs(agent, ["docs_read", "other"]);
+    instance.enableDefaultDocs(agent, ["docs_read"]);
+    expect(registered).toEqual(["docs_read"]);
+    expect(instance.isActive(agent)).toBe(false);
+    expect(instance.activate(agent, "skill").status).toBe("activated");
+    expect(registered).toEqual(["docs_read", "docs_search", "other"]);
+    instance.disposeAll();
+    expect(registered).toEqual([]);
+    expect(disposed.sort()).toEqual(["docs_read", "docs_search", "other"]);
+  });
+
   it("registers the whole catalog once", () => {
     const world = fakeAgent("a");
     const { instance } = manager([tool("qa_one"), tool("qa_two")]);

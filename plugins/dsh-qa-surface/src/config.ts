@@ -75,6 +75,7 @@ const configSchema = z.object({
         skill: z.string().required(),
         label: z.string().required(),
         directory: z.string().required(),
+        linkBase: z.string(),
       }),
     )
     .default([])

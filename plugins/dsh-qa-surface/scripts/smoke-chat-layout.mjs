@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { rpc } from "./smoke-helpers.mjs";
 
 const demoTitle = "Подготовка к встрече";
+const ordinaryPrompt = "Продолжи обсуждение без дополнительного источника.";
 const demoPrompt = "Что стоит обсудить на первой встрече по проекту?";
 const demoReply = `## ${demoTitle}
 
@@ -22,18 +23,83 @@ const demoReply = `## ${demoTitle}
 
 // A deterministic local provider gives the browser a real persisted turn
 // (and therefore real resize handles) without an account at an LLM provider.
-export async function startLayoutProvider() {
-  const server = createServer((req, res) => {
-    req.resume();
+export async function startLayoutProvider(archive) {
+  const server = createServer(async (req, res) => {
+    const chunks = [];
+    for await (const part of req) chunks.push(part);
+    let call = false;
+    if (archive) {
+      const input = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+      if (
+        input.messages?.some(
+          (m) =>
+            m.role === "tool" &&
+            JSON.stringify(m.content).includes("Synthetic archive receipt."),
+        )
+      )
+        archive.delivered = true;
+      const ordinary = input.messages?.some(
+        (m) =>
+          m.role === "user" &&
+          JSON.stringify(m.content).includes(ordinaryPrompt),
+      );
+      if (
+        ordinary &&
+        input.messages?.some(
+          (m) =>
+            m.role === "tool" &&
+            JSON.stringify(m.content).includes("Не удалось получить данные"),
+        )
+      )
+        archive.denied = true;
+      call =
+        (ordinary ? !archive.ordinaryRequested : !archive.requested) &&
+        input.messages?.some(
+          (m) =>
+            m.role === "user" && JSON.stringify(m.content).includes(demoPrompt),
+        ) &&
+        input.tools?.some(
+          (t) => t.function?.name === "qa_read_selected_source",
+        );
+      if (call) {
+        if (ordinary) archive.ordinaryRequested = true;
+        else archive.requested = true;
+      }
+    }
     res.writeHead(200, { "Content-Type": "text/event-stream" });
-    for (const choice of [
-      {
-        index: 0,
-        delta: { role: "assistant", content: demoReply },
-        finish_reason: null,
-      },
-      { index: 0, delta: {}, finish_reason: "stop" },
-    ]) {
+    for (const choice of call
+      ? [
+          {
+            index: 0,
+            delta: {
+              role: "assistant",
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "archive-read",
+                  type: "function",
+                  function: {
+                    name: "qa_read_selected_source",
+                    arguments: JSON.stringify({
+                      action: "read",
+                      path: "sample.txt",
+                    }),
+                  },
+                },
+              ],
+            },
+            finish_reason: null,
+          },
+          { index: 0, delta: {}, finish_reason: "tool_calls" },
+        ]
+      : [
+          {
+            index: 0,
+            delta: { role: "assistant", content: demoReply },
+            finish_reason: null,
+          },
+          { index: 0, delta: {}, finish_reason: "stop" },
+        ]) {
       res.write(
         `data: ${JSON.stringify({ id: "layout", object: "chat.completion.chunk", created: 1, model: "layout-demo", choices: [choice] })}\n\n`,
       );
@@ -102,6 +168,13 @@ export async function grantLayoutSearchSource(origin, cookie, session) {
     name: "Demo reader",
     capabilities: {
       ...general.capabilities,
+      tools: {
+        ...general.capabilities.tools,
+        always: [
+          ...general.capabilities.tools.always,
+          "qa_read_selected_source",
+        ],
+      },
       skills: [...general.capabilities.skills, name],
     },
   };
@@ -320,6 +393,13 @@ export async function runChatLayoutPass(
   await setGrant(null);
   await byline.waitFor({ state: "detached" });
   if (withSearchSource) {
+    const ordinary = page.getByTestId("qa-composer-input");
+    await ordinary.fill(ordinaryPrompt);
+    await page.getByTestId("qa-composer-send").click();
+    await page
+      .getByRole("heading", { name: demoTitle, exact: true })
+      .nth(1)
+      .waitFor();
     const catalog = await rpc(
       origin,
       "qaSurface/slashCatalog",

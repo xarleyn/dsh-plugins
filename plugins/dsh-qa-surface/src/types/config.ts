@@ -271,6 +271,7 @@ export interface QaSurfaceConfig {
     readonly skill: string;
     readonly label: string;
     readonly directory: string;
+    readonly linkBase?: string;
   }[];
   readonly embedding?: {
     readonly frameAncestors?: string | null;
