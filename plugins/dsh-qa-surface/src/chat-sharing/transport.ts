@@ -425,8 +425,13 @@ export class QaChatTransport {
         : select();
     });
   }
-  async cancel(token: string, id: string): Promise<SessionCancelValue> {
+  async cancel(
+    token: string,
+    id: string,
+    revoke?: () => void,
+  ): Promise<SessionCancelValue> {
     return this.ownerOperation(token, id, async () => {
+      revoke?.();
       const value = await this.ctx.sessionController.cancel({
         sessionId: SessionId(id),
       });

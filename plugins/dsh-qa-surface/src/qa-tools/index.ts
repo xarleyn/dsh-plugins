@@ -104,6 +104,11 @@ export class QaTools implements QaToolActivation {
     }
   }
 
+  enableDefaultDocs(agent: Agent, names: readonly string[]) {
+    if (this.isManagedAgent(agent))
+      this.manager.enableDefaultDocs(agent, names);
+  }
+
   /** Names currently registered on one agent; the admission guard reads this per call. */
   activeToolNames(agent: Agent): readonly string[] {
     return this.manager.activeToolNames(agent);

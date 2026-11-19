@@ -16,6 +16,7 @@ const bindings = [
 
 async function setup() {
   const h = harness();
+  h.tools.add("qa_read_selected_source");
   for (const { skill } of bindings.filter((b) => b.skill !== "company")) {
     h.skills.set(skill, {
       name: skill,
@@ -30,7 +31,7 @@ async function setup() {
     name: "Reader",
     enabled: true,
     capabilities: {
-      tools: { always: [], skillGrantable: [] },
+      tools: { always: ["qa_read_selected_source"], skillGrantable: [] },
       skills: ["demo-docs", "demo-library", "company"],
     },
   };
@@ -49,11 +50,38 @@ async function setup() {
   );
   const transport = vi.fn(async () => ({}));
   const execute = vi.fn(async () => ({}));
-  const config = { accounts: { enabled: true }, searchSources: bindings };
+  const config = {
+    accounts: { enabled: true, perUserWorkspace: true },
+    searchSources: bindings,
+  };
+  const admit = vi.fn();
   const surface = Object.assign(Object.create(QaSurface.prototype), {
-    getConfig: () => resolveConfig(config),
+    getConfig: () =>
+      resolveConfig({
+        ...config,
+        accounts: {
+          ...config.accounts,
+          perUserWorkspace: config.accounts.enabled,
+        },
+        session: { workspaceId: "demo" },
+        lockdown: config.accounts.enabled
+          ? { enabled: true, sandboxMode: "workspace-write" }
+          : {},
+      }),
     source: () => config,
     access: h.service,
+    sourceTurns: {
+      admit,
+      drop: vi.fn(),
+      submit: (
+        _session: string,
+        _match: unknown,
+        run: () => Promise<unknown>,
+      ) => run(),
+    },
+    sharing: () => ({
+      owner: (token: string) => ({ actorId: h.accounts.currentUser(token).id }),
+    }),
     logger: { debug: vi.fn() },
     slashRemotes: { catalog: async () => catalog, execute },
     chatTransport: {
@@ -76,7 +104,7 @@ async function setup() {
       },
     },
   }) as QaSurface;
-  return { ...h, surface, config, transport, execute };
+  return { ...h, surface, config, transport, execute, admit };
 }
 
 describe("search source admission", () => {
@@ -141,6 +169,8 @@ describe("search source admission", () => {
         "/demo-docs\nИсточник поиска: Документация\n\nНайти документ";
       expect(readSourcePrompt(text)?.question).toBe("Найти документ");
       await prompt(text);
+      const grant = h.admit.mock.lastCall?.[0];
+      await expect(grant.verify()).resolves.toBeUndefined();
       const shared = h.skills.get("demo-docs")!;
       h.skills.set("demo-docs", { ...shared, source: "qa-user" });
       await expect(prompt(text)).rejects.toThrow("Источник поиска");
@@ -155,6 +185,7 @@ describe("search source admission", () => {
         allowedSubroles: ["general"],
         defaultSubrole: "general",
       });
+      await expect(grant.verify()).rejects.toThrow();
       await expect(prompt("Поиск /demo-docs")).rejects.toThrow(
         "Источник поиска",
       );

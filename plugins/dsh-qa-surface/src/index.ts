@@ -1,4 +1,11 @@
 import path from "node:path";
+import { createPrivateKey, randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { SourceTurns, sourceDenied } from "./search-sources/turns.js";
+import { sourceTool, SOURCE_READER_TOOL } from "./search-sources/tool.js";
+import { archivePort } from "./search-sources/protocol.js";
+import { ArchiveGateway } from "./search-sources/gateway.js";
+import { parseSlashLine as parseSourceLine } from "./slash/parser.js";
 import { QaCodeSourceSelection } from "./code-source-selection.js";
 import { qaDelegatedHeader } from "./shared/session-lineage.js";
 import type { QaChatCodeSources } from "./types/code-sources.js";
@@ -342,6 +349,7 @@ export class QaSurface extends TypertRemoteService {
   }
   private readonly provenance: QaProvenanceHost;
   private readonly notes: QaPromptNotes;
+  private readonly sourceTurns?: SourceTurns;
   private readonly answerModes: QaAnswerModes;
   /** Assigned after the admission gate; that gate only reads it per execution. */
   private readonly tools!: QaTools;
@@ -631,8 +639,15 @@ export class QaSurface extends TypertRemoteService {
       // role-managed sessions authorize its known entries through the frozen
       // capability policy instead.
       (agent) => this.tools?.activeToolNames(agent) ?? [],
-      (owner, sessionId, agent) =>
-        this.access.policyForSessionOwner(owner, sessionId, agent),
+      async (owner, sessionId, agent) => {
+        const result = await this.access.policyForSessionOwner(
+          owner,
+          sessionId,
+          agent,
+        );
+        if (result) this.tools?.enableDefaultDocs(agent, result.policy.tools);
+        return result;
+      },
       () => this.tools?.catalogToolNames() ?? [],
       (sessionId) => this.access.modelPolicyFor(sessionId),
       // The integration API's own attestation writes the principal here, because
@@ -747,6 +762,30 @@ export class QaSurface extends TypertRemoteService {
       this.admission.knowsSession(sessionId),
     );
     ownership.install(ctx);
+    if (process.env.QA_SOURCE_SIGNING_KEY) {
+      const key = createPrivateKey(
+        readFileSync(process.env.QA_SOURCE_SIGNING_KEY),
+      );
+      if (key.asymmetricKeyType !== "ed25519")
+        throw new Error("Archive issuer requires an Ed25519 key.");
+      const gateway = new ArchiveGateway(
+        archivePort(process.env.QA_SOURCE_READER_PORT, 18791),
+        archivePort(process.env.QA_SOURCE_AUTH_PORT, 18792),
+        key,
+      );
+      const turns = (this.sourceTurns = new SourceTurns(ctx));
+      const unregister = ctx.tools.register(
+        sourceTool(turns, gateway, this.logger),
+      );
+      ctx.effect(
+        () => () => {
+          unregister();
+          turns.dispose();
+          gateway.dispose();
+        },
+        "qa-surface: archive reader",
+      );
+    }
     this.answerModes = new QaAnswerModes(ctx, ownership);
     ctx.effect(
       () => () => this.answerModes.dispose(),
@@ -2336,13 +2375,22 @@ export class QaSurface extends TypertRemoteService {
     request: SessionPromptRequest,
     signal: AbortSignal,
   ): Promise<SessionPromptValue> {
-    return this.chatTransport.prompt(token, request, signal, () =>
-      this.admitSourceContent(
-        token,
-        String(request.sessionId),
-        request.content,
-      ),
-    );
+    const send = () =>
+      this.chatTransport.prompt(token, request, signal, () =>
+        this.admitSourceContent(
+          token,
+          String(request.sessionId),
+          request.content,
+          String(request.requestId),
+        ),
+      );
+    return this.sourceTurns
+      ? this.sourceTurns.submit(
+          String(request.sessionId),
+          (_id, rpc) => rpc === String(request.requestId),
+          send,
+        )
+      : send();
   }
 
   @Remote("chatAttachment")
@@ -2363,7 +2411,9 @@ export class QaSurface extends TypertRemoteService {
 
   @Remote("chatCancel")
   chatCancel(token: string, sessionId: string): Promise<SessionCancelValue> {
-    return this.chatTransport.cancel(token, sessionId);
+    return this.chatTransport.cancel(token, sessionId, () =>
+      this.sourceTurns?.cancel(sessionId),
+    );
   }
 
   @Remote("chatUpdateQueue")
@@ -2372,33 +2422,122 @@ export class QaSurface extends TypertRemoteService {
     request: SessionUpdateQueueRequest,
   ): Promise<SessionUpdateQueueValue> {
     const action = request.action;
-    return this.chatTransport.updateQueue(
-      token,
-      request,
-      action.kind === "edit"
-        ? () =>
-            this.admitSourceContent(
-              token,
-              String(request.sessionId),
-              action.content,
-            )
-        : undefined,
-    );
+    const id = String(request.sessionId);
+    const update = () =>
+      this.chatTransport.updateQueue(
+        token,
+        request,
+        action.kind === "edit"
+          ? async () => {
+              await this.admitSourceContent(
+                token,
+                String(request.sessionId),
+                action.content,
+                String(request.itemId),
+              );
+              this.sourceTurns?.drop(id, String(request.itemId));
+            }
+          : action.kind === "remove"
+            ? () => {
+                this.sourceTurns?.drop(id, String(request.itemId));
+                return Promise.resolve();
+              }
+            : undefined,
+      );
+    return this.sourceTurns && action.kind === "edit"
+      ? this.sourceTurns.submit(
+          id,
+          (key) => key === String(request.itemId),
+          update,
+        )
+      : update();
   }
 
-  private admitSourceContent(
+  private async admitSourceContent(
     token: string,
     sessionId: string,
     content: SessionPromptRequest["content"],
+    request: string,
   ) {
     const text = content
       .flatMap((part) => (part.type === "text" ? [part.text] : []))
       .join("\n");
-    return requireSearchSourceAccess(
-      this.source().searchSources ?? [],
-      text,
-      () => this.slashCatalog(token, sessionId),
-    );
+    await this.admitSourceText(token, sessionId, text, request);
+  }
+
+  private async admitSourceText(
+    token: string,
+    sessionId: string,
+    text: string,
+    request?: string,
+  ) {
+    const bindings = this.source().searchSources ?? [];
+    const name = parseSourceLine(text.replace(/^\/no-review\s+/u, ""))?.name;
+    const selected = bindings.find((row) => row.skill === name);
+    try {
+      await requireSearchSourceAccess(bindings, text, () =>
+        this.slashCatalog(token, sessionId),
+      );
+      if (!selected) return;
+      if (!this.sourceTurns || !this.getConfig().accounts.perUserWorkspace)
+        throw sourceDenied();
+    } catch (error) {
+      if (selected) {
+        try {
+          const actor = this.sharing().owner(token, sessionId).actorId;
+          this.logger.info("archive.admission", {
+            actor,
+            role: this.access.session(token, sessionId).subrole.id,
+            session: sessionId,
+            request: request ?? randomUUID(),
+            source: selected.skill,
+            selected: true,
+            outcome: "refused",
+          });
+        } catch {
+          /* Unknown or inaccessible sessions have no verified attribution. */
+        }
+      }
+      throw error;
+    }
+    const binding = { ...selected };
+    const actor = this.sharing().owner(token, sessionId).actorId;
+    const access = this.access.session(token, sessionId);
+    const role = access.subrole.id;
+    const verify = async () => {
+      const revision = this.access.roles.snapshot();
+      const visible = await this.slashCatalog(token, sessionId);
+      const session = this.access.session(token, sessionId);
+      const live = this.source().searchSources?.find(
+        (row) => row.skill === name,
+      );
+      if (
+        !visible.entries.some(
+          (e) =>
+            e.kind === "skill" &&
+            e.name === name &&
+            e.searchSource?.label === binding.label.trim(),
+        ) ||
+        this.access.roles.snapshot() !== revision ||
+        live?.directory !== binding.directory ||
+        live.linkBase !== binding.linkBase ||
+        this.sharing().owner(token, sessionId).actorId !== actor ||
+        session.subrole.id !== role ||
+        session.adminPreview !== access.adminPreview ||
+        (!session.adminPreview &&
+          !this.access
+            .current(token)
+            .subroles.some((candidate) => candidate.id === role))
+      )
+        throw sourceDenied();
+    };
+    this.sourceTurns.admit({
+      binding,
+      session: sessionId,
+      actor,
+      role,
+      verify,
+    });
   }
 
   private async admitChatRead(
@@ -3026,11 +3165,20 @@ export class QaSurface extends TypertRemoteService {
           target.adminPreview,
           draft === undefined ? sessionId : undefined,
         );
-        if (current.policy) {
+        if (
+          current.policy &&
+          this.sourceTurns &&
+          this.getConfig().accounts.perUserWorkspace
+        ) {
           const grants = new Set(userInvocableSkillNames(current.policy));
           for (const skill of current.skills) {
             if (
               grants.has(skill.name) &&
+              (current.policy.tools.includes(SOURCE_READER_TOOL) ||
+                (current.policy.grantableTools.includes(SOURCE_READER_TOOL) &&
+                  current.metadata
+                    .get(skill.name)
+                    ?.requiredTools.includes(SOURCE_READER_TOOL))) &&
               skill.source !== QA_USER_SKILLS_SOURCE &&
               !skill.invocation.modelInvocable
             )
@@ -3064,14 +3212,20 @@ export class QaSurface extends TypertRemoteService {
     modes?: readonly QaAnswerMode[],
   ): Promise<QaSlashExecution> {
     const execute = async () => {
-      await requireSearchSourceAccess(
-        this.source().searchSources ?? [],
-        line,
-        () => this.slashCatalog(token, sessionId),
-      );
+      await this.admitSourceText(token, sessionId, line);
       return this.slashRemotes.execute(token, sessionId, line, attachments);
     };
-    if (modes === undefined) return execute();
+    const run = () =>
+      this.sourceTurns && /^\/no-review\s/u.test(line)
+        ? this.sourceTurns.submit(
+            sessionId,
+            (_id, rpc, text) =>
+              rpc === undefined &&
+              text === line.replace(/^\/no-review\s+/u, "").trim(),
+            execute,
+          )
+        : execute();
+    if (modes === undefined) return run();
     const proof = await this.secureSession(token, sessionId);
     if (
       proof.chatAccess !== undefined &&
@@ -3079,7 +3233,7 @@ export class QaSurface extends TypertRemoteService {
       proof.chatAccess.mode !== "collaborate"
     )
       throw new Error("Read-only chat access cannot change answer modes.");
-    return this.answerModes.withCommand(sessionId, modes, execute);
+    return this.answerModes.withCommand(sessionId, modes, run);
   }
 
   /** Trusted server-side review scope; intentionally absent from the RPC API. */
