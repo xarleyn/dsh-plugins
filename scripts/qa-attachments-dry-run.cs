@@ -15,10 +15,12 @@ sealed class AttachmentInventory(string home, int minimumAgeDays)
 {
     private const string Usage = "Usage: dotnet run --file scripts/qa-attachments-dry-run.cs -- --offline --home <absolute DSH_HOME> [--min-age-days <0..36500>]";
     private static readonly Regex Digest = new(@"(?<![a-f0-9])[a-f0-9]{64}(?![a-f0-9])", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    private static readonly Regex JournalName = new(@"\Asession(?:\.v(?<version>[1-4]))?\.jsonl(?<zstd>\.zstd)?(?<backup>\.pre-[a-z0-9]+(?:-[a-z0-9]+)*\.bak)?\z");
+    private static readonly Regex MigrationName = new(@"\Asession\.migration\.[a-f0-9]{16}\.jsonl(?<zstd>\.zstd)?\.tmp\z");
     private static readonly UTF8Encoding Utf8 = new(false, true);
     private static readonly JsonDocumentOptions StrictJson = new() { AllowDuplicateProperties = false };
-    private static readonly HashSet<string> SessionHeaderFields =
-        ["type", "version", "id", "createdAt", "cwd", "parentSession", "isSeeded", "origin", "delegationDepth", "agentPreset"];
+    private static readonly HashSet<string> CommonHeaderFields =
+        ["type", "version", "id", "createdAt", "cwd", "parentSession", "origin", "delegationDepth", "agentPreset"];
 
     private readonly ProfileView view = new(home);
     private readonly Dictionary<string, SortedSet<string>> references = new(StringComparer.Ordinal);
@@ -28,6 +30,9 @@ sealed class AttachmentInventory(string home, int minimumAgeDays)
     private readonly DateTimeOffset scannedAt = DateTimeOffset.UtcNow;
     private int sessions;
     private int seededSessions;
+    private int journals;
+    private int legacyJournals;
+    private int supersededHeaderOnlyJournals;
     private int formRows;
     private int mutationRows;
     private int resourceRows;
@@ -76,16 +81,19 @@ sealed class AttachmentInventory(string home, int minimumAgeDays)
             Check("form-storage", At("qa-forms.db"), ScanForms);
             Check("provenance", At("qa-sources"), ScanProvenance);
             Check("session-purge", At(".qa-session-purges"), CheckPurgeJournal);
+            bool referencesComplete = blockers.Count == 0;
+            int beforeStore = blockers.Count;
             Check("file-storage", At("attachments"), ReadStore);
-            if (blockers.Count == 0)
-                Check("file-identity", At("attachments", "v1"), () => Classify(kept, candidates));
+            if (blockers.Count == beforeStore)
+                Check("file-identity", At("attachments", "v1"), () => Classify(referencesComplete, kept, candidates));
             Check("profile-stability", home, view.Verify);
         }
 
         if (blockers.Count != 0) candidates.Clear();
         var report = new ScanReport(
-            1, "dry-run", scannedAt, minimumAgeDays, blockers.Count == 0, blockers,
-            new Counts(sessions, seededSessions, formRows, mutationRows, resourceRows, files.Count),
+            2, "dry-run", scannedAt, minimumAgeDays, blockers.Count == 0, blockers,
+            new Counts(sessions, seededSessions, journals, legacyJournals, supersededHeaderOnlyJournals,
+                formRows, mutationRows, resourceRows, files.Count),
             candidates.Sum(item => item.Bytes),
             candidates,
             kept);
@@ -95,55 +103,143 @@ sealed class AttachmentInventory(string home, int minimumAgeDays)
 
     private void ScanSessions()
     {
+        using var decoder = new ReadOnlyNode(ZstdDecoder, "", input: true);
         foreach (string project in view.Children(At("sessions")))
         foreach (string directory in view.Children(project))
-        {
-            Check("session-journal", directory, () =>
-            {
-                string[] contents = view.Children(directory);
-                Require(contents.Length == 1, "Expected exactly one session generation and no staging files.");
-                string path = contents[0];
-                string name = Path.GetFileName(path);
-                Require(name is "session.v4.jsonl" or "session.v4.jsonl.zstd", "Unsupported session generation.");
-                view.File(path);
-                using var file = System.IO.File.OpenRead(path);
-                using var lines = (name.EndsWith(".zstd", StringComparison.Ordinal) ? CompressedLines(file) : JsonLines(file)).GetEnumerator();
-                Require(lines.MoveNext(), "Missing session header.");
-                using var header = JsonDocument.Parse(lines.Current, StrictJson);
-                JsonElement root = header.RootElement;
-                string id = root.GetProperty("id").GetString()!;
-                Require(root.GetProperty("type").GetString() == "session" &&
-                    root.GetProperty("version").GetInt32() == 4 &&
-                    EncodeSessionId(id) == Path.GetFileName(directory) &&
-                    root.GetProperty("createdAt").GetInt64() >= 0 && root.GetProperty("delegationDepth").GetInt64() >= 0 &&
-                    root.EnumerateObject().All(property => SessionHeaderFields.Contains(property.Name)), "Unsupported session header.");
-                bool seeded = root.GetProperty("isSeeded").GetBoolean();
-                string source = seeded ? "seeded-session" : "session";
-                Mark(root, source);
+            Check("session-layout", directory, () => ScanSession(directory, decoder));
+        decoder.FinishInput();
+        Require(decoder.Read() is null, "Unexpected Zstandard decoder output.");
+        decoder.Complete();
+    }
 
-                long sequence = 0;
-                bool inherited = false;
-                while (lines.MoveNext())
+    private void ScanSession(string directory, ReadOnlyNode decoder)
+    {
+        bool hasGeneration = false;
+        bool seeded = false;
+        int previousBlockers = blockers.Count;
+        string id = Path.GetFileName(directory);
+        Require(sessionIds.Add(id), "Duplicate session identifier across project directories.");
+        var verifiedGenerations = new List<(int Version, JournalHistory Header)>();
+        var headerOnly = new List<(string Path, int Version, JournalHistory Header)>();
+
+        foreach (string path in view.Children(directory))
+        {
+            string name = Path.GetFileName(path);
+            if (name == "session.lock")
+            {
+                Check("session-lock", path, () => Require(view.File(path) == 0, "Expected an empty Harness write lock."));
+                continue;
+            }
+
+            var generation = JournalName.Match(name);
+            var migration = MigrationName.Match(name);
+            bool canonical = generation.Success && !generation.Groups["backup"].Success;
+            hasGeneration |= canonical;
+            Check("session-journal", path, () =>
+            {
+                Require(generation.Success || migration.Success, "Unrecognized session journal or artifact.");
+                int version = migration.Success ? 4 : generation.Groups["version"].Success ? generation.Groups["version"].Value[0] - '0' : 0;
+                bool compressed = (migration.Success ? migration : generation).Groups["zstd"].Success;
+                JournalHistory history = ScanJournal(path, id, version, compressed, decoder);
+                if (!history.HasEvents && canonical)
                 {
-                    using var record = JsonDocument.Parse(lines.Current, StrictJson);
-                    JsonElement entry = record.RootElement;
-                    string? type = entry.GetProperty("type").GetString();
-                    Require(!string.IsNullOrEmpty(type) && type != "session" &&
-                        entry.GetProperty("seq").GetInt64() == sequence && entry.GetProperty("time").GetInt64() >= 0 &&
-                        entry.TryGetProperty("data", out _), $"Invalid session record at sequence {sequence}.");
-                    if (type == "session/end-seed" && entry.GetProperty("data").TryGetProperty("inherited", out var marker))
-                        inherited |= marker.GetBoolean();
-                    Mark(entry, source);
-                    sequence++;
+                    headerOnly.Add((path, version, history));
+                    return;
                 }
 
-                Require(sequence > 0, "Header-only journal has no events to verify.");
-                Require(seeded == inherited, "Missing or unexpected inherited seed marker.");
-                Require(sessionIds.Add(id), "Duplicate session identifier across project directories.");
-                sessions++;
-                if (seeded) seededSessions++;
+                Require(history.HasEvents, "Header-only journal has no events to verify.");
+                if (canonical) verifiedGenerations.Add((version, history));
+                seeded |= history.Seeded;
+                journals++;
+                if (version < 4) legacyJournals++;
             });
         }
+
+        foreach (var older in headerOnly)
+        {
+            Check("session-journal", older.Path, () =>
+            {
+                Require(verifiedGenerations.Any(current => current.Version > older.Version &&
+                    current.Header.CreatedAt == older.Header.CreatedAt && current.Header.ParentSession == older.Header.ParentSession),
+                    "Header-only journal has no events to verify and no verified successor.");
+                supersededHeaderOnlyJournals++;
+                journals++;
+                if (older.Version < 4) legacyJournals++;
+            });
+        }
+
+        Require(hasGeneration, "Session directory has no canonical journal.");
+        if (blockers.Count == previousBlockers)
+        {
+            sessions++;
+            if (seeded) seededSessions++;
+        }
+    }
+
+    private JournalHistory ScanJournal(string path, string id, int version, bool compressed, ReadOnlyNode decoder)
+    {
+        view.File(path);
+        using var file = System.IO.File.OpenRead(path);
+        using var lines = (compressed ? CompressedLines(file, decoder, allowMissingChecksum: version < 4) : JsonLines(file)).GetEnumerator();
+        Require(lines.MoveNext(), "Missing session header.");
+        using var header = JsonDocument.Parse(lines.Current, StrictJson);
+        JsonElement root = header.RootElement;
+        bool packedFormat = version < 2;
+        string seedField = packedFormat ? "seedLength" : "isSeeded";
+        long createdAt = root.GetProperty("createdAt").GetInt64();
+        string? parentSession = root.TryGetProperty("parentSession", out var parent) ? parent.GetString() : null;
+        Require(root.GetProperty("type").GetString() == "session" &&
+            root.GetProperty("version").GetInt32() == version &&
+            EncodeSessionId(root.GetProperty("id").GetString()!) == id &&
+            createdAt >= 0 && root.GetProperty("delegationDepth").GetInt64() >= 0 &&
+            root.EnumerateObject().All(property => CommonHeaderFields.Contains(property.Name) || property.Name == seedField),
+            "Unsupported session header.");
+        bool seeded = packedFormat ? root.TryGetProperty(seedField, out _) : root.GetProperty(seedField).GetBoolean();
+        long seedLength = packedFormat && seeded ? root.GetProperty(seedField).GetInt64() : 0;
+        string source = seeded ? "seeded-session" : "session";
+        Mark(root, source);
+
+        long sequence = 0;
+        bool inherited = false;
+        while (lines.MoveNext())
+        {
+            using var record = JsonDocument.Parse(lines.Current, StrictJson);
+            JsonElement entry = record.RootElement;
+            string? type = entry.GetProperty("type").GetString();
+            Require(!string.IsNullOrEmpty(type) && type != "session", $"Invalid session record at sequence {sequence}.");
+            JsonElement data = entry.GetProperty("data");
+            if (packedFormat && type is "text-chunks" or "reasoning-chunks" or "tool-call-chunks")
+            {
+                sequence += ScanPackedRow(entry, data, sequence, type == "tool-call-chunks", source);
+            }
+            else
+            {
+                Require(entry.GetProperty("seq").GetInt64() == sequence && entry.GetProperty("time").TryGetInt64(out _),
+                    $"Invalid session record at sequence {sequence}.");
+                if (type == "session/end-seed" && data.TryGetProperty("inherited", out var marker))
+                    inherited |= marker.GetBoolean();
+                sequence++;
+            }
+            Mark(entry, source);
+        }
+
+        Require(packedFormat ? seedLength >= 0 && seedLength <= sequence : seeded == inherited,
+            "Invalid inherited seed length or marker.");
+        return new(createdAt, parentSession, seeded, sequence > 0);
+    }
+
+    private int ScanPackedRow(JsonElement entry, JsonElement data, long sequence, bool isTool, string source)
+    {
+        var chunks = data.GetProperty(isTool ? "args" : "texts");
+        int count = chunks.GetArrayLength();
+        var times = data.GetProperty("dt");
+        Require(entry.GetProperty("seq0").GetInt64() == sequence && entry.GetProperty("time0").TryGetInt64(out _) &&
+            count > 0 && times.GetArrayLength() == count - 1 && times.EnumerateArray().All(time => time.TryGetInt64(out _)) &&
+            chunks.EnumerateArray().All(chunk => chunk.ValueKind == JsonValueKind.String),
+            $"Invalid packed session record at sequence {sequence}.");
+        // A tool argument or text containing a digest can span packed chunks.
+        MarkText(string.Concat(chunks.EnumerateArray().Select(chunk => chunk.GetString())), source);
+        return count;
     }
 
     private static string EncodeSessionId(string id)
@@ -172,17 +268,17 @@ sealed class AttachmentInventory(string home, int minimumAgeDays)
         while (reader.ReadLine() is { } line) yield return line;
     }
 
-    private static IEnumerable<string> CompressedLines(FileStream file)
+    private static IEnumerable<string> CompressedLines(FileStream file, ReadOnlyNode node, bool allowMissingChecksum)
     {
-        using var node = new ReadOnlyNode(ZstdDecoder, "", input: true);
         using var bytes = new BinaryReader(file, Utf8, leaveOpen: true);
         while (file.Position < file.Length)
         {
             long start = file.Position;
             Require(bytes.ReadUInt32() == 0xFD2FB528, "Invalid Zstandard frame magic.");
             byte descriptor = bytes.ReadByte();
-            // Harness writes standard, dictionary-free, checksummed frames.
-            Require((descriptor & 0x1f) == 4, "Unsupported Zstandard frame descriptor.");
+            bool checksum = (descriptor & 4) != 0;
+            // Older journals can contain both encodings, even within the same file.
+            Require((descriptor & 0x1b) == 0 && (checksum || allowMissingChecksum), "Unsupported Zstandard frame descriptor.");
             bool singleSegment = (descriptor & 0x20) != 0;
             int sizeFlag = descriptor >> 6;
             int sizeBytes = sizeFlag == 0 ? (singleSegment ? 1 : 0) : 1 << sizeFlag;
@@ -197,7 +293,7 @@ sealed class AttachmentInventory(string home, int minimumAgeDays)
                 file.Position += type == 1 ? 1 : block >> 3;
             } while ((block & 1) == 0);
 
-            long end = file.Position + 4; // Content checksum.
+            long end = file.Position + (checksum ? 4 : 0);
             Require(end <= file.Length, "Incomplete Zstandard frame.");
             Require(end - start <= 64 * 1024 * 1024, "Zstandard frame exceeds the scan limit.");
             file.Position = start;
@@ -205,24 +301,22 @@ sealed class AttachmentInventory(string home, int minimumAgeDays)
             Require(file.Position == end, "Zstandard frame changed during the scan.");
             node.Write(Convert.ToBase64String(frame));
             string encoded = node.Read() ?? throw new InvalidDataException("Zstandard decoder did not return a frame.");
+            Require(encoded != "!", "Zstandard frame failed decompression or checksum validation.");
             using var decoded = new MemoryStream(Convert.FromBase64String(encoded), writable: false);
             foreach (string line in JsonLines(decoded)) yield return line;
         }
-
-        node.FinishInput();
-        Require(node.Read() is null, "Unexpected Zstandard decoder output.");
-        node.Complete();
     }
 
     private void ScanForms()
     {
         string path = At("qa-forms.db");
         long? database = view.File(path, optional: true);
-        foreach (string suffix in new[] { "-wal", "-journal", "-shm" })
-        {
-            long? size = view.File(path + suffix, optional: true);
-            Require(size is null || (database is not null && size == 0), "Forms database has SQLite recovery sidecars. Scan a cleanly closed database.");
-        }
+        long? wal = view.File(path + "-wal", optional: true);
+        long? rollback = view.File(path + "-journal", optional: true);
+        long? shm = view.File(path + "-shm", optional: true);
+        Require(database is not null || (wal is null && rollback is null && shm is null), "Forms sidecar has no SQLite database.");
+        Require(wal is null or 0 && rollback is null or 0,
+            "Forms database has a nonempty SQLite WAL or rollback journal.");
 
         if (database is null) return;
         Require(database > 0, "Empty forms database.");
@@ -332,7 +426,7 @@ sealed class AttachmentInventory(string home, int minimumAgeDays)
 
     private static bool IsLowerHex(char character) => character is >= '0' and <= '9' or >= 'a' and <= 'f';
 
-    private void Classify(List<ObjectReport> kept, List<ObjectReport> candidates)
+    private void Classify(bool referencesComplete, List<ObjectReport> kept, List<ObjectReport> candidates)
     {
         string[] paths = files.Values.SelectMany(group => group.Paths()).ToArray();
         var stats = ReadStats(paths);
@@ -342,24 +436,26 @@ sealed class AttachmentInventory(string home, int minimumAgeDays)
             Check("file-group", path ?? group.Aliases.FirstOrDefault() ?? At("attachments", "v1", "files"), () =>
             {
                 Require(path is not null, "Attachment alias directory has no canonical object.");
-                LinkStat stat = stats[path!];
-                Require(stat.LinkCount == group.Aliases.Count + 1 && group.Aliases.All(alias => stats[alias] == stat),
-                    "Attachment hard links do not match the inventory.");
+                var copies = group.Paths().GroupBy(file => (stats[file].Device, stats[file].Inode)).ToArray();
+                foreach (var copy in copies)
+                {
+                    string representative = copy.First();
+                    LinkStat stat = stats[representative];
+                    Require(stat.LinkCount == copy.Count() && copy.All(file => stats[file] == stat),
+                        "Attachment hard links do not match the inventory.");
+                    using var input = System.IO.File.OpenRead(representative);
+                    Require(Convert.ToHexStringLower(SHA256.HashData(input)) == digest, "Stored file content does not match its digest.");
+                }
+                if (!referencesComplete) return;
+
                 var reasons = new List<string>();
                 if (references.TryGetValue(digest, out var from)) reasons.AddRange(from);
-                if (DateTimeOffset.FromUnixTimeMilliseconds(stat.ModifiedMs) > scannedAt.AddDays(-minimumAgeDays))
+                if (copies.Any(copy => DateTimeOffset.FromUnixTimeMilliseconds(stats[copy.First()].ModifiedMs) > scannedAt.AddDays(-minimumAgeDays)))
                     reasons.Add("minimum-age");
 
-                var item = new ObjectReport(digest, stat.Bytes, view.Relative(path!), group.Aliases.Select(view.Relative).ToArray(), reasons);
-                if (reasons.Count > 0)
-                {
-                    kept.Add(item);
-                    return;
-                }
-
-                using var input = System.IO.File.OpenRead(path!);
-                Require(Convert.ToHexStringLower(SHA256.HashData(input)) == digest, "Canonical object content does not match its digest.");
-                candidates.Add(item);
+                long bytes = copies.Sum(copy => stats[copy.First()].Bytes);
+                var item = new ObjectReport(digest, bytes, copies.Length, view.Relative(path!), group.Aliases.Select(view.Relative).ToArray(), reasons);
+                (reasons.Count > 0 ? kept : candidates).Add(item);
             });
         }
 
@@ -436,10 +532,12 @@ sealed class AttachmentInventory(string home, int minimumAgeDays)
 
     internal sealed record ScanReport(int Version, string Mode, DateTimeOffset ScannedAt, int MinimumAgeDays, bool Complete,
         List<Blocker> Blockers, Counts Scanned, long CandidateLogicalBytes, List<ObjectReport> Candidates, List<ObjectReport> Kept);
-    internal sealed record Counts(int Sessions, int SeededSessions, int FormRows, int MutationRows, int ResourceRows, int FileGroups);
+    internal sealed record Counts(int Sessions, int SeededSessions, int Journals, int LegacyJournals,
+        int SupersededHeaderOnlyJournals, int FormRows, int MutationRows, int ResourceRows, int FileGroups);
     internal sealed record Blocker(string Stage, string Path, string Reason);
-    internal sealed record ObjectReport(string Sha256, long Bytes, string Object, string[] Aliases, List<string> Reasons);
+    internal sealed record ObjectReport(string Sha256, long Bytes, int StorageCopies, string Object, string[] Aliases, List<string> Reasons);
     private sealed record LinkStat(string Device, string Inode, long LinkCount, long Bytes, long ModifiedMs, string ChangedNs);
+    private sealed record JournalHistory(long CreatedAt, string? ParentSession, bool Seeded, bool HasEvents);
 
     private sealed class StoredFile
     {
@@ -453,7 +551,13 @@ sealed class AttachmentInventory(string home, int minimumAgeDays)
         const { zstdDecompressSync } = require('node:zlib');
         (async () => {
           for await (const frame of createInterface({ input: process.stdin })) {
-            const decoded = zstdDecompressSync(Buffer.from(frame, 'base64'), { maxOutputLength: 128 * 1024 * 1024 });
+            let decoded;
+            try {
+              decoded = zstdDecompressSync(Buffer.from(frame, 'base64'), { maxOutputLength: 128 * 1024 * 1024 });
+            } catch {
+              process.stdout.write('!\n');
+              continue;
+            }
             process.stdout.write(decoded.toString('base64') + '\n');
           }
         })().catch(() => { process.exitCode = 1; process.stdin.destroy(); });
