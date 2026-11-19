@@ -90,6 +90,25 @@ function renderAnswer(text: string) {
 }
 
 describe("QA message", () => {
+  it("restores the chosen source beside the question from native chat history", () => {
+    render(
+      <QaMessage
+        message={{
+          id: "user:1",
+          role: "user",
+          text: "/demo-docs\nИсточник поиска: Документы · Демо\n\nГде план?",
+          status: "committed",
+        }}
+        renderMarkdown
+        showTimestamp={false}
+      />,
+    );
+    expect(screen.getByLabelText("Источник поиска").textContent).toBe(
+      "Документы · Демо",
+    );
+    expect(screen.getByText("Где план?")).toBeTruthy();
+    expect(screen.queryByText(/\/demo-docs/u)).toBeNull();
+  });
   it("copies visible assistant text from the icon action", async () => {
     const writeText = vi.fn(async () => undefined);
     Object.defineProperty(navigator, "clipboard", {

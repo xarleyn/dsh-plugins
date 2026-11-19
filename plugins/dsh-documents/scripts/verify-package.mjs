@@ -18,7 +18,14 @@ await runVerifyPackage({
   packageRoot: root,
   packageName: "@yadsh/dsh-documents",
   license: "MIT",
-  exports: [".", "./client", "./types", "./locale/en.json", "./package.json"],
+  exports: [
+    ".",
+    "./client",
+    "./types",
+    "./docx",
+    "./locale/en.json",
+    "./package.json",
+  ],
   exportsBuilt: true,
   client: {
     platform: "web",

@@ -1084,6 +1084,77 @@ full-bleed. The agents drawer keeps its own header drawer for now.
 
 ### Slash commands and skills
 
+The composer's **+** menu opens the attachment picker and lists optional search
+sources for the signed-in user's active QA subrole. Configure a manual,
+user-invocable skill for each immediate directory under `additional`. Give it a distinct name,
+set `disable-model-invocation: true`, admit it in the slash policy and grant
+it to the intended subroles in the QA administrator console. Personal skills
+cannot serve as search sources. Each directory is a single source, including all its project subdirectories. Ordinary documentation remains available by default through its existing role permissions.
+
+```yaml
+searchSources:
+  - { label: Project documentation, directory: project-docs, skill: search-demo-docs }
+  - { label: Reference library, directory: reference, skill: lookup-reference }
+```
+
+The menu reads catalog metadata. Picking a source attaches its skill to one
+message. The user can also invoke that skill with `/search-demo-docs`. Source
+visibility requires both a current role grant and a skill available in the
+chat. Revoking the grant takes effect on the next catalog read or submission.
+Start a new chat to use a newly granted skill missing from an existing chat's
+capability snapshot.
+
+For protected directories, enable QA accounts with personal workspaces. The QA
+Host loads an Ed25519 PKCS#8 PEM from `QA_SOURCE_SIGNING_KEY` outside all
+agent, document and indexing roots. Run `node lib/search-sources/reader.js`
+from the **same package version** in a separate Linux container sharing the QA
+network namespace. Mount the archive read-only at `/archive` **only in the
+reader**, and mount the corresponding PEM public key at
+`/run/secrets/source-issuer.pub`. Mask the entire `workspace/additional`
+directory inside the Host if its parent is bind-mounted. Keep it out of
+every indexer, ordinary documentation root, shared agent filesystem and any
+other bind aliases. Mount any nested network shares read-only on the host
+before starting the worker. The worker needs read and directory traversal
+permissions. It never needs a write grant.
+
+Grant `qa_read_selected_source` to each reader role as an always-available
+tool, or declare it on the manual skill and include it in the role's
+skill-grantable tools. The tool accepts only a relative path within the
+directory selected for the current user message. It lists one directory,
+searches its entry names, reads paged UTF-8 text or Word/PDF fragments, and checks a file address.
+DOCX fragments carry section, paragraph or table-row locations; binary DOC
+fragments carry text block numbers; PDF fragments carry page numbers.
+Install catdoc and Poppler's pdftotext in the isolated reader. A scan without
+a text layer returns `needs_ocr` for the affected page. Files over 16 MiB
+and PDFs over 1,000 pages exceed the direct-read limits.
+Read successive fragments with `nextOffset` and restart at zero if the
+returned SHA-256 changes. Each request opens and hashes the authorized
+original. The process retains up to 32 extracted results (8 MiB combined)
+for ten minutes after last use. Extraction creates no intermediate file.
+An optional inventory adds `find` over the full relative path and `tree`
+with a depth of one to four. Page with the returned offset and snapshot.
+In the isolated reader set `QA_ARCHIVE_POLICY` to a JSON file with arrays
+`sensitiveNames`, `directories`, `files`, `excludedExtensions`, and
+`allowedExtensions`. Name patterns accept `*` and are case-insensitive.
+Denied extensions take precedence. Set `QA_ARCHIVE_INVENTORY` to the
+operator-built JSON inventory for the source. Run
+`node lib/search-sources/inventory.js <directory>` in the reader's mount
+namespace and atomically publish its successful stdout outside the workspace.
+The scan records names only, prunes excluded directories, and skips symlinks.
+Search and tree require the same mount and policy revision. Live listing,
+reading, and link lookup also enforce the policy.
+An optional `linkBase` such as `file://files.example.corp/archive/` returns
+addresses usable outside the chat. Without it, addresses use the source label.
+Both ends use loopback ports 18791 (reader) and 18792 (Host authorization);
+override them together with `QA_SOURCE_READER_PORT` and `QA_SOURCE_AUTH_PORT`.
+Publish neither port. The Host checks current role and source rights before
+issuing a single-use ticket, on redemption and before returning data. The
+worker requires a signature over its fresh challenge. Ordinary questions
+do not contact the worker. Audit records contain the request, principal,
+role, source ID and outcome; document bodies and search terms are omitted.
+
+#### Enabling slash actions
+
 Off by default. Typing `/` in the composer normally gets the same refusal it
 always did («Команды со слешем недоступны в режиме помощника»), and nothing
 about that changes for a deployment that upgrades.

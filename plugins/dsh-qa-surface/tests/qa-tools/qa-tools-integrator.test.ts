@@ -201,6 +201,25 @@ describe("qa_tools_selfcheck", () => {
     });
   });
 
+  it("reports a separately granted reader only for the selected message", async () => {
+    let selected = true;
+    const [descriptor] = createQaToolCatalog({
+      ...deps,
+      selectedSource: async () => selected,
+    });
+    const inspect = async () =>
+      (await descriptor!.definition.execute({ action: "catalog" }, {
+        agent: { id: "a" },
+      } as never)) as { activeTools: string[]; catalogTools: string[] };
+    const yes = await inspect();
+    expect(yes.activeTools).toContain("qa_read_selected_source");
+    expect(yes.catalogTools).toContain("qa_read_selected_source");
+    selected = false;
+    expect((await inspect()).activeTools).not.toContain(
+      "qa_read_selected_source",
+    );
+  });
+
   it("reports an empty state for an agent-less execution", async () => {
     const [descriptor] = createQaToolCatalog(deps);
     const result = (await descriptor?.definition.execute(

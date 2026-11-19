@@ -414,7 +414,7 @@ console.log("verify-package: all gates passed");
         deepseekHarness: {
           channel: "next",
           range: ">=0.2.2-rc.3 <0.3.0-0",
-          testedReleases: ["0.2.2-rc.3"],
+          testedReleases: ["0.2.2-rc.5"],
         },
         node: "^22.19.0 || >=24.0.0",
       },

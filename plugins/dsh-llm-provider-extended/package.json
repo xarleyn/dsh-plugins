@@ -107,8 +107,8 @@
     "react-dom": "catalog:frontend-dev",
     "jsdom": "catalog:tooling",
     "@testing-library/react": "^16.3.0",
-    "@deepseek-ai/dsh-credentials-local": "0.2.2-rc.3",
-    "@deepseek-ai/dsh-http-proxy": "0.2.2-rc.3"
+    "@deepseek-ai/dsh-credentials-local": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-http-proxy": "catalog:dsh-dev"
   },
   "publishConfig": {
     "access": "public",

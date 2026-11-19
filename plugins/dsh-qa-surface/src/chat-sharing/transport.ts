@@ -256,6 +256,7 @@ export class QaChatTransport {
     token: string,
     request: SessionPromptRequest,
     signal: AbortSignal,
+    authorizeSource?: () => Promise<void>,
   ): Promise<SessionPromptValue> {
     return this.serial(String(request.sessionId), async () => {
       const access = this.store().write(token, String(request.sessionId));
@@ -281,6 +282,9 @@ export class QaChatTransport {
       await this.admit(token, access.sessionId);
       if (access.mode === "collaborate")
         await this.participantPolicy?.(access.actorId, access.sessionId);
+      // The live skill registry is authoritative after resume. Recheck the
+      // selected source inside this session's write queue before admission.
+      await authorizeSource?.();
       signal.throwIfAborted();
       this.store().revalidate(token, access);
       const id = SessionId(access.sessionId);
@@ -421,8 +425,13 @@ export class QaChatTransport {
         : select();
     });
   }
-  async cancel(token: string, id: string): Promise<SessionCancelValue> {
+  async cancel(
+    token: string,
+    id: string,
+    revoke?: () => void,
+  ): Promise<SessionCancelValue> {
     return this.ownerOperation(token, id, async () => {
+      revoke?.();
       const value = await this.ctx.sessionController.cancel({
         sessionId: SessionId(id),
       });
@@ -433,10 +442,12 @@ export class QaChatTransport {
   async updateQueue(
     token: string,
     request: SessionUpdateQueueRequest,
+    authorizeEdit?: () => Promise<void>,
   ): Promise<SessionUpdateQueueValue> {
-    return this.ownerOperation(token, String(request.sessionId), () =>
-      this.ctx.sessionController.updateQueue(request),
-    );
+    return this.ownerOperation(token, String(request.sessionId), async () => {
+      await authorizeEdit?.();
+      return this.ctx.sessionController.updateQueue(request);
+    });
   }
   private async ownerOperation<T>(
     token: string,

@@ -293,6 +293,7 @@ export class QaAccessService {
        * see — or grant — what every QA chat actually mounts.
        */
       readonly presetScope?: () => Promise<QaPresetScopeLease | undefined>;
+      readonly accountSkillWorkspace?: (userId: string) => string | undefined;
       /**
        * Durable session listing, used to tell a chat from a delegated child
        * across Host runs. Without it the lineage answer degrades to the live
@@ -529,12 +530,29 @@ export class QaAccessService {
     token: string,
     requestedSubrole: string | null,
     adminPreview: boolean,
+    liveSessionId?: string,
+    includeAssignedSources = false,
   ) {
     const accounts = this.options.accounts();
+    const userId = accounts?.currentUser(token).id;
+    if (this.ctx.get("skills") === undefined)
+      throw new Error("Draft skill catalog is unavailable");
+    const agent =
+      liveSessionId === undefined
+        ? undefined
+        : this.ctx.agents.get(SessionId(liveSessionId));
+    const cwd =
+      !agent && userId
+        ? this.options.accountSkillWorkspace?.(userId)
+        : undefined;
+    const catalog = await this.catalog.snapshot(agent, cwd);
+    // Skill discovery can yield. Apply current account and role grants after it.
     const config = this.roles.snapshot();
     let subroleId: string | undefined;
+    let sourceRoles: readonly string[] = [];
     if (accounts !== undefined) {
       const user = accounts.currentUser(token);
+      if (user.id !== userId) throw new Error("Session account changed.");
       const assignment = normalizeUserAccess(
         accounts.accessOf(user.id),
         config,
@@ -557,13 +575,17 @@ export class QaAccessService {
           "This QA subrole is not assigned to the account",
         );
       }
+      if (includeAssignedSources) {
+        sourceRoles = adminPreview ? [subroleId] : assignment.allowedSubroles;
+      }
     }
-    if (this.ctx.get("skills") === undefined)
-      throw new Error("Draft skill catalog is unavailable");
-    const catalog = await this.catalog.snapshot();
     return {
       skills: [...catalog.skills.values()].filter(
         (skill) => skill.invocation.userInvocable,
+      ),
+      metadata: catalog.skillMetadata,
+      sourcePolicies: sourceRoles.map((id) =>
+        this.policyForRecord(config, undefined, id, catalog),
       ),
       policy:
         subroleId === undefined
@@ -833,7 +855,10 @@ export class QaAccessService {
     if (record?.subroleId === undefined) {
       accounts.updateSessionAccess(sessionId, { subroleId });
     }
-    const catalog = await this.catalog.snapshot();
+    const catalog = await this.catalog.snapshot(
+      undefined,
+      this.options.accountSkillWorkspace?.(owner.id),
+    );
     return this.policyForRecord(config, record, subroleId, catalog);
   }
 

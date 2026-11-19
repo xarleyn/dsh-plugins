@@ -34,6 +34,7 @@ export interface QaToolActivationManagerOptions {
  * can never be mistaken for a resumed one.
  */
 export class QaToolActivationManager implements QaToolActivation {
+  private readonly defaults = new Map<Agent, Map<string, () => void>>();
   private readonly states = new WeakMap<Agent, QaToolActivationState>();
   private readonly activeAgents = new Set<Agent>();
   private catalog: readonly QaToolDescriptor[];
@@ -56,7 +57,28 @@ export class QaToolActivationManager implements QaToolActivation {
     for (const agent of agents) this.activate(agent, "restore");
   }
   disposeAll(): void {
-    for (const agent of [...this.activeAgents]) this.disposeAgent(agent);
+    for (const agent of new Set([
+      ...this.activeAgents,
+      ...this.defaults.keys(),
+    ]))
+      this.disposeAgent(agent);
+  }
+
+  /** Role-granted ordinary documentation is available on the first question. */
+  enableDefaultDocs(agent: Agent, names: readonly string[]) {
+    if (this.isActive(agent)) return;
+    const defaults = this.defaults.get(agent) ?? new Map<string, () => void>();
+    for (const entry of this.catalog) {
+      const name = entry.definition.name;
+      if (
+        entry.group === "documentation" &&
+        names.includes(name) &&
+        !defaults.has(name)
+      ) {
+        defaults.set(name, agent.ctx.tools.register(entry.definition));
+        this.defaults.set(agent, defaults);
+      }
+    }
   }
 
   /**
@@ -93,7 +115,8 @@ export class QaToolActivationManager implements QaToolActivation {
       const tools = (agent as unknown as ManagedAgent).ctx.tools;
       for (const descriptor of catalog) {
         toolName = descriptor.definition.name;
-        state.disposers.push(tools.register(descriptor.definition));
+        if (!this.defaults.get(agent)?.has(descriptor.definition.name))
+          state.disposers.push(tools.register(descriptor.definition));
       }
       state.status = "active";
       state.catalogVersion = this.options.catalogVersion;
@@ -126,7 +149,8 @@ export class QaToolActivationManager implements QaToolActivation {
 
   /** Names registered on this agent; the admission guard evaluates this per call. */
   activeToolNames(agent: Agent): readonly string[] {
-    if (!this.isActive(agent)) return [];
+    if (!this.isActive(agent))
+      return [...(this.defaults.get(agent)?.keys() ?? [])];
     return this.catalog.map((descriptor) => descriptor.definition.name);
   }
 
@@ -136,6 +160,8 @@ export class QaToolActivationManager implements QaToolActivation {
    * @param agent - the agent whose registrations must be unwound.
    */
   disposeAgent(agent: Agent): void {
+    for (const stop of this.defaults.get(agent)?.values() ?? []) stop();
+    this.defaults.delete(agent);
     const state = this.states.get(agent);
     if (state === undefined) return;
     this.rollback(state);

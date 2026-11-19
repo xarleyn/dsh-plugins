@@ -1,6 +1,6 @@
 # Compatibility policy
 
-The workspace builds against DeepSeek Harness `0.2.2-rc.3`, Cordis `4.1.0`
+The workspace builds against DeepSeek Harness `0.2.2-rc.5`, Cordis `4.1.0`
 and Schemastery `3.19.0`. Running this Harness release requires Node
 `>=24.9.0`. The plugin workspace uses the pnpm version in its root manifest.
 

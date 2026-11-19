@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
+import { generateKeyPairSync } from "node:crypto";
 import { spawn } from "node:child_process";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { freePort, rpc, stopProcess, waitFor } from "./smoke-helpers.mjs";
 import {
@@ -9,6 +10,7 @@ import {
 } from "./smoke-review-dock.mjs";
 import {
   runChatLayoutPass,
+  grantLayoutSearchSource,
   startLayoutProvider,
 } from "./smoke-chat-layout.mjs";
 import {
@@ -28,6 +30,7 @@ export async function runIntegrationFolderBrowserPass(options) {
     hostLog,
     modelSelection = false,
     chatLayoutOnly = false,
+    sourceWorkspace,
     reviewDockOnly = false,
   } = options;
   const port = await freePort();
@@ -38,13 +41,54 @@ export async function runIntegrationFolderBrowserPass(options) {
     !reviewDockOnly &&
     (modelSelection || process.env.DSH_QA_MODEL_SMOKE === "1");
   const reviewControl = { answerReady: null, reviewRequested: false };
+  const archive = sourceWorkspace
+    ? { operations: [], requested: false, env: {}, reader: undefined }
+    : undefined;
+  if (archive) {
+    const { archiveReader, extractArchiveDocument } =
+      await import("../lib/search-sources/reader.js");
+    const word = await readFile(
+      new URL("../tests/fixtures/archive/equipment.docx", import.meta.url),
+    );
+    const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+    const issuer = join(root, "reader-test.pem");
+    await writeFile(
+      issuer,
+      privateKey.export({ format: "pem", type: "pkcs8" }),
+    );
+    const authPort = await freePort();
+    archive.reader = archiveReader(authPort, publicKey, async (op, signal) => {
+      archive.operations.push(op);
+      return {
+        format: "docx",
+        fragments: await extractArchiveDocument("docx", word, signal),
+        nextOffset: null,
+      };
+    });
+    await new Promise((resolve) =>
+      archive.reader.listen(0, "127.0.0.1", resolve),
+    );
+    archive.env = {
+      QA_SOURCE_SIGNING_KEY: issuer,
+      QA_SOURCE_AUTH_PORT: String(authPort),
+      QA_SOURCE_READER_PORT: String(archive.reader.address().port),
+    };
+  }
   const layoutProvider = reviewDockOnly
     ? await startReviewProvider(reviewControl)
     : modelPass
       ? undefined
-      : await startLayoutProvider();
+      : await startLayoutProvider(archive);
   const stableCode = join(workspacePath, "stable-code");
   const previewCode = join(workspacePath, "preview-code");
+  const searchConfig = sourceWorkspace
+    ? `      perUserWorkspace: true
+      skills: { enabled: true }
+    searchSources:
+      - { skill: search-demo-docs, label: Документация, directory: demo }
+    lockdown: { enabled: true, sandboxMode: workspace-write, approvalPolicy: never, permissionPreset: qa-layout-workspace, allowSlashCommands: true }
+    slashCommands: { skills: { mode: allow-list, allow: [search-demo-docs] } }`
+    : "";
   if (modelPass)
     await Promise.all([
       mkdir(stableCode, { recursive: true }),
@@ -57,6 +101,7 @@ export async function runIntegrationFolderBrowserPass(options) {
     accounts:
       enabled: true
       allowRegistration: true
+${searchConfig}
     integration:
       enabled: true
       requestTimeoutMs: 5000
@@ -96,8 +141,18 @@ ${
             name: Unassigned demo
 `
     : `    session:
+${sourceWorkspace ? "      workspaceId: " + JSON.stringify(sourceWorkspace) : ""}
       provider: qa-layout
       model: layout-demo
+${
+  sourceWorkspace
+    ? `- id: permission
+  config:
+    defaultPreset: qa-layout-workspace
+    presets:
+      qa-layout-workspace: { sandbox: workspace-write, approval: never }`
+    : ""
+}
 - id: llm-pi-ai
   config:
     providers:
@@ -133,7 +188,7 @@ ${
       [dshBin, "web", "--patch", patch, "--no-open", "--port", String(port)],
       {
         cwd: workspacePath,
-        env: { ...dshEnv, QA_LAYOUT_DEMO_KEY: "local-demo" },
+        env: { ...dshEnv, ...archive?.env, QA_LAYOUT_DEMO_KEY: "local-demo" },
         windowsHide: true,
         stdio: ["ignore", "pipe", "pipe"],
       },
@@ -153,6 +208,7 @@ ${
       },
       cookie,
     );
+    if (sourceWorkspace) await grantLayoutSearchSource(origin, cookie, session);
     const formSession = await rpc(
       origin,
       "qaSurface/createSession",
@@ -204,7 +260,7 @@ ${
       [dshBin, "web", "--patch", patch, "--no-open", "--port", String(port)],
       {
         cwd: workspacePath,
-        env: { ...dshEnv, QA_LAYOUT_DEMO_KEY: "local-demo" },
+        env: { ...dshEnv, ...archive?.env, QA_LAYOUT_DEMO_KEY: "local-demo" },
         windowsHide: true,
         stdio: ["ignore", "pipe", "pipe"],
       },
@@ -382,7 +438,37 @@ ${
         token: session.token,
         sessionId: formSession,
         ownerName: session.user.displayName,
+        withSearchSource: Boolean(sourceWorkspace),
       });
+    if (archive) {
+      assert.equal(
+        archive.delivered,
+        true,
+        "the selected DOCX value and location reached the model: " +
+          JSON.stringify({
+            requested: archive.requested,
+            operations: archive.operations.length,
+            toolResults: archive.selectedResults,
+          }),
+      );
+      assert.ok(
+        archive.ordinaryObserved &&
+          (!archive.ordinaryRequested || archive.ordinaryRefused),
+        "the unselected request could not dispatch the archive reader",
+      );
+    }
+    if (archive) {
+      await page.getByText("47.25 kPa — Equipment, table 1, row 1").waitFor();
+      assert.deepEqual(archive.operations, [
+        {
+          action: "read",
+          directory: "demo",
+          path: "equipment.docx",
+          query: "",
+          offset: 0,
+        },
+      ]);
+    }
     if (chatLayoutOnly) return;
     await sidebar.getByTestId("qa-history-create-folder").click();
     await page
@@ -712,6 +798,7 @@ ${
     hostLog.push(...log);
     throw error;
   } finally {
+    archive?.reader?.close();
     layoutProvider?.close();
     await browser?.close().catch(() => undefined);
     await stopProcess(host);

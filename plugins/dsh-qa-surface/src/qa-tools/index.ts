@@ -9,6 +9,7 @@ import { QaToolActivationLifecycle } from "./lifecycle.js";
 import type { QaToolActivation } from "./types.js";
 
 export interface QaToolsOptions {
+  readonly selectedSource?: (agent: Agent) => Promise<boolean>;
   readonly subagents?: import("./subagent-tools.js").QaSubagentToolsOptions;
   readonly codeSources?: import("./code-files.js").CodeFilesOptions["codeSources"];
   readonly codeReadRoots?: () => readonly string[];
@@ -65,6 +66,7 @@ export class QaTools implements QaToolActivation {
         ? {}
         : { formProjection: options.formProjection }),
       catalogVersion: QA_TOOL_CATALOG_VERSION,
+      selectedSource: options.selectedSource,
       activationMode: options.activationMode,
       catalogTools: () => this.catalogTools,
       activeTools: (agent) => this.manager.activeToolNames(agent),
@@ -104,6 +106,11 @@ export class QaTools implements QaToolActivation {
     }
   }
 
+  enableDefaultDocs(agent: Agent, names: readonly string[]) {
+    if (this.isManagedAgent(agent))
+      this.manager.enableDefaultDocs(agent, names);
+  }
+
   /** Names currently registered on one agent; the admission guard reads this per call. */
   activeToolNames(agent: Agent): readonly string[] {
     return this.manager.activeToolNames(agent);
@@ -127,6 +134,7 @@ export class QaTools implements QaToolActivation {
         ? {}
         : { formProjection: options.formProjection }),
       catalogVersion: QA_TOOL_CATALOG_VERSION,
+      selectedSource: options.selectedSource,
       activationMode: options.activationMode,
       catalogTools: () => this.catalogTools,
       activeTools: (agent) => this.manager.activeToolNames(agent),

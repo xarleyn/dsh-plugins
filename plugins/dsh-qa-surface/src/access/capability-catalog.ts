@@ -84,14 +84,17 @@ export class QaCapabilityCatalog {
     > = () => Promise.resolve(undefined),
   ) {}
 
-  async snapshot(agent?: Agent): Promise<CapabilityCatalogSnapshot> {
+  async snapshot(
+    agent?: Agent,
+    accountCwd?: string,
+  ): Promise<CapabilityCatalogSnapshot> {
     if (agent !== undefined) return await this.readCatalog(agent, undefined);
     // An administrator's page has no agent of its own: the catalog is read in
     // the pinned preset's scope, and the lease that scope came with is held for
     // exactly this read.
     const lease = await this.resolvePresetScope();
     try {
-      return await this.readCatalog(undefined, lease?.key);
+      return await this.readCatalog(undefined, lease?.key, accountCwd);
     } finally {
       await lease?.release();
     }
@@ -100,6 +103,7 @@ export class QaCapabilityCatalog {
   private async readCatalog(
     agent: Agent | undefined,
     scope: ScopeKey | undefined,
+    accountCwd?: string,
   ): Promise<CapabilityCatalogSnapshot> {
     const viewingScope = agent === undefined ? scope : qaAgentScope(agent);
     // Keep preset tools discoverable after the session mask hides capabilities
@@ -138,11 +142,10 @@ export class QaCapabilityCatalog {
     }
 
     const registry = this.ctx.get("skills") as Context["skills"] | undefined;
+    const cwd = agent?.session.header.cwd ?? accountCwd;
     const lookup: { scope?: ScopeKey; cwd?: string } = {
       ...(viewingScope === undefined ? {} : { scope: viewingScope }),
-      ...(agent?.session.header.cwd === undefined
-        ? {}
-        : { cwd: agent.session.header.cwd }),
+      ...(cwd === undefined ? {} : { cwd }),
     };
     const skillList =
       registry === undefined ? [] : (await registry.snapshot(lookup)).skills;

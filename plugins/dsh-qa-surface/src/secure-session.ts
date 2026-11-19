@@ -35,6 +35,8 @@ import {
   type QaSessionModelPolicy,
 } from "./access/model-policy.js";
 import { installQaSkillPolicy } from "./enforcement/skill-policy.js";
+import { SOURCE_READER_TOOL } from "./search-sources/tool.js";
+import type { SourceTurns } from "./search-sources/turns.js";
 import { installInheritableMask } from "./enforcement/tool-mask.js";
 import { QaToolDiscovery, supportsDiscovery } from "./qa-tools/discovery.js";
 import { FIND_TOOLS } from "./qa-tools/find-tools.js";
@@ -192,6 +194,10 @@ export class QaPolicyAdmission {
      */
     private readonly principals?: QaIntegrationPrincipalBindings,
     attachmentRecovery: QaAttachmentRecovery = {},
+    private readonly selectedSources?: Pick<
+      SourceTurns,
+      "has" | "matchesSkill"
+    >,
   ) {
     this.attachmentAccess = new QaAttachmentAccess(ctx, attachmentRecovery);
     this.disposeWorkspaceGuard = ctx.tools.guard((execution) => {
@@ -228,6 +234,11 @@ export class QaPolicyAdmission {
       if (session === undefined) return undefined;
       const ceiling = this.ceilings.get(String(session.id));
       if (ceiling === undefined) return undefined;
+      if (
+        execution.name === SOURCE_READER_TOOL &&
+        this.selectedSources?.has(execution.agent)
+      )
+        return undefined;
       if (
         execution.name === FIND_TOOLS &&
         execution.agent &&
@@ -800,6 +811,11 @@ export class QaPolicyAdmission {
             this.discovery.get(agent)?.ownsFinder(subject)
           )
             return undefined;
+          if (
+            execution.name === SOURCE_READER_TOOL &&
+            this.selectedSources?.has(subject)
+          )
+            return undefined;
           // A catalogue tool rides on the agent itself and the mask cannot name
           // it. Account-free deployments keep admitting their active catalogue;
           // a role-bound chat must still carry the tool in its base or activated
@@ -844,6 +860,9 @@ export class QaPolicyAdmission {
             policy: capability.policy,
             discovered: capability.skills,
             grants,
+            selectedSourceSkill: (name, messages) =>
+              this.selectedSources?.matchesSkill(agent, name, messages) ===
+              true,
             onGrant: (names) => {
               try {
                 this.discovery.get(agent)?.refresh(names);

@@ -1,4 +1,5 @@
 import type { QaSpreadsheetPreviewSelection } from "../types.js";
+import type { QaSearchSourceEntry } from "../slash/source-prompt.js";
 import {
   QA_DEFAULT_ANSWER_MODES,
   type QaAnswerMode,
@@ -932,8 +933,9 @@ export function QaSurface(props: QaSurfaceProps) {
       text: string,
       attachments: readonly QaAttachmentDraft[],
       pick: string | null,
+      source?: QaSearchSourceEntry,
     ) =>
-      controller?.send(text, attachments, pick, answerModes) ??
+      controller?.send(text, attachments, pick, answerModes, source) ??
       Promise.resolve(false),
     [controller, answerModes],
   );
@@ -944,11 +946,9 @@ export function QaSurface(props: QaSurfaceProps) {
     () => controller?.dismissRequestQueueNotice(),
     [controller],
   );
-  // Cheap refresh on every palette opening: the skill registry has no browser
-  // change event, and the controller skips the round-trip while its answer is
-  // still fresh.
+  // Both discovery menus reflect current role grants, including revocations.
   const handleSlashOpen = useCallback(() => {
-    void controller?.refreshSlashCatalog();
+    void controller?.refreshSlashCatalog(true);
   }, [controller]);
   const handleStop = useCallback(
     () => controller?.stop() ?? Promise.resolve(),

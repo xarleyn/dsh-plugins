@@ -13,6 +13,7 @@ import {
 } from "./QaAnswerDetails.js";
 import { sameWorkItems } from "./QaWorkGroup.js";
 import { QaFileAttachment } from "./QaFileAttachment.js";
+import { readSourcePrompt } from "../../slash/source-prompt.js";
 import { QaArtifactAttachment } from "./QaArtifactAttachment.js";
 import { QaZoomImage } from "./QaZoomImage.js";
 import {
@@ -581,6 +582,8 @@ export const QaMessage = memo(
       setAskingWhy(false);
       persist(next);
     };
+    const sourceReceipt =
+      message.role === "user" ? readSourcePrompt(message.text) : undefined;
     const persistentMeta = showTimestamp && message.timestamp !== undefined;
     const meta =
       message.role === "system" || message.timestamp === undefined ? null : (
@@ -655,6 +658,11 @@ export const QaMessage = memo(
               ))}
             </div>
           ) : null}
+          {sourceReceipt && (
+            <div className="dsh-qa-source-chip" aria-label="Источник поиска">
+              {sourceReceipt.label}
+            </div>
+          )}
           {message.role === "assistant" && renderMarkdown ? (
             <Markdown
               text={message.text}
@@ -663,7 +671,7 @@ export const QaMessage = memo(
               onSourceOpen={onSourceDetail}
             />
           ) : (
-            message.text
+            (sourceReceipt?.question ?? message.text)
           )}
           {message.role === "assistant" &&
           message.artifacts !== undefined &&

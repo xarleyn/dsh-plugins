@@ -266,6 +266,13 @@ export interface QaSurfaceConfig {
    * Inert while `lockdown.allowSlashCommands` is off.
    */
   readonly slashCommands?: QaSlashCommandsConfig;
+  /** Host-only mapping. Only admitted entries are projected to the composer. */
+  readonly searchSources?: readonly {
+    readonly skill: string;
+    readonly label: string;
+    readonly directory: string;
+    readonly linkBase?: string;
+  }[];
   readonly embedding?: {
     readonly frameAncestors?: string | null;
   };

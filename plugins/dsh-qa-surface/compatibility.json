@@ -2,7 +2,7 @@
   "deepseekHarness": {
     "channel": "next",
     "range": ">=0.2.2-rc.3 <0.3.0-0",
-    "testedReleases": ["0.2.2-rc.3"],
+    "testedReleases": ["0.2.2-rc.3", "0.2.2-rc.5"],
     "requiredClientFeatures": [
       "shell.overlay",
       "remote.session.selectModel",

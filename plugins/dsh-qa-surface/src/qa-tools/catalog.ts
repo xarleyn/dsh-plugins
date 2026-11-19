@@ -29,6 +29,7 @@ export const QA_TOOL_CATALOG_VERSION = "6";
 
 /** What the catalog's definitions read, beyond the execution record. */
 export interface QaToolsSelfcheckDeps extends CodeFilesOptions {
+  readonly selectedSource?: ((agent: Agent) => Promise<boolean>) | undefined;
   readonly subagents?: QaSubagentToolsOptions;
   readonly forms?: QaFormGate;
   readonly formProjection?: (
@@ -105,16 +106,24 @@ function createSelfcheckTool(
             : active
               ? `QA tools are active (catalog ${String(value.catalogVersion)}): ${tools.join(", ") || "(empty)"}.`
               : `QA tools are inactive (catalog ${String(value.catalogVersion)}, skill loaded: ${String(value.skillLoaded)}).`;
-        return [{ type: "text", text }];
+        const route = tools.includes("qa_read_selected_source")
+          ? " The user explicitly selected a file source for this request. Use qa_read_selected_source now: find for project IDs or names, tree for a directory overview, list to verify its files. Answer from that source; ask which project or version they meant if needed."
+          : "";
+        return [{ type: "text", text: text + route }];
       },
     },
     execute: async (args, exec) => {
       const agent = exec.agent;
-      const activeTools = agent === undefined ? [] : deps.activeTools(agent);
+      const selected = agent && (await deps.selectedSource?.(agent));
+      const activeTools =
+        agent === undefined ? [] : [...deps.activeTools(agent)];
+      if (selected) activeTools.push("qa_read_selected_source");
       return {
         catalogVersion: deps.catalogVersion,
         activationMode: deps.activationMode,
-        catalogTools: [...deps.catalogTools()],
+        catalogTools: selected
+          ? [...deps.catalogTools(), "qa_read_selected_source"]
+          : [...deps.catalogTools()],
         activeTools: [...activeTools],
         active: activeTools.length > 0,
         skillLoaded: agent === undefined ? false : deps.skillLoaded(agent),
