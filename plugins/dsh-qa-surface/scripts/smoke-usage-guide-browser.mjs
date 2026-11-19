@@ -3,6 +3,23 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { rpc, waitFor } from "./smoke-helpers.mjs";
 
+async function deferHostModelSetup(page) {
+  const handled = [];
+  for (const [title, action] of [
+    ["Get started", "Add API Key"],
+    ["Add an API key to get started", "Configure later"],
+  ]) {
+    const dialog = page
+      .locator("body:not(:has([data-testid='qa-guide-dialog']))")
+      .getByRole("dialog", { name: title, exact: true });
+    await page.addLocatorHandler(dialog, () =>
+      dialog.getByRole("button", { name: action, exact: true }).click(),
+    );
+    handled.push(dialog);
+  }
+  return handled;
+}
+
 export async function runUsageGuidePass(page, settings) {
   const { QA_WELCOME_NOTICE_VERSION } =
     await import("../lib/client/components/QaWelcomeNotice.js");
@@ -61,6 +78,7 @@ export async function runUsageGuidePass(page, settings) {
   );
 
   await page.reload();
+  const handledSetup = await deferHostModelSetup(page);
   const opener = page.getByRole("button", { name: "Памятка", exact: true });
   await opener.waitFor();
   assert.equal(await guide.count(), 0);
@@ -97,18 +115,7 @@ export async function runUsageGuidePass(page, settings) {
       });
       // A fresh model-less operator profile offers account setup before it
       // opens the Plugins panel. Follow the Host's local deferral controls.
-      for (const [title, action] of [
-        ["Get started", "Add API Key"],
-        ["Add an API key to get started", "Configure later"],
-      ]) {
-        const dialog = operator.getByRole("dialog", {
-          name: title,
-          exact: true,
-        });
-        await operator.addLocatorHandler(dialog, () =>
-          dialog.getByRole("button", { name: action, exact: true }).click(),
-        );
-      }
+      await deferHostModelSetup(operator);
       await operator.goto(settings.origin);
       await operator
         .getByRole("button", { name: "Plugins", exact: true })
@@ -167,5 +174,176 @@ export async function runUsageGuidePass(page, settings) {
       await operator.close();
     }
   }
+  for (const dialog of handledSetup) await page.removeLocatorHandler(dialog);
   assert.ok(focusAfterClose.onOpener, JSON.stringify(focusAfterClose));
+}
+
+/** Follow the guide in a real packed chat as an ordinary account. */
+export async function runImplementerGuidePass({
+  origin,
+  authenticatedUrl,
+  login,
+  remote,
+  user,
+  admin,
+  evidenceDirectory,
+}) {
+  const { chromium } = await import("playwright");
+  await mkdir(evidenceDirectory, { recursive: true });
+  const browser = await chromium.launch();
+  let page;
+  const browserErrors = [];
+  try {
+    const context = await browser.newContext({
+      viewport: { width: 1280, height: 900 },
+    });
+    page = await context.newPage();
+    page.on("pageerror", (error) => browserErrors.push(error.message));
+    const shot = (name) =>
+      page.screenshot({ path: join(evidenceDirectory, name) });
+    await page.goto(authenticatedUrl);
+    await page.goto(origin + "/qa");
+    await page.getByTestId("qa-surface-welcome-continue").click();
+    const guide = page.getByRole("dialog", { name: "Как работать с агентом" });
+    await guide.getByRole("checkbox").check();
+    await guide.getByRole("button", { name: "Продолжить" }).click();
+    await page.getByTestId("qa-surface-auth-email").fill(login.email);
+    await page.getByTestId("qa-surface-auth-password").fill(login.password);
+    await page.getByTestId("qa-surface-auth-submit").click();
+    await page.getByRole("button", { name: "Памятка", exact: true }).click();
+    const filesSection = guide.getByText("Файлы и контекст чата", {
+      exact: true,
+    });
+    await filesSection.click();
+    await guide.getByText(/согласованный локальный процесс/u).waitFor();
+    await guide.getByText(/разрешённый для этих данных маршрут/u).waitFor();
+    await filesSection.click();
+    await guide.getByText("Как выбрать режим ответа", { exact: true }).click();
+    await guide.getByText(/Обязательная проверка документов/u).waitFor();
+    await guide
+      .getByText("Как оставить отзыв на ответ", { exact: true })
+      .waitFor();
+    await shot("implementer-guide.png");
+    await guide.getByRole("button", { name: "Закрыть" }).click();
+    const modes = page.getByTestId("qa-composer-modes");
+    await modes.click();
+    const rag = page.getByRole("checkbox", {
+      name: "RAG Priority",
+      exact: true,
+    });
+    await rag.check();
+    await page.getByRole("checkbox", { name: "Fast", exact: true }).check();
+    await shot("implementer-modes.png");
+    await modes.click();
+    const input = page.getByTestId("qa-composer-input");
+    const send = page.getByTestId("qa-composer-send");
+    await input.fill("MODE_DENY_DEMO");
+    await send.click();
+    const question = page.getByTestId("qa-question");
+    await question
+      .getByText(/Провести глубокий поиск по документации/u)
+      .waitFor();
+    await question
+      .getByText("Нет, ответить по найденному", { exact: true })
+      .click();
+    await shot("implementer-deep-search-consent.png");
+    await question.getByTestId("qa-question-submit").click();
+    await page.getByText("Completed MODE_DENY_DEMO", { exact: true }).waitFor();
+
+    await modes.click();
+    await rag.uncheck();
+    await modes.click();
+    await input.fill("MODE_GUIDE_DEMO");
+    await send.click();
+    const answerStart =
+      "В версии 2.1 доступны обзор и отчёты. Источник: reporting.md";
+    const answer = page.getByTestId("qa-message").filter({
+      hasText: answerStart,
+    });
+    await answer.getByRole("button", { name: /^Источники \(/u }).click();
+    await page
+      .getByTestId("qa-sources-item")
+      .filter({ hasText: "reporting.md" })
+      .click();
+    const source = page.getByTestId("qa-source-detail");
+    await source.getByText("Доступные отчёты", { exact: true }).waitFor();
+    assert.match(
+      await source.innerText(),
+      /В версии 2\.1 доступны обзор и отчёты/u,
+    );
+    await shot("implementer-source.png");
+
+    const sessionId = await page.evaluate(() =>
+      globalThis.localStorage.getItem("dsh-qa-surface.session:v1:/qa:session"),
+    );
+    assert.ok(sessionId);
+    const identity = await remote("accountsWhoami", { token: user.token });
+    const access = await remote("accessSession", {
+      token: user.token,
+      sessionId,
+    });
+    assert.equal(identity.user.role, "user");
+    assert.equal(access.adminPreview, false);
+    assert.equal(access.subrole.id, "general");
+
+    await answer
+      .getByRole("button", { name: "Не нравится", exact: true })
+      .click();
+    const feedback = answer.getByTestId("qa-message-feedback");
+    await feedback
+      .getByRole("checkbox", { name: "Не хватает информации" })
+      .check();
+    const comment =
+      "Укажите, для какой роли доступны отчёты в разделе руководства.";
+    await feedback.getByTestId("qa-message-feedback-comment").fill(comment);
+    await shot("implementer-feedback.png");
+    await feedback.getByTestId("qa-message-feedback-submit").click();
+    const stored = await waitFor(async () => {
+      const { items } = await remote("adminFeedback", {
+        token: admin.token,
+        query: {},
+        cursor: null,
+        limit: 20,
+      });
+      return items.find((item) => item.comment === comment);
+    }, "the ordinary account's persisted feedback");
+    assert.equal(stored.conversationId, sessionId);
+    assert.equal(stored.rating, "negative");
+    assert.ok(stored.reasons.includes("missing_information"));
+    const detail = await remote("adminConversation", {
+      token: admin.token,
+      conversationId: sessionId,
+    });
+    const rated = detail.messages.find(
+      (message) => message.id === stored.messageId,
+    );
+    assert.equal(rated?.role, "assistant");
+    assert.ok(rated.text.startsWith(answerStart));
+    const history = await remote("chatPage", {
+      token: user.token,
+      request: { address: { kind: "session", sessionId }, maxMessages: 100 },
+    });
+    assert.ok(
+      history.records.some(({ event }) => {
+        const source = event.data?.source;
+        return (
+          source?.kind === "answer-review-status" &&
+          source.receipt.candidateSeq === rated.seq &&
+          source.receipt.status === "waived"
+        );
+      }),
+      "Fast must waive ordinary answer review for this exact reply",
+    );
+    console.log(
+      "packed QA guide: ordinary-role mode selection, declined escalation, source preview and feedback persisted",
+    );
+  } catch (error) {
+    await page
+      ?.screenshot({ path: join(evidenceDirectory, "implementer-failure.png") })
+      .catch(() => {});
+    if (browserErrors.length) console.error(browserErrors.join("\n"));
+    throw error;
+  } finally {
+    await browser.close();
+  }
 }

@@ -1180,8 +1180,10 @@ try {
       });
     // The account/form round owns this same home next. Close the first Host
     // before seeding its durable fixture: there must be only one writer.
-    await stopProcess(host);
-    host = undefined;
+    if (!answerModesOnly) {
+      await stopProcess(host);
+      host = undefined;
+    }
     if (reviewDockOnly) {
       const gateDir = join(temporaryRoot, "review-gate");
       await mkdir(gateDir);
@@ -1238,6 +1240,10 @@ try {
       launchToken,
       authenticateBrowser,
       hostLog,
+      guideEvidenceDirectory: withBrowser
+        ? (process.env.DSH_QA_GUIDE_EVIDENCE ??
+          join(repo, "..", "..", ".private", "qa-implementer-guide-evidence"))
+        : undefined,
     });
   }
   if (subagentModelsOnly) {

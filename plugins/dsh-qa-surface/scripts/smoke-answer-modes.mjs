@@ -5,6 +5,7 @@ import { createServer } from "node:http";
 import { mkdir, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { freePort, rpc, run, stopProcess, waitFor } from "./smoke-helpers.mjs";
+import { runImplementerGuidePass } from "./smoke-usage-guide-browser.mjs";
 
 const YES = "Да, провести глубокий поиск";
 const NO = "Нет, ответить по найденному";
@@ -54,6 +55,7 @@ export async function runAnswerModesPass(options) {
     authenticateBrowser,
     hostLog,
     dshVersion,
+    guideEvidenceDirectory,
   } = options;
   assert.equal(
     typeof workspaceId,
@@ -158,7 +160,7 @@ export async function runAnswerModesPass(options) {
       const serialized = JSON.stringify(body.messages);
       const scenarios = [
         ...serialized.matchAll(
-          /MODE_(ALLOW|DENY|SKIP|AFTER|DEEP|EVIDENCE|CANCEL|TIMEOUT|CURRENT)_DEMO/gu,
+          /MODE_(ALLOW|DENY|SKIP|AFTER|DEEP|EVIDENCE|CANCEL|TIMEOUT|CURRENT|GUIDE)_DEMO/gu,
         ),
       ];
       const scenario = scenarios.at(-1)?.[1];
@@ -295,6 +297,21 @@ export async function runAnswerModesPass(options) {
         text =
           phase === 0 ? lifecycleCandidate(scenario) : "Review unavailable.";
         phases.set(scenario, phase + 1);
+      } else if (scenario === "GUIDE") {
+        if (phase === 0) {
+          tool = {
+            name: "docs_read",
+            arguments: { path: "dashboard/v2.1/reporting.md" },
+          };
+        } else {
+          const last =
+            body.messages.filter((message) => message.role === "tool").at(-1)
+              ?.content ?? "";
+          assert.match(last, /В версии 2\.1 доступны обзор и отчёты/u);
+          text =
+            "В версии 2.1 доступны обзор и отчёты. Источник: reporting.md, раздел «Доступные отчёты».";
+        }
+        phases.set(scenario, phase + 1);
       } else if (scenario === "EVIDENCE") {
         const last =
           body.messages.filter((message) => message.role === "tool").at(-1)
@@ -430,6 +447,16 @@ export async function runAnswerModesPass(options) {
   const origin = `http://127.0.0.1:${port}`;
   const patch = join(root, "answer-modes.patch.yml");
   const seedRoot = join(root, "rag-skills");
+  const docsRoot = join(root, "guide-docs");
+  const docsRootYaml = JSON.stringify(docsRoot.replaceAll("\\", "/"));
+  if (guideEvidenceDirectory) {
+    const edition = join(docsRoot, "dashboard", "v2.1");
+    await mkdir(edition, { recursive: true });
+    await writeFile(
+      join(edition, "reporting.md"),
+      "## Доступные отчёты\n\nВ версии 2.1 доступны обзор и отчёты.\n",
+    );
+  }
   await mkdir(join(seedRoot, "demo-glossary"), { recursive: true });
   await writeFile(
     join(seedRoot, "demo-glossary", "SKILL.md"),
@@ -465,12 +492,16 @@ export async function runAnswerModesPass(options) {
       model: mode-demo
     interaction:
       questions: interactive
+    ${guideEvidenceDirectory ? "slashCommands: { commands: { mode: allow-list, allow: [no-review] } }" : ""}
     tools:
       dynamicActivation: false
       activationPresets: []
+      ${guideEvidenceDirectory ? "docsRoot: " + docsRootYaml : ""}
     lockdown:
       sandboxMode: workspace-write
       permissionPreset: qa-workspace-write
+      ${guideEvidenceDirectory ? "allowSlashCommands: true" : ""}
+      ${guideEvidenceDirectory ? "sharedReadOnlyRoots: [" + docsRootYaml + "]" : ""}
 - id: permission
   config:
     defaultPreset: qa-workspace-write
@@ -502,6 +533,7 @@ export async function runAnswerModesPass(options) {
 - id: dsh-answer-review-gate
   config:
     failMode: closed
+    ${guideEvidenceDirectory ? "waiver: { allowedInClosedMode: true }" : ""}
     reviewer:
       ${expertReview ? "" : "agentPreset: review-demo"}
       enforceAllowedTools: true
@@ -540,10 +572,11 @@ export async function runAnswerModesPass(options) {
       email: "modes-admin@example.test",
       password: "demo-password-admin",
     });
-    const user = await remote(accountMethod, {
+    const login = {
       email: "modes-user@example.test",
       password: "demo-password-user",
-    });
+    };
+    const user = await remote(accountMethod, login);
     const snapshot = await remote("accessAdminSnapshot", {
       token: admin.token,
     });
@@ -569,11 +602,24 @@ export async function runAnswerModesPass(options) {
               "write",
               "skill",
               "dsh_lightrag_query",
+              ...(guideEvidenceDirectory ? ["docs_read"] : []),
             ],
           },
         },
       },
     });
+    if (guideEvidenceDirectory) {
+      await runImplementerGuidePass({
+        origin,
+        authenticatedUrl: `${origin}/?token=${encodeURIComponent(launch)}`,
+        login,
+        remote,
+        user,
+        admin,
+        evidenceDirectory: guideEvidenceDirectory,
+      });
+      assert.equal(failures.length, 0, failures[0]?.stack);
+    }
     const sessionId = await remote("createSession", {
       token: user.token,
       subroleId: null,
@@ -613,6 +659,7 @@ export async function runAnswerModesPass(options) {
       "DEEP",
       "EVIDENCE",
     ]) {
+      if (guideEvidenceDirectory && scenario === "DENY") continue;
       const requestId = randomUUID();
       await remote("prepareAnswerModes", {
         token: user.token,
