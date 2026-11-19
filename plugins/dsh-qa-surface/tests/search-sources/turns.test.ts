@@ -14,7 +14,9 @@ function setup() {
       return () => listeners.delete(name);
     },
   };
-  const turns = new SourceTurns(ctx as unknown as Context);
+  const remove = vi.fn();
+  const expose = vi.fn(() => remove);
+  const turns = new SourceTurns(ctx as unknown as Context, expose);
   const grant: SourceGrant = {
     session: "chat",
     actor: "owner",
@@ -51,7 +53,7 @@ function setup() {
         event("agent/inbox/spliced", { inserted: [msg(id)] });
       },
     );
-  return { grant, agent, turns, msg, event, step, submit };
+  return { grant, agent, turns, msg, event, step, submit, expose, remove };
 }
 
 describe("message-scoped source access", () => {
@@ -75,15 +77,18 @@ describe("message-scoped source access", () => {
     await h.step(h.msg("picked"));
     const active = h.turns.current(h.agent);
     expect(active.grant).toBe(h.grant);
+    expect(h.expose).toHaveBeenCalledExactlyOnceWith(h.agent);
     expect(() =>
       h.turns.current({ session: h.agent.session } as Agent),
     ).toThrow();
     h.event("turn/end", { turn: 1 });
     expect(active.end.signal.aborted).toBe(true);
+    expect(h.remove).toHaveBeenCalledTimes(1);
     await h.step(h.msg("picked", "retry"));
     expect(() => h.turns.current(h.agent)).toThrow();
     await h.step(h.msg("picked"));
     expect(() => h.turns.current(h.agent)).toThrow();
+    expect(h.expose).toHaveBeenCalledTimes(1);
     h.turns.dispose();
   });
   it("drops removed, mixed, cancelled and unselected steering grants", async () => {

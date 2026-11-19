@@ -118,6 +118,7 @@ import { userModelOptions, selectUserModel } from "./access/model-choices.js";
 import type { QaModelOptions } from "./types.js";
 import { userInvocableSkillNames } from "./access/model.js";
 import { parseSlashDraftTarget } from "./slash/draft-target.js";
+import { buildSlashCatalog } from "./slash/catalog.js";
 import {
   projectSearchSources,
   requireSearchSourceAccess,
@@ -649,6 +650,11 @@ export class QaSurface extends TypertRemoteService {
             await this.formAttachments.restore(sessionId);
         },
       },
+      {
+        has: (agent) => this.sourceTurns?.has(agent) ?? false,
+        matchesSkill: (agent, name, messages) =>
+          this.sourceTurns?.matchesSkill(agent, name, messages) ?? false,
+      },
     );
     this.provenance = new QaProvenanceHost(
       ctx,
@@ -757,10 +763,12 @@ export class QaSurface extends TypertRemoteService {
         archivePort(process.env.QA_SOURCE_AUTH_PORT, 18792),
         key,
       );
-      const turns = (this.sourceTurns = new SourceTurns(ctx));
-      const unregister = ctx.tools.register(
-        sourceTool(turns, gateway, this.logger),
-      );
+      const turns: SourceTurns = (this.sourceTurns = new SourceTurns(
+        ctx,
+        (agent) => agent.ctx.tools.register(reader),
+      ));
+      const reader = sourceTool(turns, gateway, this.logger);
+      const unregister = ctx.tools.register(reader);
       ctx.effect(
         () => () => {
           unregister();
@@ -3213,18 +3221,24 @@ export class QaSurface extends TypertRemoteService {
   ): Promise<QaSlashCatalog> {
     const catalog = await this.slashRemotes.catalog(token, sessionId);
     const bindings = this.source().searchSources ?? [];
-    if (!bindings.length) return catalog;
+    if (!bindings.length || !catalog.enabled) return catalog;
+    const config = this.getConfig();
+    const names = new Set(bindings.map(({ skill }) => skill));
     const allowed = new Set<string>();
+    const base = {
+      ...catalog,
+      entries: catalog.entries.filter(
+        (entry) => entry.kind !== "skill" || !names.has(entry.name),
+      ),
+    };
     if (
-      this.getConfig().accounts.enabled &&
-      catalog.entries.some(
-        (entry) =>
-          entry.kind === "skill" &&
-          bindings.some((binding) => binding.skill === entry.name),
-      )
+      config.accounts.enabled &&
+      config.accounts.perUserWorkspace &&
+      this.sourceTurns
     ) {
       try {
         const draft = parseSlashDraftTarget(sessionId);
+        if (!draft) this.sharing().owner(token, sessionId);
         const target = draft ?? this.access.session(token, sessionId);
         const roleId =
           "subroleId" in target ? target.subroleId : target.subrole.id;
@@ -3233,33 +3247,46 @@ export class QaSurface extends TypertRemoteService {
           roleId,
           target.adminPreview,
           draft === undefined ? sessionId : undefined,
+          true,
         );
-        if (
-          current.policy &&
-          this.sourceTurns &&
-          this.getConfig().accounts.perUserWorkspace
-        ) {
-          const grants = new Set(userInvocableSkillNames(current.policy));
-          for (const skill of current.skills) {
-            if (
-              grants.has(skill.name) &&
-              (current.policy.tools.includes(SOURCE_READER_TOOL) ||
-                (current.policy.grantableTools.includes(SOURCE_READER_TOOL) &&
-                  current.metadata
-                    .get(skill.name)
-                    ?.requiredTools.includes(SOURCE_READER_TOOL))) &&
-              skill.source !== QA_USER_SKILLS_SOURCE &&
-              !skill.invocation.modelInvocable
-            )
-              allowed.add(skill.name);
-          }
-        }
+        const skills = current.skills.filter(
+          (skill) =>
+            names.has(skill.name) &&
+            skill.source !== QA_USER_SKILLS_SOURCE &&
+            !skill.invocation.modelInvocable &&
+            current.sourcePolicies.some(
+              (policy) =>
+                userInvocableSkillNames(policy).includes(skill.name) &&
+                (policy.tools.includes(SOURCE_READER_TOOL) ||
+                  (policy.grantableTools.includes(SOURCE_READER_TOOL) &&
+                    current.metadata
+                      .get(skill.name)
+                      ?.requiredTools.includes(SOURCE_READER_TOOL))),
+            ),
+        );
+        for (const skill of skills) allowed.add(skill.name);
+        const entries = buildSlashCatalog({
+          skills: skills.map((skill) => ({
+            name: skill.name,
+            description: skill.description,
+            modelInvocable: false,
+          })),
+          commands: [],
+          skillPolicy: config.slashCommands.skills,
+          commandPolicy: config.slashCommands.commands,
+          commandSurface: "inactive",
+        });
+        return projectSearchSources(
+          { ...base, entries: [...entries, ...base.entries] },
+          bindings,
+          allowed,
+        );
       } catch {
         // A revoked subrole or an unavailable registry hides every bound source.
         this.logger.debug("slash.catalog.source-role-unavailable", {});
       }
     }
-    return projectSearchSources(catalog, bindings, allowed);
+    return projectSearchSources(base, bindings, allowed);
   }
 
   /**

@@ -531,6 +531,7 @@ export class QaAccessService {
     requestedSubrole: string | null,
     adminPreview: boolean,
     liveSessionId?: string,
+    includeAssignedSources = false,
   ) {
     const accounts = this.options.accounts();
     const userId = accounts?.currentUser(token).id;
@@ -548,6 +549,7 @@ export class QaAccessService {
     // Skill discovery can yield. Apply current account and role grants after it.
     const config = this.roles.snapshot();
     let subroleId: string | undefined;
+    let sourceRoles: readonly string[] = [];
     if (accounts !== undefined) {
       const user = accounts.currentUser(token);
       if (user.id !== userId) throw new Error("Session account changed.");
@@ -573,12 +575,18 @@ export class QaAccessService {
           "This QA subrole is not assigned to the account",
         );
       }
+      if (includeAssignedSources) {
+        sourceRoles = adminPreview ? [subroleId] : assignment.allowedSubroles;
+      }
     }
     return {
       skills: [...catalog.skills.values()].filter(
         (skill) => skill.invocation.userInvocable,
       ),
       metadata: catalog.skillMetadata,
+      sourcePolicies: sourceRoles.map((id) =>
+        this.policyForRecord(config, undefined, id, catalog),
+      ),
       policy:
         subroleId === undefined
           ? undefined
