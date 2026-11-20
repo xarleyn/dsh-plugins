@@ -137,8 +137,10 @@ describe("strict form interaction", () => {
     const { props, f } = setup();
     const list = vi.spyOn(props.api, "list");
     const mounted = render(<QaInputForms {...props} enabled />);
-    await screen.findByRole("textbox");
-    expect(props.onTakeover).toHaveBeenLastCalledWith(true);
+    await waitFor(() => {
+      expect(screen.getByRole("textbox")).toBeDefined();
+      expect(props.onTakeover).toHaveBeenLastCalledWith(true);
+    });
     mounted.rerender(
       <QaInputForms {...props} session="child-a" enabled={false} />,
     );

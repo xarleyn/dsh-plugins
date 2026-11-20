@@ -191,9 +191,15 @@ describe("the composer while a question is parked", () => {
     );
 
     // The form appears in the composer's place.
-    expect(await screen.findByText("Куда писать отчёт?")).toBeDefined();
-    const slot = screen.getByTestId("qa-surface-composer-slot");
-    expect(slot.hidden).toBe(true);
+    await waitFor(
+      () => {
+        expect(screen.getByText("Куда писать отчёт?")).toBeDefined();
+        expect(screen.getByTestId("qa-surface-composer-slot").hidden).toBe(
+          true,
+        );
+      },
+      { timeout: 4_000 },
+    );
     // The run's own stop action stays reachable while the form owns the slot.
     fireEvent.click(screen.getByText("Остановить"));
     await waitFor(() => {

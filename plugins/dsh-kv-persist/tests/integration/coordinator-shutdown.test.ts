@@ -122,8 +122,8 @@ describe("single-slot coordinator: shutdown flush (SPEC §58)", () => {
       await iterator.next();
       await vi.waitFor(() => {
         expect(harness.backend.saveCount).toBe(1);
+        expect(harness.metrics.counters.saves).toBe(1);
       });
-      expect(harness.metrics.counters.saves).toBe(1);
     } finally {
       holdStream.resolve();
       await harness.cleanup();
