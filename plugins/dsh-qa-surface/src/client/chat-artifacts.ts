@@ -23,6 +23,7 @@ const PRODUCED_FORMATS: Readonly<Record<string, readonly string[]>> =
     document_create: ["docx", "pdf"],
     spreadsheet_create: ["xlsx", "csv", "tsv", "ods", "fods"],
     spreadsheet_edit: ["xlsx", "csv", "tsv"],
+    qa_trip_ids: ["xlsx"],
     document_convert: ["docx", "pdf", "md"],
     document_to_markdown: ["markdown"],
     document_from_url: ["markdown"],
