@@ -1,3 +1,7 @@
+import {
+  privateWorkbookReviewer,
+  workbookReviewEvidence,
+} from "./private-workbook-review.js";
 /**
  * The gate itself (`SPEC.md`, "shouldReview()", "Revision behavior",
  * "Failure policy").
@@ -128,6 +132,8 @@ interface GateSessionState {
 }
 
 export interface AnswerReviewGateDeps {
+  readonly localLlm?: () =>
+    Pick<import("@deepseek-ai/dsh-llm").LlmRuntime, "stream"> | undefined;
   readonly fileReadPath?: (file: FileReference) => string | undefined;
   readonly documents?: () => DocumentsReader | undefined;
   readonly publishStatus?: (agent: GateAgent, receipt: ReviewReceipt) => void;
@@ -397,9 +403,20 @@ export class AnswerReviewGate {
     config: ResolvedAnswerReviewGateConfig,
   ): Promise<BoundaryOutcome> {
     const startedAt = this.deps.now();
-    const backend = this.backendFor(agent, config, sessionId);
-    // Both backends use this signal to dispose the managed reviewer when the
-    // parent stops or the round expires.
+    const route = config.workbookReview;
+    const evidence = route
+      ? workbookReviewEvidence(agent.session, route)
+      : undefined;
+    const backend =
+      route && evidence !== undefined
+        ? privateWorkbookReviewer(
+            this.deps.localLlm?.(),
+            route,
+            evidence,
+            config.maxToolCallsPerRound,
+          )
+        : this.backendFor(agent, config, sessionId);
+    // Forward turn cancellation and the per-round deadline to the reviewer.
     const round = new AbortController();
     const forwardAbort = () => round.abort(signal.reason);
     if (signal.aborted) round.abort(signal.reason);
@@ -462,6 +479,7 @@ export class AnswerReviewGate {
                   ? {
                       ...input,
                       documentReview: evidence.instructions + correction,
+                      readDocument: evidence.readDocument.bind(evidence),
                     }
                   : input,
               ),

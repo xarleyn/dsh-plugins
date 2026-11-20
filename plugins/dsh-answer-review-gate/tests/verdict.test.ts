@@ -8,6 +8,25 @@ import {
 import { ReviewerFailure } from "../src/types.js";
 
 describe("validateReviewerVerdict", () => {
+  it.each(["critical", "major"])(
+    "returns a contradictory passing verdict for revision (%s)",
+    (severity) => {
+      const result = validateReviewerVerdict({
+        verdict: "pass",
+        issues: [
+          {
+            severity,
+            category: "unsupported",
+            claim: "An unverified number",
+            problem: "Missing source",
+            requiredFix: "Verify the source.",
+          },
+        ],
+      });
+      expect(result.verdict).toBe("revise");
+      expect(result.issues).toHaveLength(1);
+    },
+  );
   it("keeps complete native comparison fields and refuses malformed witnesses", () => {
     const c = {
       source: "S1",
@@ -127,6 +146,23 @@ describe("parseReviewerVerdict", () => {
 });
 
 describe("deriveVerdictFromExpertResult", () => {
+  it.each(["assumptions", "followUps"] as const)(
+    "preserves a blocker reported only in %s",
+    (field) => {
+      const verdict = deriveVerdictFromExpertResult({
+        status: "completed",
+        structured: true,
+        summary: "Checked the available evidence.",
+        findings: [],
+        conflicts: [],
+        [field]: ["Missing verification for the claimed date."],
+      });
+      expect(verdict.verdict).toBe("revise");
+      expect(verdict.issues.map((issue) => issue.claim)).toContain(
+        "Missing verification for the claimed date.",
+      );
+    },
+  );
   it.each([
     ["expert execution stopped: review-timeout", "review-timeout"],
     ["expert execution stopped: max-tool-calls", "review-tool-limit"],

@@ -15,28 +15,49 @@ describe("attached documents note", () => {
       qaSessions: ["session-root"],
     });
     const session = createSession("session-root");
-    const appended = await step(session);
+    expect((await step(session)).flatMap(noteNames)).not.toContain(
+      QA_DOCUMENTS_NOTE,
+    );
+    const appended = await step(session, {
+      proposed: [{ source: { kind: "user" }, content: [{ type: "file" }] }],
+    });
     const documents = appended.find((message) =>
       noteNames(message).includes(QA_DOCUMENTS_NOTE),
     );
     const text = noteText(documents);
-    // The tools the routing depends on, the plain reader's refusal as the
-    // expected answer, and the report to make when the pipeline refuses.
     expect(text).toContain("document_inspect");
-    expect(text).toContain("read_image");
+    expect(text).toContain("spreadsheet skill");
+    expect(text).toContain("private workflow first");
     expect(text).toContain("files/<shard>/<sha>/<name>");
-    expect(text).toContain("objects/<sha>");
-    expect(text).toContain("document_to_markdown");
-    expect(text).toContain("spreadsheet_inspect");
-    expect(text).toContain("spreadsheet_read");
-    expect(text).toContain("spreadsheet_create");
-    expect(text).toContain("all sheets");
-    expect(text).toContain("document_from_url");
-    expect(text).toMatch(/binary/u);
-    expect(text).toMatch(/refusal is expected/u);
+    expect(text).toContain("verified filename");
     expect(await step(session)).toEqual([]);
   });
 
+  it("recovers attachment routing behind an active compact checkpoint", async () => {
+    const f = harness({ config: config(), qaSessions: ["session-root"] });
+    const session = f.createSession("session-root");
+    session.events.push({
+      type: "user/message",
+      data: { source: { kind: "user" }, content: [{ type: "file" }] },
+    });
+    session.events.push({
+      type: "user/message",
+      data: { source: { kind: "compact-checkpoint", compactionId: "fixture" } },
+    });
+    session.surface.nodes.push(1);
+    Object.assign(session, {
+      snapshotEvents: () => [
+        ...session.events,
+        {
+          type: "compaction/summary",
+          data: { compactionId: "fixture", shadowedSeqs: [0] },
+        },
+      ],
+    });
+    expect((await f.step(session)).flatMap(noteNames)).toContain(
+      QA_DOCUMENTS_NOTE,
+    );
+  });
   it("stays out of chats the QA surface never attested", async () => {
     const { createSession, step } = harness({ config: config() });
     expect(await step(createSession("session-operator"))).toEqual([]);
@@ -49,7 +70,18 @@ describe("attached documents note", () => {
     });
     createSession("session-root");
     const child = createSession("session-child", "session-root");
-    expect((await step(child)).flatMap(noteNames)).toContain(QA_DOCUMENTS_NOTE);
+    expect(
+      (
+        await step(child, {
+          proposed: [
+            {
+              source: { kind: "user" },
+              content: [{ type: "text", text: "Resend the DOCX" }],
+            },
+          ],
+        })
+      ).flatMap(noteNames),
+    ).toContain(QA_DOCUMENTS_NOTE);
   });
 
   it("is muted and reworded on its own", async () => {

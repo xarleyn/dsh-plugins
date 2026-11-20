@@ -211,10 +211,10 @@ it.each(["before", "after", "request", "retry"] as const)(
     await send(ctx, agent, "unchanged");
     expect(adapter.requests).toHaveLength(2);
     const expected = notes(adapter.requests[0]!);
-    expect(expected).toHaveLength(7);
-    expect(new Set(expected).size).toBe(7);
+    expect(expected).toHaveLength(5);
+    expect(new Set(expected).size).toBe(5);
     expect(expected).toContain("qa-surface:available-skills");
-    expect(expected).toContain("dsh-qa-surface:integration-clarifications");
+    expect(expected).not.toContain("dsh-qa-surface:integration-clarifications");
     expect(notes(adapter.requests[1]!)).toEqual(expected);
 
     await send(ctx, agent, "compact");
@@ -232,7 +232,7 @@ it.each(["before", "after", "request", "retry"] as const)(
             event.type === "user/message" &&
             event.data.source.kind === "qa-notes",
         ),
-    ).toHaveLength(15);
+    ).toHaveLength(11);
 
     ambient.dispose();
     ambient = installNotes();

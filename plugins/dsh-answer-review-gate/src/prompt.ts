@@ -283,8 +283,8 @@ export function renderExpertReviewTask(input: {
     "</candidate_answer>",
     "",
     "Report every objection as a finding (claim, evidence, confidence); record contradicting sources as conflicts. " +
-      "An answer with no findings and no conflicts passes — a pass is final for this candidate and asks for no " +
-      "further version. Do not rewrite the answer yourself.",
+      "Reserve assumptions for unsupported premises and followUps for required corrections or missing evidence. " +
+      "A pass requires all four objection lists to be empty. Do not rewrite the answer.",
     "Finish by calling structured_output exactly once with summary, comparisons, findings, conflicts, assumptions and followUps. comparisons must contain the requested document evidence pairs, or [] when none were requested. " +
       "A text verdict or fenced JSON block does not deliver this run's result.",
   ].join("\n");

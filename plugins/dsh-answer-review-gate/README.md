@@ -1,5 +1,7 @@
 # @yadsh/dsh-answer-review-gate
 
+An operator can configure `workbookReview` with a trusted local `provider` and `model`, the protected workflow's `workflowTool`, and its `skill` name. Workbook attachments, workbook filenames in requests, and calls to spreadsheet tools select this route for subsequent reviews in the same history. The reviewer receives bounded producer receipts and can read exact document extractions prepared by the gate. It has no delegation, filesystem browsing or network tool. If this route fails, the gate applies its configured failure policy. Configure the primary agent's compaction provider and model separately.
+
 Independent answer review gate for DeepSeek Harness agents: before a candidate
 final answer is allowed to complete its turn, an independent reviewer checks it
 and can send it back for correction. The review is a **lifecycle requirement**
@@ -131,8 +133,8 @@ Runs the reviewer domain configured in [dsh-domain-experts](https://github.com/x
 by **stable domain id** (`reviewer.domain`, default `answer-reviewer`), so the
 reviewer persona, policy, tools and model are tuned in the domain-experts UI,
 not here. The verdict is derived from the expert's own structured protocol:
-findings and conflicts are the review objections; a run with no findings and no
-conflicts passes. Every review passes the round's cancellation signal to the
+Findings, conflicts, unsupported assumptions and blocking follow-ups all require
+revision. A run passes when all four lists are empty. Every review passes the round's cancellation signal to the
 host-only `reviewExpertBounded` entry. A service without that capability reports
 `review-budget-unavailable` through `failMode` before a reviewer starts.
 

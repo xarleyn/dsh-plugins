@@ -17,8 +17,11 @@ import {
   restrictReviewerTools,
 } from "./reviewer-tools.js";
 
+import type { WorkbookReviewRoute } from "./private-workbook-review.js";
+
 /** Raw user-facing configuration. */
 export interface AnswerReviewGateConfig {
+  readonly workbookReview?: WorkbookReviewRoute | null;
   /** Master switch; when false the gate registers no listeners at all. */
   readonly enabled?: boolean;
   readonly reviewer?: {
@@ -135,6 +138,7 @@ export function snapshotAnswerReviewGateConfig(
 
 /** Fully defaulted, clamped configuration used by the gate. */
 export interface ResolvedAnswerReviewGateConfig {
+  readonly workbookReview?: WorkbookReviewRoute | null;
   readonly enabled: boolean;
   readonly reviewer: {
     readonly backend: "domain-expert" | "subagent";
@@ -265,6 +269,7 @@ export function resolveAnswerReviewGateConfig(
   const defaults = ANSWER_REVIEW_GATE_DEFAULTS;
   return {
     enabled: entry.enabled !== false,
+    ...(entry.workbookReview ? { workbookReview: entry.workbookReview } : {}),
     reviewer: {
       backend: oneOf(
         reviewer.backend,
@@ -340,6 +345,17 @@ export const AnswerReviewGateConfigSchema: z<
   LiveAnswerReviewGateConfig
 > = z
   .object({
+    workbookReview: z
+      .union([
+        z.object({
+          provider: z.string(),
+          model: z.string(),
+          workflowTool: z.string(),
+          skill: z.string(),
+        }),
+        z.const(null),
+      ])
+      .default(null),
     enabled: z
       .boolean()
       .default(true)

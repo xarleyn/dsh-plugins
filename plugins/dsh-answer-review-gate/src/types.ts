@@ -182,6 +182,12 @@ export interface ReviewAuditEntry {
 
 /** The material the reviewer receives (`SPEC.md`, "Reviewer isolation"). */
 export interface ReviewInput {
+  /** Read a bounded window only from an exact document already prepared by the gate. */
+  readonly readDocument?: (
+    reviewer: string,
+    file: string,
+    offset: number,
+  ) => string;
   readonly documentReview?: string;
   /** One bounded recovery attempt is starting for the same candidate. */
   readonly onRecovery?: () => void;
@@ -283,6 +289,8 @@ export interface ExpertRunResult {
     readonly confidence: string;
   }[];
   readonly conflicts: readonly string[];
+  readonly assumptions?: readonly string[];
+  readonly followUps?: readonly string[];
 }
 
 /**
