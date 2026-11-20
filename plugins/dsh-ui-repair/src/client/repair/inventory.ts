@@ -1,4 +1,5 @@
 import type { Context } from "@deepseek-ai/cordis";
+import type {} from "@deepseek-ai/dsh-client-connection/client";
 import { versionedPackage } from "../../shared/recipes.js";
 
 interface Bundle {
