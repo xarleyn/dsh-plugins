@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
-import type { ConversationNode } from "@deepseek-ai/dsh-client-ui-conversation/client";
+import type {
+  ConversationNode,
+  TurnLocation,
+} from "@deepseek-ai/dsh-client-ui-conversation/client";
+import { SessionSeq } from "@deepseek-ai/dsh-session/types";
 import { projectTranscript } from "../../src/client/QaTranscriptAdapter.js";
+import {
+  QA_MODEL_BUDGET_STOP,
+  QA_MODEL_TIMEOUT_STOP,
+  QA_TOOL_LOOP_STOP,
+} from "../../src/shared/tool-loop-stop.js";
 import type { QaMessage } from "../../src/types.js";
 import { legacy, snapshot } from "../helpers/conversation-fakes.js";
 
@@ -18,6 +27,44 @@ function textOf(message: QaMessage): string {
 }
 
 describe("transcript projection of a stopped turn", () => {
+  it.each([
+    [QA_TOOL_LOOP_STOP, "повторных вызовов инструмента"],
+    [QA_MODEL_BUDGET_STOP, "лимиту работы модели"],
+    [QA_MODEL_TIMEOUT_STOP, "тайм-ауту генерации"],
+  ])("shows the stop reason from the turn boundary for %s", (reason, text) => {
+    const view = snapshot();
+    const chat = view.views.get("chat");
+    if (chat === undefined) throw new Error("missing chat view");
+    const turn: TurnLocation = {
+      turn: 1,
+      start: undefined,
+      end: {
+        type: "turn/end",
+        seq: SessionSeq(2),
+        time: 3_000,
+        data: {
+          turn: 1,
+          reason: { kind: "aborted", reason: { kind: "hook", reason } },
+        },
+      },
+      status: "closed",
+      steps: [],
+      data: {
+        get: () => undefined,
+        source: () => ({
+          getSnapshot: () => undefined,
+          subscribe: () => () => {},
+        }),
+      },
+    };
+    Object.assign(chat, {
+      timeline: { turnOrder: [1], turns: new Map([[1, turn]]) },
+    });
+    expect(projectTranscript(view)).toMatchObject([
+      { role: "system", status: "info", text: expect.stringContaining(text) },
+    ]);
+  });
+
   it("ends the turn as stopped and keeps the frozen prefix as a copyable answer", () => {
     const nodes = [
       {

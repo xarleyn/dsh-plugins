@@ -1,6 +1,6 @@
 import type { Context } from "@deepseek-ai/cordis";
 import { SessionId } from "@deepseek-ai/dsh-session/types";
-import { ReasoningEffortId } from "@deepseek-ai/dsh-llm";
+import { HarnessError, ReasoningEffortId } from "@deepseek-ai/dsh-llm";
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import type { QaModelOptions, QaModelPair } from "../types.js";
 import type {
@@ -14,6 +14,14 @@ import {
   projectModelCatalog,
   type QaSessionModelPolicy,
 } from "./model-policy.js";
+
+export const QA_MODEL_SELECTION_REFUSED = "QA_MODEL_SELECTION_REFUSED";
+
+export class QaModelSelectionError extends HarnessError {
+  constructor(message: string) {
+    super(message, QA_MODEL_SELECTION_REFUSED);
+  }
+}
 
 /** Only explicit policy grants are exposed to an ordinary account. */
 export async function userModelOptions(
@@ -91,12 +99,12 @@ export async function assertUserModelSelection(
     (item) => item.provider === pair.provider && item.model === pair.model,
   );
   if (entry === undefined)
-    throw new Error("This model is currently unavailable.");
+    throw new QaModelSelectionError("This model is currently unavailable.");
   if (
     pair.reasoningEffort !== undefined &&
     !entry.reasoningEfforts.includes(pair.reasoningEffort)
   )
-    throw new Error(
+    throw new QaModelSelectionError(
       "This reasoning effort is unavailable for the selected model.",
     );
   const effective = policy();
@@ -104,7 +112,9 @@ export async function assertUserModelSelection(
     (effective.pair === undefined && effective.allowedModels === undefined) ||
     !modelPolicySatisfied(effective, pair)
   )
-    throw new Error("This model is not allowed by the chat policy.");
+    throw new QaModelSelectionError(
+      "This model is not allowed by the chat policy.",
+    );
 }
 
 /** Native durable per-session selection, without the operator-wide default save. */

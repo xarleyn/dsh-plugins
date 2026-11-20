@@ -27,6 +27,11 @@ import { toWorkspaceRelativeText } from "./workspace-paths.js";
 import { parseSettlement, settlementView } from "./settlement.js";
 import { retryWorkCopy, turnErrorCopy } from "./failure-copy.js";
 import {
+  QA_MODEL_BUDGET_STOP,
+  QA_MODEL_TIMEOUT_STOP,
+  QA_TOOL_LOOP_STOP,
+} from "../shared/tool-loop-stop.js";
+import {
   flattenToolOutput,
   toolStatus,
   workTool,
@@ -85,6 +90,7 @@ interface TurnBuffer {
    * its answer is a prefix, so it must not read as a finished one.
    */
   stoppedAt?: number;
+  stoppedCopy?: string;
 }
 
 interface ToolHead {
@@ -609,7 +615,7 @@ function emitTurn(
       message: {
         id: `turn-stopped:${turn.turn}`,
         role: "system",
-        text: QA_TURN_STOPPED_COPY,
+        text: turn.stoppedCopy ?? QA_TURN_STOPPED_COPY,
         status: "info",
       },
     });
@@ -816,6 +822,19 @@ export function projectTranscript(
 
   collectTurnArtifacts(legacy.nodes, turns, toolHeads);
 
+  for (const turn of snapshot?.views.get("chat")?.timeline?.turns.values() ??
+    []) {
+    const end = turn.end;
+    const reason = end?.data.reason;
+    if (reason?.kind !== "aborted" || reason.reason.kind !== "hook" || !end)
+      continue;
+    const copy = guardStopCopy(reason.reason.reason);
+    if (copy === undefined) continue;
+    const buffer = getTurn(turns, turn.turn);
+    buffer.stoppedAt = end.seq;
+    buffer.stoppedCopy = copy;
+  }
+
   if (options.showToolActivity === true) {
     const settled = collectSettledTools(legacy.nodes, turns, toolHeads);
     for (const call of legacy.runningCalls) {
@@ -886,4 +905,17 @@ export function projectTranscript(
           : undefined;
       return review === undefined ? message : { ...message, review };
     });
+}
+
+function guardStopCopy(reason: string): string | undefined {
+  switch (reason) {
+    case QA_TOOL_LOOP_STOP:
+      return "Ход остановлен из-за повторных вызовов инструмента. Ответ может быть неполным.";
+    case QA_MODEL_BUDGET_STOP:
+      return "Ход остановлен по лимиту работы модели. Ответ может быть неполным.";
+    case QA_MODEL_TIMEOUT_STOP:
+      return "Ход остановлен по тайм-ауту генерации. Ответ может быть неполным.";
+    default:
+      return undefined;
+  }
 }
