@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { createWorkflowTools } from "../../../dsh-documents/src/workflow/tools.js";
 import { QA_BRANCH_NOTE } from "../../src/prompt-notes.js";
 import {
   config,
@@ -20,11 +19,7 @@ describe("branch model context", () => {
       .map(noteText)
       .join("\n")
       .match(/document_workflow_\w+/gu);
-    const registered = createWorkflowTools({} as never, {} as never).map(
-      (tool) => tool.name,
-    );
     expect(names).toEqual(["document_workflow_start"]);
-    expect(registered).toContain(names![0]);
     expect(await world.step(branch)).toEqual([]);
   });
 });

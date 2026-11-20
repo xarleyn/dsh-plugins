@@ -131,6 +131,7 @@ describe("documents plugin", () => {
       "document_diff_read",
       ...DOCUMENT_WORKFLOW_TOOL_NAMES,
     ]);
+    expect(registered).toContain("document_workflow_start");
     // The comparison tools exist only while the feature is on (§31).
     const off = plugin({ comparison: { enabled: false } });
     expect(off.registered).toEqual([
