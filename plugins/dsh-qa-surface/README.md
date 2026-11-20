@@ -1557,8 +1557,8 @@ audit trail at `/qa/admin`. Capability choices come from the live tool and
 skill registries; configured-but-missing entries remain visible and are not
 deleted. Admin authorization affects only the management API and never grants
 agent capabilities. `Preview as role` creates an ordinary session using the
-selected role's real server-enforced policy and shows the preview banner, which
-carries the way out. The preview belongs to the navigation that opened it: it
+selected role's real server-enforced policy. The chat header offers an action
+to return to the administrator's own profile. The preview belongs to the navigation that opened it: it
 ends when that entry is left, and an ordinary account never holds it, so a chat
 started later in the same tab runs under the account's own default profile.
 A user page reports each assigned profile's effective capabilities the way a

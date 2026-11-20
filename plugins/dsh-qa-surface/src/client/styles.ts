@@ -465,10 +465,7 @@ export const QA_SURFACE_STYLES = String.raw`
 .dsh-qa-theme__option svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.2;stroke-linecap:round;stroke-linejoin:round}
 .dsh-qa-header__admin{white-space:nowrap}
 .dsh-qa-header__admin svg{display:none;width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.3;stroke-linecap:round;stroke-linejoin:round}
-.dsh-qa-admin-preview{position:absolute;z-index:8;right:20px;bottom:14px;display:flex;align-items:center;gap:8px;padding:5px 6px 5px 12px;border:1px solid var(--dsh-qa-warning);border-radius:999px;background:var(--dsh-qa-warning10);color:var(--dsw-alias-label-primary);font-size:11px;font-weight:700;letter-spacing:.04em}
-.dsh-qa-admin-preview__exit{appearance:none;border:1px solid var(--dsh-qa-warning);border-radius:999px;background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-primary);font:inherit;font-size:11px;font-weight:600;letter-spacing:.02em;padding:2px 9px;cursor:pointer}
-.dsh-qa-admin-preview__exit:hover{border-color:var(--dsw-alias-label-dimmed)}
-.dsh-qa-admin-preview__exit:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsh-qa-accent));outline-offset:1px}
+.dsh-qa-preview-toolbar{display:flex;flex:none;padding:6px 12px}
 .dsh-qa-role-selector__notice{margin:0;color:var(--dsw-alias-label-secondary);font-size:14px;line-height:1.6}
 .dsh-qa-admin{${QA_BRAND_TOKENS};position:fixed;inset:0;z-index:2147483000;display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font-family:inherit}
 .dsh-qa-admin *{box-sizing:border-box}
