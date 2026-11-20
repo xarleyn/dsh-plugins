@@ -121,6 +121,7 @@ export interface QaConversationReview {
   readonly notes?: string;
   readonly target?: QaRemediationTarget;
   readonly suggestedAction?: string;
+  readonly followUpUrl?: string;
   readonly createdAt: string;
   readonly updatedAt?: string;
 }
@@ -135,6 +136,8 @@ export interface QaConversationReviewInput {
   readonly notes?: string;
   readonly target?: QaRemediationTarget;
   readonly suggestedAction?: string;
+  /** Omit to keep the previous link. An empty string removes it. */
+  readonly followUpUrl?: string;
 }
 
 /** Why a conversation entered the review queue. */

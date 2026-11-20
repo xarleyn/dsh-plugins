@@ -158,7 +158,7 @@ describe("admin console skill files", () => {
 
   it("keeps the section out of a reviewer's navigation", async () => {
     renderConsole(adminApi(), "/qa/admin/skills", "reviewer");
-    expect(await screen.findByRole("heading", { name: "Навыки" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Обзор" })).toBeTruthy();
     expect(screen.queryByTestId("qa-admin-nav-skill-files")).toBeNull();
   });
 });

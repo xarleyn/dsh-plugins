@@ -1684,6 +1684,22 @@ boundary. Review material is the most sensitive data the package handles, so
 tool arguments and results are bounded previews with credential shapes masked,
 behind a redactor a deployment can replace.
 
+### Follow up on feedback
+
+The assigned QA reviewer works the **Review queue** or opens a rating from
+**Feedback → Go to answer**. Check the highlighted answer and its preceding
+request. Record the issue category under **Problems**, the observed and expected
+behavior in **Notes**, and the planned change under **What to do**. Choose the
+kind of fix and add the link to the existing correction ticket or source
+material. For a new issue, create the ticket in the team's tracker and paste its
+link. Reuse the same link for repeat reports of the same issue.
+
+Keep the review in **Needs follow-up** while the ticket is open. The ticket
+owner applies the correction. The reviewer repeats the scenario and marks
+the review **Reviewed** after verifying the result. The decision and link are
+in the answer's review history. Send suggestions without a chat answer
+directly to the team's tracker with the proposed behavior and a safe example.
+
 ## Integration API (HTTP)
 
 Another application — a ticket-system bridge, a bot, a script — can ask the same

@@ -322,6 +322,7 @@ export function AdminConversation(props: {
   readonly token: string;
   readonly conversationId: string;
   readonly messageId?: string;
+  readonly reviewerId?: string | undefined;
   readonly canReview: boolean;
   /** Removing the conversation itself belongs to the administrator alone. */
   readonly canDelete: boolean;
@@ -490,9 +491,16 @@ export function AdminConversation(props: {
           )}
         </div>
         <ReviewPanel
+          key={JSON.stringify([
+            detail.conversationId,
+            props.messageId,
+            props.reviewerId,
+          ])}
           api={props.api}
           token={props.token}
           detail={detail}
+          messageId={props.messageId}
+          reviewerId={props.reviewerId}
           canReview={props.canReview}
           onSaved={() => void resource.reload()}
         />

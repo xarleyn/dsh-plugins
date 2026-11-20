@@ -124,6 +124,29 @@ describe("feedback and reviews", () => {
     );
     expect(second.items[0]?.id).not.toBe(first.items[0]?.id);
   });
+
+  it("filters ratings by the review of their own answer", async () => {
+    const { service, reviewer, alice } = harness();
+    for (const messageId of ["2", "4"]) {
+      service.rateMessage(alice.token, "session-alice", messageId, {
+        rating: "negative",
+      });
+    }
+    service.saveReview(reviewer.token, {
+      conversationId: "session-alice",
+      messageId: "2",
+      status: "needs_followup",
+      issues: ["context.missing_knowledge"],
+      severity: "minor",
+    });
+    const { items } = await service.feedback(
+      reviewer.token,
+      { reviewStatus: "needs_followup" },
+      undefined,
+      undefined,
+    );
+    expect(items.map(({ messageId }) => messageId)).toEqual(["2"]);
+  });
 });
 
 describe("feedback harvest", () => {

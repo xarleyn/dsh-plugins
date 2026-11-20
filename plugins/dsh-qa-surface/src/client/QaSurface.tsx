@@ -1739,6 +1739,11 @@ export function QaSurface(props: QaSurfaceProps) {
         api={props.accessApi}
         {...(props.adminApi === undefined ? {} : { adminApi: props.adminApi })}
         role={consoleRole}
+        reviewerId={
+          accountsSnapshot.stage === "authed"
+            ? accountsSnapshot.user.id
+            : undefined
+        }
         token={accounts?.token() ?? ""}
         routePath={config.route.path}
         onPreview={(role) => {

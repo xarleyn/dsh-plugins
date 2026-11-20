@@ -65,6 +65,7 @@ describe("quality store", () => {
       status: "needs_followup",
       issues: ["answer.incorrect"],
       severity: "major",
+      followUpUrl: "https://tracker.example.test/issues/PROJ-123",
     });
     const second = store.saveReview("r1", {
       conversationId: "c1",
@@ -79,6 +80,17 @@ describe("quality store", () => {
     expect(second.review.status).toBe("reviewed");
     expect(second.review.issues).toEqual(["answer.incorrect", "tool.failure"]);
     expect(second.review.createdAt).toBe(first.review.createdAt);
+    expect(second.review.followUpUrl).toBe(first.review.followUpUrl);
+    expect(
+      store.saveReview("r1", { ...second.review, followUpUrl: "" }).review
+        .followUpUrl,
+    ).toBeUndefined();
+    expect(() =>
+      store.saveReview("r1", {
+        ...second.review,
+        followUpUrl: "javascript:void(0)",
+      }),
+    ).toThrow(/followUpUrl/u);
   });
 
   it("parks a conversation once and drops it on dequeue", () => {
@@ -110,6 +122,7 @@ describe("quality store", () => {
       notes: "knowledge gap",
       target: "knowledge",
       suggestedAction: "add the release process",
+      followUpUrl: "https://tracker.example.test/issues/PROJ-123",
     });
     first.appendAudit({
       actorId: "admin",
@@ -125,6 +138,9 @@ describe("quality store", () => {
     const review = second.allReviews()[0];
     expect(review?.target).toBe("knowledge");
     expect(review?.suggestedAction).toBe("add the release process");
+    expect(review?.followUpUrl).toBe(
+      "https://tracker.example.test/issues/PROJ-123",
+    );
     expect(second.auditEvents()).toHaveLength(1);
   });
 

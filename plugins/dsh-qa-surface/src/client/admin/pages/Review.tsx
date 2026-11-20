@@ -186,17 +186,38 @@ export function ReviewPanel(props: {
   readonly api: QaAdminApi;
   readonly token: string;
   readonly detail: QaConversationDetail;
+  readonly messageId?: string | undefined;
+  readonly reviewerId?: string | undefined;
   readonly canReview: boolean;
   readonly onSaved: () => void;
 }) {
-  const [status, setStatus] = useState<"reviewed" | "needs_followup">(
-    "reviewed",
+  const { messageId } = props;
+  const targetAvailable =
+    messageId === undefined ||
+    props.detail.messages.some(
+      (item) => item.id === messageId && item.role === "assistant",
+    );
+  const current = props.detail.reviews.find(
+    (review) =>
+      review.reviewerId === props.reviewerId && review.messageId === messageId,
   );
-  const [issues, setIssues] = useState<readonly QaQualityIssueType[]>([]);
-  const [severity, setSeverity] = useState<QaQualitySeverity>("minor");
-  const [notes, setNotes] = useState("");
-  const [target, setTarget] = useState<QaRemediationTarget | "">("");
-  const [suggestedAction, setSuggestedAction] = useState("");
+  const [status, setStatus] = useState<"reviewed" | "needs_followup">(
+    current?.status ?? "reviewed",
+  );
+  const [issues, setIssues] = useState<readonly QaQualityIssueType[]>(
+    current?.issues ?? [],
+  );
+  const [severity, setSeverity] = useState<QaQualitySeverity>(
+    current?.severity ?? "minor",
+  );
+  const [notes, setNotes] = useState(current?.notes ?? "");
+  const [target, setTarget] = useState<QaRemediationTarget | "">(
+    current?.target ?? "",
+  );
+  const [suggestedAction, setSuggestedAction] = useState(
+    current?.suggestedAction ?? "",
+  );
+  const [followUpUrl, setFollowUpUrl] = useState(current?.followUpUrl ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const [queued, setQueued] = useState(false);
@@ -213,6 +234,7 @@ export function ReviewPanel(props: {
     setBusy(true);
     const input: QaConversationReviewInput = {
       conversationId: props.detail.conversationId,
+      ...(messageId === undefined ? {} : { messageId }),
       status,
       issues,
       severity,
@@ -221,6 +243,9 @@ export function ReviewPanel(props: {
       ...(suggestedAction.trim() === ""
         ? {}
         : { suggestedAction: suggestedAction.trim() }),
+      ...(current === undefined && followUpUrl.trim() === ""
+        ? {}
+        : { followUpUrl }),
     };
     const result = await props.api.saveReview(props.token, input);
     setBusy(false);
@@ -229,8 +254,6 @@ export function ReviewPanel(props: {
       return;
     }
     setError(undefined);
-    setNotes("");
-    setSuggestedAction("");
     props.onSaved();
   };
 
@@ -239,7 +262,7 @@ export function ReviewPanel(props: {
     const result = await props.api.queueConversation(
       props.token,
       props.detail.conversationId,
-      null,
+      messageId ?? null,
     );
     setBusy(false);
     if (!result.ok) {
@@ -254,9 +277,17 @@ export function ReviewPanel(props: {
     <aside
       className="dsh-qa-admin__review"
       data-testid="qa-admin-review-panel"
-      aria-label="Разбор разговора"
+      aria-label={
+        messageId === undefined ? "Разбор разговора" : "Разбор ответа"
+      }
     >
       <h2>Разбор</h2>
+      <p data-testid="qa-admin-review-scope">
+        {messageId === undefined ? "Весь разговор" : `Ответ №${messageId}`}
+      </p>
+      {targetAvailable ? null : (
+        <p role="status">Ответ недоступен для разбора.</p>
+      )}
       {error === undefined ? null : (
         <p
           className="dsh-qa-admin__error"
@@ -285,6 +316,11 @@ export function ReviewPanel(props: {
                 <span data-testid="qa-admin-review-history-severity">
                   {SEVERITY_LABELS[review.severity]}
                 </span>
+                <span>
+                  {review.messageId === undefined
+                    ? "Весь разговор"
+                    : `Ответ №${review.messageId}`}
+                </span>
                 <time title={review.createdAt}>
                   {formatStamp(review.createdAt)}
                 </time>
@@ -301,17 +337,29 @@ export function ReviewPanel(props: {
               )}
               {review.target === undefined ? null : (
                 <p data-testid="qa-admin-review-history-target">
-                  Причина: {TARGET_LABELS[review.target]}
-                  {review.suggestedAction === undefined
-                    ? ""
-                    : ` — ${review.suggestedAction}`}
+                  {TARGET_LABELS[review.target]}
                 </p>
+              )}
+              {review.suggestedAction === undefined ? null : (
+                <p data-testid="qa-admin-review-history-action">
+                  {review.suggestedAction}
+                </p>
+              )}
+              {review.followUpUrl === undefined ? null : (
+                <a
+                  data-testid="qa-admin-review-history-follow-up"
+                  href={review.followUpUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Открыть задачу или материал
+                </a>
               )}
             </li>
           ))}
         </ul>
       )}
-      {props.canReview ? (
+      {props.canReview && targetAvailable ? (
         <>
           <FilterField label="Статус" testId="qa-admin-review-field-status">
             <select
@@ -396,6 +444,18 @@ export function ReviewPanel(props: {
                 setSuggestedAction(event.currentTarget.value)
               }
               placeholder="Например: добавить регламент в базу знаний"
+            />
+          </FilterField>
+          <FilterField
+            label="Ссылка на задачу или материал"
+            testId="qa-admin-review-field-follow-up"
+          >
+            <input
+              type="url"
+              data-testid="qa-admin-review-follow-up"
+              maxLength={2048}
+              value={followUpUrl}
+              onChange={(event) => setFollowUpUrl(event.currentTarget.value)}
             />
           </FilterField>
           <FilterField label="Заметки" testId="qa-admin-review-field-notes">

@@ -551,6 +551,7 @@ export function QaAdmin(props: {
   readonly routePath: string;
   /** The signed-in account's role, used only to filter the navigation. */
   readonly role?: QaAccountRole;
+  readonly reviewerId?: string | undefined;
   readonly onPreview: (role: QaSubrole) => void;
 }) {
   const [snapshot, setSnapshot] = useState<QaAccessAdminSnapshot>();
@@ -573,13 +574,16 @@ export function QaAdmin(props: {
   }, []);
   const route = parseAdminRoute(pathname, props.routePath);
   const adminApi = props.adminApi;
+  const canConfigure = canOpen(props.role, "common");
   // Without the console's surface — a deployment with no accounts — the
   // sections that read conversations and quality records are unavailable; the
   // capability editors stay reachable under their own routes.
   const page: Page =
-    adminApi === undefined && CONSOLE_PAGES.has(route.page)
-      ? "subroles"
-      : route.page;
+    !canConfigure && !CONSOLE_PAGES.has(route.page)
+      ? "overview"
+      : adminApi === undefined && CONSOLE_PAGES.has(route.page)
+        ? "subroles"
+        : route.page;
   const navigate = useCallback(
     (next: QaAdminRoute) => {
       setDeletion(undefined);
@@ -609,8 +613,8 @@ export function QaAdmin(props: {
     setError(undefined);
   };
   useEffect(() => {
-    void refresh();
-  }, [props.api, props.token]);
+    if (canConfigure) void refresh();
+  }, [canConfigure, props.api, props.token]);
   const roles = snapshot?.config.subroles ?? [];
   const enabledRoles = useMemo(
     () => roles.filter(({ enabled }) => enabled),
@@ -630,7 +634,7 @@ export function QaAdmin(props: {
     await refresh();
     return true;
   };
-  if (snapshot === undefined) {
+  if (canConfigure && snapshot === undefined) {
     return (
       <main
         className="dsh-qa-admin"
@@ -643,7 +647,7 @@ export function QaAdmin(props: {
       </main>
     );
   }
-  if (editing !== undefined) {
+  if (canConfigure && snapshot !== undefined && editing !== undefined) {
     return (
       <main
         className="dsh-qa-admin"
@@ -677,7 +681,7 @@ export function QaAdmin(props: {
       </main>
     );
   }
-  if (editingSkill !== undefined) {
+  if (canConfigure && snapshot !== undefined && editingSkill !== undefined) {
     return (
       <main
         className="dsh-qa-admin"
@@ -823,6 +827,7 @@ export function QaAdmin(props: {
             <AdminConversation
               api={adminApi}
               token={props.token}
+              reviewerId={props.reviewerId}
               conversationId={
                 route.page === "conversation" ? route.conversationId : ""
               }
@@ -863,7 +868,7 @@ export function QaAdmin(props: {
             <AdminQuality api={adminApi} token={props.token} />
           ) : adminApi !== undefined && page === "audit" ? (
             <AdminAudit api={adminApi} token={props.token} />
-          ) : page === "subroles" ? (
+          ) : page === "subroles" && snapshot !== undefined ? (
             <>
               <div className="dsh-qa-admin__title-row">
                 <div>
@@ -1016,7 +1021,7 @@ export function QaAdmin(props: {
               token={props.token}
               canManage={canManageMemory(props.role)}
             />
-          ) : page === "skills" ? (
+          ) : page === "skills" && snapshot !== undefined ? (
             <>
               <div className="dsh-qa-admin__title-row">
                 <div>
@@ -1034,7 +1039,7 @@ export function QaAdmin(props: {
                 onSelect={setEditingSkill}
               />
             </>
-          ) : page === "common" ? (
+          ) : page === "common" && snapshot !== undefined ? (
             <>
               <div className="dsh-qa-admin__title-row">
                 <div>
