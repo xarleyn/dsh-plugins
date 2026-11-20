@@ -2266,6 +2266,7 @@ export function QaSurface(props: QaSurfaceProps) {
                   {config.forms.enabled && props.formApi && state.sessionId && (
                     <QaInputForms
                       key={`${accessPrincipal ?? "anonymous"}:${state.sessionId}`}
+                      enabled={state.viewingSubagent === null}
                       api={props.formApi}
                       policy={config.forms}
                       session={state.sessionId}

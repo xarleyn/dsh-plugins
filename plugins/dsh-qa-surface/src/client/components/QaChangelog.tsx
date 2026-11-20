@@ -26,6 +26,12 @@ export const QA_CHANGELOG: readonly QaChangelogEntry[] = [
     date: "2026-11-18",
     sections: [
       {
+        title: "Просмотр субагентов",
+        items: [
+          "При открытии переписки субагента больше не появляется ошибочное сообщение о загрузке пошаговых форм. При возвращении в основной чат формы загружаются заново.",
+        ],
+      },
+      {
         title: "Совместимость с DeepSeek Harness",
         items: ["QA поддерживает DeepSeek Harness 0.2.2-rc.5."],
       },

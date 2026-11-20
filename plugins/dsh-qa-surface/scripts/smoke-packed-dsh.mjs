@@ -66,7 +66,9 @@ const discoverySettingsOnly = process.argv.includes(
 const liveModelSelection = process.argv.includes("--live-model-selection");
 const modelSelectionOnly =
   liveModelSelection || process.argv.includes("--model-selection");
-const subagentModelsOnly = process.argv.includes("--subagent-models");
+const subagentFormsOnly = process.argv.includes("--subagent-forms");
+const subagentModelsOnly =
+  process.argv.includes("--subagent-models") || subagentFormsOnly;
 const answerModesOnly = process.argv.includes("--answer-modes");
 const questionSoundsOnly = process.argv.includes("--question-sounds");
 const formReaderOnly = process.argv.includes("--form-reader");
@@ -1244,6 +1246,7 @@ try {
     await stopProcess(host);
     host = undefined;
     await runSubagentModelsPass({
+      formBrowser: subagentFormsOnly,
       dshBin,
       dshEnv,
       root: temporaryRoot,

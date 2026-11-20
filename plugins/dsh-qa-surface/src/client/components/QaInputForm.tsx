@@ -598,7 +598,15 @@ export function QaInputForm(props: Props) {
 }
 
 /** Session/identity-keyed parent discards account-local state and aborts transfers on switch. */
-export function QaInputForms(props: Omit<Props, "form">) {
+export function QaInputForms(
+  props: Omit<Props, "form"> & { enabled?: boolean },
+) {
+  // A subagent transcript is a read-only view, not an owner form session.
+  // Unmount the poller and form together, releasing timers and any takeover.
+  return props.enabled === false ? null : <ActiveInputForms {...props} />;
+}
+
+function ActiveInputForms(props: Omit<Props, "form">) {
   const [forms, setForms] = useState<QaFormView[]>([]);
   const [loadError, setLoadError] = useState(false);
   const [retry, setRetry] = useState(0);

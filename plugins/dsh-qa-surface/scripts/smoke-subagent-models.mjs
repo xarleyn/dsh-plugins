@@ -4,6 +4,7 @@ import { spawn } from "node:child_process";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { freePort, rpc, stopProcess, waitFor } from "./smoke-helpers.mjs";
+import { runSubagentFormsBrowserPass } from "./smoke-subagent-forms-browser.mjs";
 
 /** Real packed Host, account policy, tool execution and native spawn; only the LLM is scripted. */
 export async function runSubagentModelsPass(options) {
@@ -15,6 +16,7 @@ export async function runSubagentModelsPass(options) {
     launchToken,
     authenticateBrowser,
     hostLog,
+    formBrowser = false,
   } = options;
   const requests = [];
   const failures = [];
@@ -141,6 +143,8 @@ export async function runSubagentModelsPass(options) {
     accounts:
       enabled: true
       allowRegistration: true
+    forms:
+      enabled: ${formBrowser}
     integration:
       enabled: true
       requestTimeoutMs: 30000
@@ -258,6 +262,24 @@ export async function runSubagentModelsPass(options) {
       adminPreview: false,
     });
     assert.equal(choices.selected.model, "parent-demo");
+    if (formBrowser) {
+      const child = await waitFor(async () => {
+        const listing = await remote("chatList", { token: user.token });
+        return listing.items.find(
+          (entry) =>
+            entry.origin === "subagent" &&
+            String(entry.parentSessionId) === owned.ids[0],
+        );
+      }, "native child in the account's QA session catalog");
+      await runSubagentFormsBrowserPass({
+        origin,
+        cookie,
+        authenticatedUrl: `${origin}/?token=${encodeURIComponent(launch)}`,
+        token: user.token,
+        sessionId: owned.ids[0],
+        childId: String(child.sessionId),
+      });
+    }
     console.log(
       "packed QA subagent models: regular-account grants, filtered discovery, rejected model, native child on selected route and unchanged parent selection passed",
     );

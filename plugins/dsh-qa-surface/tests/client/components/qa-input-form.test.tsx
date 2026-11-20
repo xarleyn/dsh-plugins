@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -66,6 +67,88 @@ function setup() {
   return { f, props, view };
 }
 describe("strict form interaction", () => {
+  it("does not poll owner-only forms while viewing a subagent", () => {
+    const { props } = setup();
+    const list = vi.spyOn(props.api, "list");
+    vi.useFakeTimers();
+    try {
+      render(<QaInputForms {...props} session="child-a" enabled={false} />);
+      fireEvent.focus(window);
+      fireEvent(document, new Event("visibilitychange"));
+      act(() => vi.advanceTimersByTime(5000));
+      expect(list).not.toHaveBeenCalled();
+      expect(screen.queryByRole("textbox")).toBeNull();
+      expect(screen.queryByRole("alert")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it.each(["success", "refusal"])(
+    "stops polling on child view, ignores a late %s and reloads on return",
+    async (outcome) => {
+      const { props, view } = setup();
+      let finish!: (result: Awaited<ReturnType<QaFormApi["list"]>>) => void;
+      const list = vi.spyOn(props.api, "list").mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve;
+          }),
+      );
+      vi.useFakeTimers();
+      try {
+        const mounted = render(<QaInputForms {...props} enabled />);
+        expect(list).toHaveBeenCalledOnce();
+        mounted.rerender(
+          <QaInputForms {...props} session="child-a" enabled={false} />,
+        );
+        await act(async () =>
+          finish({
+            ok: true,
+            value:
+              outcome === "success"
+                ? { ok: true, value: [view()] }
+                : {
+                    ok: false,
+                    error: { code: "ACCESS_DENIED", message: "Unavailable" },
+                  },
+          }),
+        );
+        fireEvent.focus(window);
+        fireEvent(document, new Event("visibilitychange"));
+        act(() => vi.advanceTimersByTime(5000));
+        expect(list).toHaveBeenCalledOnce();
+        expect(screen.queryByRole("textbox")).toBeNull();
+        expect(screen.queryByRole("alert")).toBeNull();
+        await act(async () => {
+          mounted.rerender(<QaInputForms {...props} enabled />);
+        });
+        expect(list).toHaveBeenCalledTimes(2);
+        expect(list).toHaveBeenLastCalledWith("demo-token", "chat-a");
+        expect(screen.getByRole("textbox")).toBeDefined();
+        expect(screen.queryByRole("alert")).toBeNull();
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  it("releases an active form's composer takeover on entering a child view", async () => {
+    const { props, f } = setup();
+    const list = vi.spyOn(props.api, "list");
+    const mounted = render(<QaInputForms {...props} enabled />);
+    await screen.findByRole("textbox");
+    expect(props.onTakeover).toHaveBeenLastCalledWith(true);
+    mounted.rerender(
+      <QaInputForms {...props} session="child-a" enabled={false} />,
+    );
+    expect(props.onTakeover).toHaveBeenLastCalledWith(false);
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(list).toHaveBeenCalledOnce();
+    expect(f.store.list("chat-a")[0]!.status).toBe("draft");
+    expect(props.api.mutate).not.toHaveBeenCalled();
+  });
+
   it("hides a completed form across polls/remounts without resuming or editing it", async () => {
     const { props, f } = setup();
     const list = vi.spyOn(props.api, "list");
