@@ -19,6 +19,10 @@ export const AUDIT_UI_STYLES = String.raw`
 .dsh-audit-status__headline{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .dsh-audit-status__verdict{font-size:17px;font-weight:600;line-height:1.3;color:var(--dsw-alias-label-primary)}
 .dsh-audit-status__verdict--good{color:var(--dsw-alias-state-success-primary)}
+.dsh-audit-provenance{display:flex;flex-wrap:wrap;gap:8px 24px;margin:0;padding:8px 16px;border-block-end:1px solid var(--dsw-alias-border-l2);font-size:13px}
+.dsh-audit-provenance div{min-width:0}
+.dsh-audit-provenance dt{font-size:12px;color:var(--dsw-alias-label-secondary)}
+.dsh-audit-provenance dd{margin:2px 0 0;color:var(--dsw-alias-label-primary);overflow-wrap:anywhere}
 .dsh-audit-status__verdict--warn{color:var(--dsw-alias-state-warn-primary)}
 .dsh-audit-status__verdict--bad{color:var(--dsw-alias-state-error-primary)}
 .dsh-audit-status__verdict--neutral{color:var(--dsw-alias-label-secondary)}

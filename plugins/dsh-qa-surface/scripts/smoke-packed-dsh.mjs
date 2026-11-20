@@ -1,5 +1,4 @@
 import { spawn } from "node:child_process";
-import { randomUUID } from "node:crypto";
 import {
   mkdtemp,
   mkdir,
@@ -9,16 +8,24 @@ import {
   stat,
   writeFile,
 } from "node:fs/promises";
-import { networkInterfaces, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runHistoryBrowserPass } from "./smoke-history-browser.mjs";
+import { runLanPass } from "./smoke-lan.mjs";
+import {
+  liveModelEndpoints,
+  liveModelPatch,
+  observeModelRequests,
+  runLiveModelSelection,
+} from "./smoke-live-model-selection.mjs";
 import { runUsageGuidePass } from "./smoke-usage-guide-browser.mjs";
 import { runIntegrationFolderBrowserPass } from "./smoke-integration-folder-browser.mjs";
 import { runFileDropBrowserPass } from "./smoke-file-drop-browser.mjs";
 import { runFileWriteSettingsBrowserPass } from "./smoke-file-writes-browser.mjs";
 import { runSubagentModelsPass } from "./smoke-subagent-models.mjs";
 import { runQuestionSoundsPass } from "./smoke-question-sounds.mjs";
+import { formReaderPatch, runFormReaderPass } from "./smoke-form-reader.mjs";
 import {
   installAnswerModePlugins,
   runAnswerModesPass,
@@ -29,7 +36,6 @@ import {
   bootGraph,
   freePort,
   launchToken,
-  requestWithAuthority,
   rpc,
   run,
   stopProcess,
@@ -57,16 +63,21 @@ const fileWriteSettingsOnly = process.argv.includes("--file-write-settings");
 const discoverySettingsOnly = process.argv.includes(
   "--tool-discovery-settings",
 );
-const modelSelectionOnly = process.argv.includes("--model-selection");
+const liveModelSelection = process.argv.includes("--live-model-selection");
+const modelSelectionOnly =
+  liveModelSelection || process.argv.includes("--model-selection");
 const subagentModelsOnly = process.argv.includes("--subagent-models");
 const answerModesOnly = process.argv.includes("--answer-modes");
 const questionSoundsOnly = process.argv.includes("--question-sounds");
+const formReaderOnly = process.argv.includes("--form-reader");
+const readerModel = process.env.DSH_QA_READER_MODEL;
 if (modelSelectionOnly && !withBrowser)
-  throw new Error("--model-selection requires --browser");
+  throw new Error("model selection requires --browser");
 if (chatLayoutOnly && !withBrowser)
   throw new Error("--chat-layout requires --browser");
 const presetScopedTool = process.platform === "win32" ? "pwsh" : "bash";
 const keepFailedSmoke = process.env.DSH_QA_KEEP_SMOKE === "1";
+const liveModels = liveModelSelection ? await liveModelEndpoints() : undefined;
 const temporaryRoot = await mkdtemp(join(tmpdir(), "dsh-qa-packed-smoke-"));
 const packageDirectory = join(temporaryRoot, "package");
 const supportDirectory = join(temporaryRoot, "support-packages");
@@ -187,164 +198,6 @@ async function runPermissionPreflightPass({ dshBin, dshEnv, root }) {
     throw error;
   } finally {
     await stopProcess(badHost);
-  }
-}
-
-/**
- * LAN pass: boot a second host through the shipped deployment overlay
- * (all-interfaces bind) and speak to it with the Host header a LAN browser
- * would send. The browser-trust fence derives trusted authorities from the
- * machine's LAN IPv4 literals under a 0.0.0.0 bind, so a LAN client must
- * pass the fence, receive the effective QA configuration through the
- * plugin's describe Remote (settings RPCs are loopback-pinned), and get the
- * /qa navigation redirect.
- */
-async function runLanPass({ dshBin, dshEnv, repo: repoRoot, hostLog: log }) {
-  const lanAddress = Object.values(networkInterfaces())
-    .flat()
-    .find(
-      (iface) => iface?.family === "IPv4" && iface?.internal === false,
-    )?.address;
-  if (lanAddress === undefined) {
-    console.log(
-      "packed DSH QA smoke: no LAN IPv4 interface; skipped the LAN pass",
-    );
-    return;
-  }
-  const lanPort = await freePort();
-  const lanAuthority = `${lanAddress}:${lanPort}`;
-  const strangerAuthority = `203.0.113.9:${lanPort}`;
-  const lanLog = [];
-  let lanHost;
-  try {
-    lanHost = spawn(
-      process.execPath,
-      [
-        dshBin,
-        // The launcher's --patch must precede the first web-app flag.
-        "web",
-        "--patch",
-        join(repoRoot, "deploy", "qa-lan.patch.yml"),
-        "--no-open",
-        "--port",
-        String(lanPort),
-      ],
-      {
-        cwd: workspacePath,
-        env: dshEnv,
-        stdio: ["ignore", "pipe", "pipe"],
-        windowsHide: true,
-      },
-    );
-    lanHost.stdout
-      .setEncoding("utf8")
-      .on("data", (chunk) => lanLog.push(chunk));
-    lanHost.stderr
-      .setEncoding("utf8")
-      .on("data", (chunk) => lanLog.push(chunk));
-    const token = await waitFor(() => launchToken(lanLog), "LAN launch token");
-    const loopbackAuthority = `127.0.0.1:${lanPort}`;
-    const loopbackCookie = await authenticateBrowser(
-      lanPort,
-      loopbackAuthority,
-      token,
-    );
-    await waitFor(async () => {
-      const response = await requestWithAuthority(
-        lanPort,
-        loopbackAuthority,
-        "/",
-        undefined,
-        { cookie: loopbackCookie },
-      );
-      return response.status === 200;
-    }, "LAN-bound DSH host");
-    const lanCookie = await authenticateBrowser(lanPort, lanAuthority, token);
-    const navigation = await requestWithAuthority(
-      lanPort,
-      lanAuthority,
-      "/qa",
-      undefined,
-      { cookie: lanCookie },
-    );
-    if (
-      navigation.status !== 302 ||
-      !navigation.headers.location?.startsWith("/?__dsh_qa_route=%2Fqa")
-    ) {
-      throw new Error(
-        `LAN /qa did not redirect through the QA navigation route: ${navigation.status} ${JSON.stringify(navigation.headers.location)}`,
-      );
-    }
-    const described = await requestWithAuthority(
-      lanPort,
-      lanAuthority,
-      "/api/qaSurface/describe",
-      {
-        type: "client-request",
-        rpcId: `qa-smoke-${randomUUID()}`,
-        method: "qaSurface/describe",
-        payload: { args: {} },
-      },
-      { cookie: lanCookie },
-    );
-    const describedEnvelope = JSON.parse(described.body);
-    const describedConfig = describedEnvelope.result?.value;
-    if (
-      described.status !== 200 ||
-      describedEnvelope.result?.ok !== true ||
-      describedConfig?.enabled !== true ||
-      describedConfig?.route?.path !== "/qa" ||
-      describedConfig?.session?.agentPreset !== "minimal" ||
-      describedConfig?.lockdown?.permissionPreset !== "qa-read-only"
-    ) {
-      throw new Error(
-        `LAN describe did not return the effective QA configuration: ${described.status} ${described.body.slice(0, 400)}`,
-      );
-    }
-    const pinned = await requestWithAuthority(
-      lanPort,
-      lanAuthority,
-      "/api/settings.describe",
-      {
-        type: "client-request",
-        rpcId: `qa-smoke-${randomUUID()}`,
-        method: "settings.describe",
-        payload: { args: {} },
-      },
-      { cookie: lanCookie },
-    );
-    if (pinned.status !== 403 && pinned.status !== 404) {
-      throw new Error(
-        `LAN settings RPC must stay unavailable, got ${pinned.status}`,
-      );
-    }
-    const strangerCookie = await authenticateBrowser(
-      lanPort,
-      strangerAuthority,
-      token,
-    );
-    const stranger = await requestWithAuthority(
-      lanPort,
-      strangerAuthority,
-      "/api/qaSurface/describe",
-      {
-        type: "client-request",
-        rpcId: `qa-smoke-${randomUUID()}`,
-        method: "qaSurface/describe",
-        payload: { args: {} },
-      },
-      { cookie: strangerCookie },
-    );
-    if (stranger.status !== 403 && stranger.status !== 404) {
-      throw new Error(
-        `an untrusted Host authority must not reach the plugin Remote, got ${stranger.status}`,
-      );
-    }
-  } catch (error) {
-    log.push(...lanLog);
-    throw error;
-  } finally {
-    await stopProcess(lanHost);
   }
 }
 
@@ -953,6 +806,7 @@ async function runBrowserPass({
 
 let completed = false;
 let host;
+let modelObserver;
 try {
   await Promise.all([
     mkdir(packageDirectory, { recursive: true }),
@@ -1003,6 +857,7 @@ try {
       Object.entries(process.env).filter(
         ([name]) =>
           !(
+            formReaderOnly ||
             modelSelectionOnly ||
             usageGuideOnly ||
             subagentModelsOnly ||
@@ -1012,6 +867,8 @@ try {
       ),
     ),
     DSH_HOME: dshHome,
+    ...(formReaderOnly && { DSH_QA_READER_KEY: "local-reader-fixture" }),
+    ...(liveModels && { QA_MODEL_FIXTURE_KEY: "local-model-fixture" }),
   };
   await run(
     process.execPath,
@@ -1055,7 +912,7 @@ try {
     profileWorkspacePath,
     `${profileWorkspace}\noverrides:\n  "@yadsh/dsh-plugin-kit": ${JSON.stringify(supportSpec)}\n`,
   );
-  await run("pnpm", ["install", "--ignore-scripts"], {
+  await run("pnpm", ["install", "--ignore-scripts", "--no-frozen-lockfile"], {
     cwd: join(dshHome, "profiles", "web"),
   });
   const installedKit = JSON.parse(
@@ -1142,20 +999,47 @@ try {
 
   const port = await freePort();
   const origin = `http://127.0.0.1:${port}`;
-  host = spawn(
-    process.execPath,
-    [dshBin, "web", "--no-open", "--port", String(port)],
-    {
-      cwd: workspacePath,
-      env: dshEnv,
-      stdio: ["ignore", "pipe", "pipe"],
-      windowsHide: true,
-    },
-  );
-  host.stdout.setEncoding("utf8").on("data", (chunk) => hostLog.push(chunk));
-  host.stderr.setEncoding("utf8").on("data", (chunk) => hostLog.push(chunk));
-  const token = await waitFor(() => launchToken(hostLog), "DSH launch token");
-  const cookie = await authenticateBrowser(port, `127.0.0.1:${port}`, token);
+  async function startWeb(extraArgs = []) {
+    host = spawn(
+      process.execPath,
+      [dshBin, "web", ...extraArgs, "--no-open", "--port", String(port)],
+      {
+        cwd: workspacePath,
+        env: dshEnv,
+        stdio: ["ignore", "pipe", "pipe"],
+        windowsHide: true,
+      },
+    );
+    host.stdout.setEncoding("utf8").on("data", (chunk) => hostLog.push(chunk));
+    host.stderr.setEncoding("utf8").on("data", (chunk) => hostLog.push(chunk));
+    const token = await waitFor(() => launchToken(hostLog), "DSH launch token");
+    const cookie = await authenticateBrowser(port, `127.0.0.1:${port}`, token);
+    return { token, cookie };
+  }
+  let { token, cookie } = await startWeb();
+  if (formReaderOnly || liveModels) {
+    const registered = await rpc(
+      origin,
+      "workspace/create",
+      { args: { request: { path: workspacePath } } },
+      cookie,
+    );
+    const patch = join(temporaryRoot, "local-model.patch.yml");
+    if (liveModels) modelObserver = await observeModelRequests(liveModels);
+    await writeFile(
+      patch,
+      liveModels
+        ? liveModelPatch(modelObserver.models, registered.workspace.workspaceId)
+        : formReaderPatch(
+            process.env.DSH_QA_READER_URL,
+            readerModel,
+            registered.workspace.workspaceId,
+          ),
+    );
+    await stopProcess(host);
+    hostLog.length = 0;
+    ({ token, cookie } = await startWeb(["--patch", patch]));
+  }
   await waitFor(
     async () =>
       (
@@ -1226,12 +1110,14 @@ try {
 
   const fullBrowser =
     withBrowser &&
+    !formReaderOnly &&
     !usageGuideOnly &&
     !modelSelectionOnly &&
     !chatLayoutOnly &&
     !answerModesOnly &&
     !reviewDockOnly;
   if (
+    !formReaderOnly &&
     !usageGuideOnly &&
     !modelSelectionOnly &&
     !subagentModelsOnly &&
@@ -1241,7 +1127,15 @@ try {
     !discoverySettingsOnly &&
     !questionSoundsOnly
   )
-    await runLanPass({ dshBin, dshEnv, repo, hostLog });
+    await runLanPass({
+      dshBin,
+      dshEnv,
+      workspacePath,
+      profilePath: dirname(profileManifestPath),
+      hostLog,
+    });
+  if (formReaderOnly)
+    await runFormReaderPass({ origin, cookie, model: readerModel });
   if (questionSoundsOnly)
     await runQuestionSoundsPass({
       origin,
@@ -1258,7 +1152,15 @@ try {
         process.env.DSH_QA_FILE_WRITE_EVIDENCE ??
         join(temporaryRoot, "file-write-evidence"),
     });
-  if (withBrowser) {
+  if (liveModels) {
+    await runLiveModelSelection({
+      models: liveModels,
+      beginTurn: modelObserver.beginTurn,
+      origin,
+      cookie,
+      authenticatedUrl: `${origin}/?token=${encodeURIComponent(token)}`,
+    });
+  } else if (withBrowser) {
     const sourceWorkspace = chatLayoutOnly
       ? (
           await rpc(
@@ -1357,6 +1259,7 @@ try {
   );
 } finally {
   await stopProcess(host);
+  await modelObserver?.close();
   if (!completed)
     console.error(
       hostLog.join("").replace(/([?&]token=)[^\s&#]+/gu, "$1[redacted]"),

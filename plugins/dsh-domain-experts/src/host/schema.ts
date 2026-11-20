@@ -32,7 +32,7 @@ const crossDomainModeSchema = z.enum([
  * Schemastery (the storage-domain contract), and every field is required —
  * the persisted format has no optional properties on purpose.
  */
-export const domainRecordSchema: z.ZodType<DomainDefinition> = z.object({
+export const domainRecordSchema = z.object({
   formatVersion: z.literal(DOMAIN_RECORD_VERSION),
   id: z.string(),
   name: z.string(),
@@ -78,7 +78,7 @@ export const domainRecordSchema: z.ZodType<DomainDefinition> = z.object({
   }),
   createdAt: z.number().int().min(0),
   updatedAt: z.number().int().min(0),
-});
+}) satisfies z.ZodType<DomainDefinition>;
 
 /** One durable memory record; the same shape host and browser see. */
 export const memoryRecordSchema: z.ZodType<MemoryRecord> = z.object({

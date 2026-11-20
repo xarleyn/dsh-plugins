@@ -86,15 +86,22 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
 /** Translate the Remote envelope pairs into the page's single outcome shape. */
 function createApi(namespace: DomainExpertsRemote): DomainExpertsApi {
   return {
+    transfer: {
+      exportCatalog: async () => toOutcome(await namespace.exportCatalog()),
+      previewCatalogImport: async (document, mode) =>
+        toOutcome(await namespace.previewCatalogImport(document, mode)),
+      applyCatalogImport: async (document, mode, token) =>
+        toOutcome(await namespace.applyCatalogImport(document, mode, token)),
+    },
     listDomains: async () => toOutcome(await namespace.listDomains()),
     getDomain: async (id) => toOutcome(await namespace.getDomain(id)),
     draftDomain: async (id) => toOutcome(await namespace.draftDomain(id)),
     inspectDraft: async (definition) =>
       toOutcome(await namespace.inspectDraft(definition)),
-    createDomain: async (definition) =>
-      toOutcome(await namespace.createDomain(definition)),
-    updateDomain: async (definition) =>
-      toOutcome(await namespace.updateDomain(definition)),
+    saveDomainFromEditor: async (definition, create, providerEdits) =>
+      toOutcome(
+        await namespace.saveDomainFromEditor(definition, create, providerEdits),
+      ),
     setDomainEnabled: async (id, enabled) =>
       toOutcome(await namespace.setDomainEnabled(id, enabled)),
     deleteDomain: async (id) => toOutcome(await namespace.deleteDomain(id)),
@@ -116,6 +123,8 @@ function createApi(namespace: DomainExpertsRemote): DomainExpertsApi {
       toOutcome(await namespace.testExpert(id, task, parentSessionId, false)),
     recentAudits: async (limit) =>
       toOutcome(await namespace.recentAudits(limit)),
+    queryExecutionAudits: async (query) =>
+      toOutcome(await namespace.queryExecutionAudits(query)),
   };
 }
 

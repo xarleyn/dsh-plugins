@@ -11,7 +11,15 @@ export interface CodeSourceSession {
   };
 }
 
-/** Durable chat preference and immutable snapshots for delegated/forked children. */
+/** A concrete id is pinned even if unavailable. Null follows the live catalogue. */
+function effectiveSourceId(catalog: CodeSourcesCatalog): string | null {
+  return (
+    catalog.defaultSource ||
+    (catalog.entries.length === 1 ? catalog.entries[0]!.id : null)
+  );
+}
+
+/** Durable chat preferences and inherited selections for delegated/forked children. */
 export class QaCodeSourceSelection {
   readonly storage: SqliteDatabase;
   constructor(
@@ -70,9 +78,7 @@ export class QaCodeSourceSelection {
   view(id: string, owner: boolean): QaChatCodeSources {
     const selectedSource = this.selected(id);
     const catalog = this.catalog(id);
-    const effectiveSource =
-      catalog.defaultSource ||
-      (catalog.entries.length === 1 ? catalog.entries[0]!.id : null);
+    const effectiveSource = effectiveSourceId(catalog);
     return {
       selectedSource,
       effectiveSource,
@@ -105,16 +111,11 @@ export class QaCodeSourceSelection {
   }
 
   inherit(id: string, parent: string, managedParent = false): void {
-    const parentPreference = this.stored(parent);
-    if (!managedParent && parentPreference === undefined) return;
+    if (!managedParent && this.stored(parent) === undefined) return;
     if (this.stored(id) !== undefined) return;
-    const catalog = this.catalog(parent);
-    if (catalog.entries.length === 0 && parentPreference === undefined) return;
-    this.save(
-      id,
-      catalog.defaultSource ||
-        (catalog.entries.length === 1 ? catalog.entries[0]!.id : null),
-    );
+    // Persist NULL even for an empty catalogue so later parent edits cannot
+    // take the child off the deployment default when its lineage is resolved.
+    this.save(id, effectiveSourceId(this.catalog(parent)));
   }
 
   private save(id: string, source: string | null): void {

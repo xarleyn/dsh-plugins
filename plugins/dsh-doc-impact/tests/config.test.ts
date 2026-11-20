@@ -2,6 +2,27 @@ import { describe, expect, it } from "vitest";
 import { ConfigError, normalizeConfig, parseConfig } from "../src/index.js";
 
 describe("configuration", () => {
+  it.each(["@", "!", "?", "+", "*"])(
+    "rejects the %s extglob operator with the rule id",
+    (operator) => {
+      expect(() =>
+        normalizeConfig({
+          rules: [
+            {
+              id: "guide",
+              code: "src/**",
+              docs: {
+                include: "docs/**",
+                exclude: `docs/${operator}(draft).md`,
+              },
+              direction: "code-to-docs",
+            },
+          ],
+        }),
+      ).toThrow(/rule "guide":[\s\S]*extglob/u);
+    },
+  );
+
   it("normalizes concise selectors and defaults", () => {
     const config = parseConfig(`
 rules:

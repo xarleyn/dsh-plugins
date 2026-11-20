@@ -98,5 +98,5 @@ draft → Send → prompt accepted → blank becomes false
 | Strict Client Remote contract     | Implemented |
 | Backing Session lifecycle         | Implemented |
 | Composer restore/autosave         | Implemented |
-| Draft-aware workspace sidebar     | Partial     |
-| Browser/Host E2E coverage         | Planned     |
+| Draft-aware workspace sidebar     | Implemented through the cooperative Drafts tab, with a stock footer popover as fallback |
+| Browser/Host E2E coverage         | Implemented in the [packed Host smoke](./scripts/smoke-packed-dsh.mjs). `e2e:browser` exercises reload, Host restart with rebinding, and accepted and rejected sends. See the [platform coverage](./ROADMAP.md#milestone-5--compatibility-and-release). |

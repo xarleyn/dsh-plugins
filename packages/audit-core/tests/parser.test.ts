@@ -47,7 +47,7 @@ describe("parseAuditAnalysis", () => {
   it("keeps an unknown schema viewable instead of failing it", () => {
     const result = parseAuditAnalysis(
       JSON.stringify({
-        schemaVersion: 2,
+        schemaVersion: 9,
         audit: { id: "audit-f3e452", createdAt: "2026-09-17T18:31:54Z" },
         trajectory: { sessionId: "session-41b4e63f" },
       }),
@@ -55,12 +55,43 @@ describe("parseAuditAnalysis", () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.analysis).toEqual({ kind: "unknown", schemaVersion: 2 });
+    expect(result.analysis).toEqual({ kind: "unknown", schemaVersion: 9 });
     expect(result.errors).toHaveLength(1);
     expect(result.errors[0]?.code).toBe("UNSUPPORTED_SCHEMA");
     expect(result.errors[0]?.severity).toBe("warning");
     // An unknown schema has no readable binding, so it can never attach a session.
     expect(getAuditSessionId(result.analysis)).toBeNull();
+  });
+
+  it("reads v2 provenance and binds the audit by the trajectory session ID", () => {
+    const result = parseAuditAnalysis(
+      JSON.stringify({
+        schemaVersion: 2,
+        trajectory: { sessionId: "session-demo", model: "demo-chat" },
+        audit: { producer: { name: "Report builder", version: "1.2.3" } },
+        auditor: { type: "llm", model: "demo-reviewer" },
+      }),
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.analysis).toMatchObject({
+      kind: "v2",
+      schemaVersion: 2,
+      audit: { producer: { name: "Report builder", version: "1.2.3" } },
+      auditor: { type: "llm", model: "demo-reviewer" },
+    });
+    expect(getAuditSessionId(result.analysis)).toBe("session-demo");
+  });
+
+  it("preserves raw access to a v2 export that lacks a trajectory session ID", () => {
+    const result = parseAuditAnalysis(
+      JSON.stringify({ schemaVersion: 2, trajectory: {} }),
+    );
+    expect(result).toMatchObject({
+      ok: true,
+      analysis: { kind: "unknown", schemaVersion: 2 },
+      errors: [{ code: "INVALID_SCHEMA", severity: "warning" }],
+    });
   });
 
   it("reports malformed JSON with the parser's own reason", () => {

@@ -216,6 +216,7 @@ export class QaPersonalSkills {
       seedSharedSkills(
         roots,
         config.accounts.skills.sharedSeed,
+        config.accounts.skills.maxSkillBytes,
         this.options.logger,
       )
     ) {

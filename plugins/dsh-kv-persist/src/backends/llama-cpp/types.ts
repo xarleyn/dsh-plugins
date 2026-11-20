@@ -19,6 +19,7 @@ export interface LlamaCppSlotsResponse {
 /** POST /slots/{id}?action=save response. */
 export interface LlamaCppSaveResponse {
   readonly success: boolean;
+  readonly bytes: number | null;
 }
 
 /** POST /slots/{id}?action=restore response. */

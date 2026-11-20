@@ -264,6 +264,7 @@ export function Select({
     >
       <select
         className="dx-select"
+        aria-label={label}
         value={value}
         data-testid={testIdPart(testId, "input")}
         onChange={(event) => {

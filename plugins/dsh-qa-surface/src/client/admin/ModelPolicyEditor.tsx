@@ -1,6 +1,7 @@
 import type { QaAccessApi } from "../types.js";
 import type { QaModelCatalogEntry, QaModelPair } from "../../types.js";
 import { FilterField, useAdminResource } from "./shared.js";
+import { catalogModelChoices, qaModelKey } from "../model-choices.js";
 
 /** Identity of a pair, as the value of one `<option>`. */
 function pairKey(provider: string, model: string): string {
@@ -46,6 +47,28 @@ export function ModelPolicyEditor(props: {
   const byKey = new Map(catalog.map((entry) => [entryKey(entry), entry]));
   const selected = byKey.get(storedKey);
   const efforts = selected?.reasoningEfforts ?? [];
+  const alternatives = new Map(
+    catalogModelChoices(catalog).map(
+      ({ pair, label }) =>
+        [
+          qaModelKey(pair),
+          { pair, label: `${pair.provider} / ${label}` },
+        ] as const,
+    ),
+  );
+  const granted = new Set(props.allowedModels?.map(qaModelKey));
+  for (const pair of props.allowedModels ?? []) {
+    const key = qaModelKey(pair);
+    if (!alternatives.has(key)) {
+      const label = [pair.model, pair.reasoningEffort]
+        .filter(Boolean)
+        .join(" · ");
+      alternatives.set(key, {
+        pair,
+        label: `${pair.provider} / ${label} (нет в каталоге)`,
+      });
+    }
+  }
 
   if (catalog.length === 0) {
     return models.loading ? (
@@ -151,57 +174,24 @@ export function ModelPolicyEditor(props: {
           </label>
           <p className="dsh-qa-admin__empty">
             Аккаунт наследует список роли. Для роли наследование оставляет
-            только модель по умолчанию.
+            только модель по умолчанию. Запись без уровня разрешает все
+            поддерживаемые уровни этой модели. Для ограничения выберите
+            конкретные уровни, в том числе для модели по умолчанию.
           </p>
           {props.allowedModels === undefined
             ? null
-            : [
-                ...new Map([
-                  ...catalog.map(
-                    (entry) =>
-                      [
-                        entryKey(entry),
-                        {
-                          pair: {
-                            provider: entry.provider,
-                            model: entry.model,
-                          } as QaModelPair,
-                          label: `${entry.provider} / ${entry.label}`,
-                        },
-                      ] as const,
-                  ),
-                  ...props.allowedModels
-                    .filter(
-                      (pair) => !byKey.has(pairKey(pair.provider, pair.model)),
-                    )
-                    .map(
-                      (pair) =>
-                        [
-                          pairKey(pair.provider, pair.model),
-                          {
-                            pair,
-                            label: `${pair.provider} / ${pair.model} (нет в каталоге)`,
-                          },
-                        ] as const,
-                    ),
-                ]).entries(),
-              ].map(([key, entry]) => (
+            : [...alternatives].map(([key, entry]) => (
                 <label key={key}>
                   <input
                     type="checkbox"
                     data-testid={`${props.testId}-alternative`}
-                    checked={
-                      props.allowedModels?.some(
-                        (pair) => pairKey(pair.provider, pair.model) === key,
-                      ) ?? false
-                    }
+                    checked={granted.has(key)}
                     onChange={(event) =>
                       props.onAllowedModelsChange?.(
                         event.currentTarget.checked
                           ? [...(props.allowedModels ?? []), entry.pair]
                           : (props.allowedModels?.filter(
-                              (pair) =>
-                                pairKey(pair.provider, pair.model) !== key,
+                              (pair) => qaModelKey(pair) !== key,
                             ) ?? []),
                       )
                     }

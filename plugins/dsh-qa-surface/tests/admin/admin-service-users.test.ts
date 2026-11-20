@@ -2,6 +2,50 @@ import { describe, expect, it } from "vitest";
 import { harness, refusal } from "./admin-service.helpers.js";
 
 describe("admin user management", () => {
+  it("saves numeric and unlimited queue limits and clears the override on inheritance", async () => {
+    const { service, admin, alice, accounts } = harness();
+    const userId = alice.user.id;
+    const assignment = {
+      allowedSubroles: ["analyst"],
+      defaultSubrole: "analyst",
+      allowedModels: [],
+    };
+    for (const access of [
+      { ...assignment, maxActiveRequests: 3 },
+      { ...assignment, maxActiveRequests: 0 },
+      assignment,
+    ]) {
+      const saved = await service.updateUser(admin.token, userId, { access });
+      expect(saved.user.access).toEqual(access);
+      expect(accounts.accessOf(userId)).toEqual(access);
+      const reopened = await service.user(admin.token, userId);
+      expect(reopened.user.access).toEqual(access);
+    }
+  });
+
+  it("leaves the account unchanged when an update contains an out-of-range queue limit", async () => {
+    const { service, admin, alice, accounts } = harness();
+    const userId = alice.user.id;
+    const access = {
+      allowedSubroles: ["analyst"],
+      defaultSubrole: "analyst",
+      maxActiveRequests: 3,
+    };
+    accounts.setAccess(userId, access);
+    await expect(
+      service.updateUser(admin.token, userId, {
+        role: "reviewer",
+        disabled: true,
+        access: { ...access, maxActiveRequests: 51 },
+      }),
+    ).rejects.toThrow(/assignment maxActiveRequests/u);
+    expect((await service.user(admin.token, userId)).user).toMatchObject({
+      role: "user",
+      disabled: false,
+      access,
+    });
+  });
+
   it("preserves an explicit account override restricting models to the default", async () => {
     const { service, admin, alice, accounts } = harness();
     const detail = await service.updateUser(admin.token, alice.user.id, {

@@ -1,9 +1,78 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { DEFINITION, ok, renderPage } from "./client-page.helpers.js";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { CATALOG, DEFINITION, ok, renderPage } from "./client-page.helpers.js";
+import {
+  formProvider,
+  futureFormProvider,
+  headlessProvider,
+} from "./fixtures/scope-provider-fixture.js";
 
 describe("client page: editor", () => {
+  it("renders a provider's fields and submits only typed edits through the shared Save action", async () => {
+    const domain = {
+      ...DEFINITION,
+      scope: {
+        ...DEFINITION.scope,
+        providers: {
+          "demo-docs": '{"collection":"guide","unfamiliar":{"keep":true}}',
+          "headless-docs": ' { "custom" : 1 } ',
+          "missing-docs": "raw bytes",
+        },
+      },
+    };
+    const saveDomainFromEditor = vi.fn(() => Promise.resolve(ok({ domain })));
+    renderPage({
+      getDomain: () => Promise.resolve(ok({ domain })),
+      catalog: () =>
+        Promise.resolve(
+          ok({
+            ...CATALOG,
+            scopeProviders: [
+              formProvider,
+              headlessProvider,
+              futureFormProvider,
+            ].map((provider) => ({
+              id: provider.id,
+              title: provider.title,
+              enforcement: provider.enforcement,
+              builtin: provider.builtin,
+              form: provider.configForm ?? null,
+            })),
+          }),
+        ),
+      saveDomainFromEditor,
+    });
+    fireEvent.click(await screen.findByTestId("domain-experts-page-open"));
+    fireEvent.click(await screen.findByRole("tab", { name: "Resources" }));
+    const form = screen.getByRole("group", { name: "Demo documentation" });
+    const collection = within(form).getByRole("textbox", {
+      name: "Collection",
+    });
+    expect(collection).toHaveProperty("value", "guide");
+    const depth = within(form).getByRole("textbox", { name: "Search depth" });
+    fireEvent.change(depth, { target: { value: "1.5" } });
+    expect(within(form).getByText("Enter a whole number.")).toBeTruthy();
+    expect(depth.getAttribute("aria-invalid")).toBe("true");
+    fireEvent.change(depth, { target: { value: "" } });
+    fireEvent.change(collection, { target: { value: "handbook" } });
+    expect(screen.getByText(/supplies no editable form/)).toBeTruthy();
+    expect(screen.getByText(/provider is unavailable/)).toBeTruthy();
+    expect(
+      screen.getByText(/does not support the provider's form version/),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByTestId("domain-experts-editor-save"));
+    await waitFor(() =>
+      expect(saveDomainFromEditor).toHaveBeenCalledWith(domain, false, [
+        {
+          providerId: "demo-docs",
+          revision: 3,
+          fields: [{ key: "collection", value: "handbook" }],
+        },
+      ]),
+    );
+  });
+
   it("hides inactive direct-read settings while retaining the saved namespaces", async () => {
     const getDomain = () =>
       Promise.resolve(
@@ -126,10 +195,10 @@ describe("client page: editor", () => {
   });
 
   it("saves an edited domain and reports success", async () => {
-    const updateDomain = vi.fn(() =>
+    const saveDomainFromEditor = vi.fn(() =>
       Promise.resolve(ok({ domain: DEFINITION })),
     );
-    renderPage({ updateDomain });
+    renderPage({ saveDomainFromEditor });
     fireEvent.click(await screen.findByTestId("domain-experts-page-open"));
     fireEvent.click(await screen.findByRole("tab", { name: "General" }));
     const name = (await screen.findByTestId(
@@ -139,7 +208,7 @@ describe("client page: editor", () => {
     fireEvent.change(name, { target: { value: "Payments v2" } });
     fireEvent.click(screen.getByTestId("domain-experts-editor-save"));
     await waitFor(() => {
-      expect(updateDomain).toHaveBeenCalledTimes(1);
+      expect(saveDomainFromEditor).toHaveBeenCalledTimes(1);
     });
     expect(
       (await screen.findByTestId("domain-experts-editor-status")).textContent,
@@ -148,7 +217,7 @@ describe("client page: editor", () => {
 
   it("reports a refused write instead of pretending it saved", async () => {
     renderPage({
-      updateDomain: () =>
+      saveDomainFromEditor: () =>
         Promise.resolve({
           ok: false,
           code: "DOMAIN_INVALID",

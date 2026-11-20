@@ -136,7 +136,7 @@ export class SessionAuditService extends TypertRemoteService {
   summary(sessionId: string): AuditSummaryValue {
     const record = this.service.registry.activeFor(sessionId);
     if (record?.summary === undefined) return emptySummaryValue(sessionId);
-    return toSummaryValue(record.summary, true);
+    return toSummaryValue(record.summary, true, record.fingerprint);
   }
 
   /** Every audit bound to a session, newest first. */
@@ -145,7 +145,7 @@ export class SessionAuditService extends TypertRemoteService {
     const values: AuditSummaryValue[] = [];
     for (const record of this.service.registry.listFor(sessionId)) {
       if (record.status !== "ready" || record.summary === undefined) continue;
-      values.push(toSummaryValue(record.summary, false));
+      values.push(toSummaryValue(record.summary, false, record.fingerprint));
     }
     return values;
   }
@@ -166,18 +166,30 @@ export class SessionAuditService extends TypertRemoteService {
 
   /** The full audit: summary, raw analysis text and report text (SPEC §33). */
   @Remote("audit")
-  async audit(sessionId: string): Promise<SessionAuditValue> {
+  audit(sessionId: string): Promise<SessionAuditValue> {
     const record = this.service.registry.activeFor(sessionId);
-    if (record?.summary === undefined) return emptyAuditValue(sessionId);
+    return this.auditById(sessionId, record?.auditId ?? "");
+  }
 
-    const loaded = await this.service.getSessionAudit(sessionId);
-    if (loaded === null) return emptyAuditValue(sessionId);
-
+  /** Resolve the selected revision within the requested session. */
+  @Remote("auditById")
+  async auditById(
+    sessionId: string,
+    auditId: string,
+  ): Promise<SessionAuditValue> {
+    const record = this.service.registry.get(auditId);
+    if (
+      record?.status !== "ready" ||
+      record.sessionId !== sessionId ||
+      record.summary === undefined
+    )
+      return emptyAuditValue(sessionId);
+    const documents = await this.service.readDocuments(record);
+    if (documents === null) return emptyAuditValue(sessionId);
     return {
       available: true,
-      summary: toSummaryValue(loaded.summary, true),
-      analysisJson: await this.readOrEmpty(record.auditId, "analysis"),
-      report: await this.readOrEmpty(record.auditId, "report"),
+      summary: toSummaryValue(record.summary, true, record.fingerprint),
+      ...documents,
     };
   }
 
@@ -244,6 +256,7 @@ function ctxGet<T>(ctx: Context, key: string): T | undefined {
 function toSummaryValue(
   summary: AuditSummary,
   available: boolean,
+  revision: string,
 ): AuditSummaryValue {
   return {
     available,
@@ -263,6 +276,7 @@ function toSummaryValue(
     other: summary.findings.other,
     schemaVersion: summary.schemaVersion ?? -1,
     modifiedAt: summary.modifiedAt,
+    revision,
   };
 }
 

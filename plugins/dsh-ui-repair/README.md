@@ -107,9 +107,38 @@ ctx.uiRepair.getHistory()
 ctx.uiRepair.rollbackAll()
 ```
 
-All repairs are temporary in this proof of concept. Unloading the plugin calls
-`rollbackAll()` and removes its observer, generated styles, and marker
-attributes.
+Temporary applications are scoped to the page. Unloading removes the engine's
+styles and marker tokens. `rollbackAll()` also pauses saved repairs for that
+browser session.
+
+## Saved repairs
+
+In **Suggest** mode, apply a repair and then choose **Save verified repair**.
+The Host operator's profile settings own the recipe. The package files and
+the browser's local storage are separate. A saved repair can run again after
+a page or Host restart in Suggest or Auto mode.
+
+The target plugin opts in by marking a stable area with
+`data-plugin-package` (full npm name), `data-dsh-ui-repair-root` (stable area
+key), and `data-dsh-ui-repair-version` (the version rendering that area).
+The element has `data-dsh-ui-repair-anchor` (stable key within the area) and
+the relevant existing rule-specific opt-in marker. The Host inventory must
+confirm the version. The area and anchor must each resolve uniquely, and the
+element must still belong to the area and match its original HTML tag.
+
+Recipe format v1 records the verified scanner rule, original package
+version, last checked version and time, and the area and target keys. Layout
+rules for opted-in scrolling, flex sizing, and text wrapping are supported.
+The current scanner must independently find the issue and supply the repair.
+The engine then checks the result and rolls back its own style and tokens
+if verification fails.
+
+After a package update, the older recipe stays inactive. **Revalidate** runs
+the scoped checks against the new version before approving it in the profile.
+Missing, ambiguous or incompatible targets remain inactive with a diagnostic.
+A rendered version different from the inventory requires a page reload.
+**Remove saved repair** deletes the profile entry and rolls back its active
+application. Observe mode pauses saved repairs.
 
 ## Settings
 
@@ -137,8 +166,7 @@ verification, rollback, client lifecycle, and browser bundle identity.
 
 ## Not implemented yet
 
-The specification's persistent repair recipes, plugin-version revalidation,
-full per-plugin health view, screenshot verification, vision-toolkit
+The full per-plugin health view, screenshot verification, vision-toolkit
 integration, and the remaining P0/P1/P2 rules are intentionally deferred. The
 proof of concept establishes the lifecycle, measurement, configuration,
 scoping, and rollback seams they will use.

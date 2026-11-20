@@ -1,6 +1,6 @@
-import { collectRoots, DEFAULT_ROOT_SELECTOR } from "./dom.js";
-import { waitForStableLayout } from "./geometry.js";
-import { RepairEngine } from "./repair/engine.js";
+import { collectRoots, DEFAULT_ROOT_SELECTOR, insideRepairUI } from "./dom.js";
+import { applyVerified, RepairEngine } from "./repair/engine.js";
+import { SavedRepairs, type RecipeStatus } from "./repair/recipes.js";
 import {
   scanIconAlignment,
   scanIconSizeConsistency,
@@ -22,6 +22,7 @@ import type {
   UIRepairService,
 } from "./types.js";
 import type { UIRepairIgnoreRule } from "../shared/config.js";
+import type { RepairRecipe } from "../shared/recipes.js";
 
 export interface ClientLogger {
   debug(message: string, details?: Readonly<Record<string, unknown>>): void;
@@ -89,6 +90,8 @@ export class UIRepairRuntime implements UIRepairService {
   readonly #document: Document;
   readonly #logger: ClientLogger;
   readonly #engine: RepairEngine;
+  readonly #saved: SavedRepairs;
+  #recipes: readonly RepairRecipe[] = [];
   readonly #elementIds = new WeakMap<HTMLElement, Map<string, string>>();
   #config: UIRepairConfig;
   #latestReport: ScanReport | undefined;
@@ -113,6 +116,15 @@ export class UIRepairRuntime implements UIRepairService {
     this.#config = normalizeConfig(config);
     this.#logger = logger;
     this.#engine = new RepairEngine(document);
+    this.#saved = new SavedRepairs(
+      document,
+      (root) =>
+        this.#detect(root).filter(
+          (candidate) => !this.#isIgnored(candidate, this.#config.ignore),
+        ),
+      (target, ruleId) => this.#releaseTemporary(target, ruleId),
+      () => this.#notify(),
+    );
   }
 
   start(): void {
@@ -124,6 +136,7 @@ export class UIRepairRuntime implements UIRepairService {
       });
     }
     this.#syncObservers();
+    this.#restoreSaved();
   }
 
   configure(config: Partial<UIRepairConfig>): void {
@@ -136,9 +149,70 @@ export class UIRepairRuntime implements UIRepairService {
         config.dangerousConfidence !== undefined ||
         config.ignore !== undefined);
     if ((!this.#config.enabled && previous.enabled) || autoPolicyChanged) {
-      this.rollbackAll();
+      this.rollbackTemporary();
     }
+    this.#saved.configure(
+      this.#recipes,
+      this.#config.enabled && this.#config.mode !== "observe",
+      JSON.stringify(previous.ignore) !== JSON.stringify(this.#config.ignore),
+    );
     if (this.#started) this.#syncObservers();
+    this.#restoreSaved();
+  }
+
+  setRecipes(recipes: readonly RepairRecipe[]): void {
+    this.#recipes = recipes;
+    this.#saved.configure(
+      recipes,
+      this.#config.enabled && this.#config.mode !== "observe",
+    );
+    this.#restoreSaved();
+  }
+
+  setPluginVersions(versions: ReadonlyMap<string, string>): void {
+    this.#saved.setVersions(versions);
+    this.#restoreSaved();
+  }
+
+  #restoreSaved(): void {
+    if (!this.#started || this.#disposed) return;
+    void this.#saved
+      .restore()
+      .catch((error: unknown) =>
+        this.#logger.warn("saved repair scan failed", { error: String(error) }),
+      );
+  }
+
+  savableRepairs(): readonly {
+    readonly id: string;
+    readonly recipe: RepairRecipe;
+  }[] {
+    return this.#engine.verifiedCandidates().flatMap((candidate) => {
+      const recipe = this.#saved.capture(candidate);
+      return recipe === undefined ? [] : [{ id: candidate.issue.id, recipe }];
+    });
+  }
+
+  recipeStatus(recipe: RepairRecipe): RecipeStatus {
+    return this.#saved.status(recipe);
+  }
+
+  revalidateRecipe(recipe: RepairRecipe) {
+    return this.#saved.revalidate(recipe);
+  }
+
+  #releaseTemporary(target: HTMLElement, ruleId: string): boolean {
+    const active = this.#engine.activeOn(target);
+    const verified = this.#engine.verifiedCandidates();
+    if (
+      active.some(
+        (candidate) =>
+          candidate.issue.ruleId !== ruleId || !verified.includes(candidate),
+      )
+    )
+      return false;
+    for (const candidate of active) this.#engine.rollback(candidate.issue.id);
+    return true;
   }
 
   #syncObservers(): void {
@@ -192,7 +266,8 @@ export class UIRepairRuntime implements UIRepairService {
   async scan(source: ParentNode = this.#document): Promise<ScanReport> {
     const started = performance.now();
     const startedAt = new Date().toISOString();
-    if (!this.#config.enabled) {
+    await this.#saved.restore();
+    if (!this.#config.enabled || this.#disposed) {
       this.#candidates.clear();
       const report: ScanReport = {
         startedAt,
@@ -209,38 +284,7 @@ export class UIRepairRuntime implements UIRepairService {
       return report;
     }
     const roots = collectRoots(source, this.#config.rootSelector);
-    const detected: RepairCandidate[] = [];
-    for (const root of roots) {
-      detected.push(
-        ...scanOverflow(root, this.#config, (ruleId, target) =>
-          this.#idFor(ruleId, target),
-        ),
-        ...scanIconAlignment(root, this.#config, (ruleId, target) =>
-          this.#idFor(ruleId, target),
-        ),
-        ...scanIconSizeConsistency(root, this.#config, (ruleId, target) =>
-          this.#idFor(ruleId, target),
-        ),
-        ...scanFlexConstraints(root, this.#config, (ruleId, target) =>
-          this.#idFor(ruleId, target),
-        ),
-        ...scanRowAlignment(root, this.#config, (ruleId, target) =>
-          this.#idFor(ruleId, target),
-        ),
-        ...scanGapConsistency(root, this.#config, (ruleId, target) =>
-          this.#idFor(ruleId, target),
-        ),
-        ...scanPaddingConsistency(root, this.#config, (ruleId, target) =>
-          this.#idFor(ruleId, target),
-        ),
-        ...scanTextOverflow(root, this.#config, (ruleId, target) =>
-          this.#idFor(ruleId, target),
-        ),
-        ...scanOutsideParent(root, this.#config, (ruleId, target) =>
-          this.#idFor(ruleId, target),
-        ),
-      );
-    }
+    const detected = roots.flatMap((root) => this.#detect(root));
     this.#observeResizeRoots(roots);
     this.#candidates.clear();
     for (const candidate of detected) {
@@ -263,6 +307,7 @@ export class UIRepairRuntime implements UIRepairService {
           candidate.issue.confidence < threshold ||
           candidate.issue.suggestedCss === undefined ||
           ignoredSet.has(candidate.issue.id) ||
+          this.#saved.blocks(candidate) ||
           this.#engine.has(candidate.issue.id)
         ) {
           continue;
@@ -334,6 +379,7 @@ export class UIRepairRuntime implements UIRepairService {
       candidate === undefined ||
       candidate.issue.suggestedCss === undefined ||
       this.#isIgnored(candidate, this.#config.ignore) ||
+      this.#saved.blocks(candidate) ||
       !candidate.target.isConnected
     ) {
       return false;
@@ -374,6 +420,12 @@ export class UIRepairRuntime implements UIRepairService {
   }
 
   rollbackAll(): void {
+    this.#saved.pause();
+    this.rollbackTemporary();
+    this.#restoreSaved();
+  }
+
+  rollbackTemporary(): void {
     this.#engine.rollbackAll();
     this.#notify();
   }
@@ -422,28 +474,33 @@ export class UIRepairRuntime implements UIRepairService {
     );
   }
 
-  async #applyCandidate(
-    candidate: RepairCandidate,
-  ): Promise<"verified" | "rolled-back" | "skipped"> {
-    try {
-      if (!this.#engine.apply(candidate)) return "skipped";
-      const stable = await waitForStableLayout(candidate.target);
-      const verification = stable
-        ? candidate.verify()
-        : { ok: false, reason: "layout did not stabilize" };
-      if (verification.ok) {
-        this.#engine.markVerified(candidate.issue.id, verification);
-        return "verified";
-      }
-      this.#engine.rollback(candidate.issue.id, verification);
-      return "rolled-back";
-    } catch (error) {
-      this.#engine.rollback(candidate.issue.id, {
-        ok: false,
-        reason: `repair failed: ${String(error)}`,
-      });
-      return "rolled-back";
-    }
+  #applyCandidate(candidate: RepairCandidate) {
+    const config = this.#config;
+    return applyVerified(
+      this.#engine,
+      candidate,
+      () =>
+        !this.#disposed &&
+        this.#config === config &&
+        !this.#saved.blocks(candidate),
+    );
+  }
+
+  #detect(root: HTMLElement): RepairCandidate[] {
+    const config = this.#config;
+    const id = (ruleId: string, target: HTMLElement) =>
+      this.#idFor(ruleId, target);
+    return [
+      ...scanOverflow(root, config, id),
+      ...scanIconAlignment(root, config, id),
+      ...scanIconSizeConsistency(root, config, id),
+      ...scanFlexConstraints(root, config, id),
+      ...scanRowAlignment(root, config, id),
+      ...scanGapConsistency(root, config, id),
+      ...scanPaddingConsistency(root, config, id),
+      ...scanTextOverflow(root, config, id),
+      ...scanOutsideParent(root, config, id),
+    ];
   }
 
   #idFor(ruleId: string, target: HTMLElement): string {
@@ -492,7 +549,7 @@ export class UIRepairRuntime implements UIRepairService {
   }
 
   #queueScan(source: ParentNode): void {
-    if (this.#disposed) return;
+    if (this.#disposed || insideRepairUI(source)) return;
     this.#queuedRoots.add(source);
     if (this.#scheduledFrame !== undefined) return;
     const schedule = this.#document.defaultView?.requestAnimationFrame;

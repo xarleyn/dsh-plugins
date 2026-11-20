@@ -179,7 +179,7 @@ describe("publishAudit", () => {
     await expect(
       publishAudit({
         auditRoot: root,
-        analysis: { schemaVersion: 2, trajectory: {} },
+        analysis: { schemaVersion: 9, trajectory: {} },
         report: "report",
       }),
     ).rejects.toThrow(/without a trajectory\.sessionId/u);

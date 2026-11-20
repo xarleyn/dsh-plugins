@@ -13,6 +13,7 @@ import {
 } from "@deepseek-ai/dsh-tools/pipeline";
 import {
   installForegroundReview,
+  installReviewToolPolicy,
   type ForegroundReviewContext,
 } from "@yadsh/dsh-plugin-kit/review-foreground";
 import { describe, expect, it, vi } from "vitest";
@@ -155,6 +156,57 @@ async function harness(
 }
 
 describe("foreground reviewer delegation through the real Host pipeline", () => {
+  it("denies unlisted local and late tools before their bodies run", async () => {
+    const h = await harness();
+    const mutator = vi.fn(async () => "updated");
+    const register = (name: string) =>
+      h.scope.ctx.tools.register({
+        name,
+        description: "Update a fixture counter",
+        parameters: { type: "object" },
+        output: { schema: { type: "string" }, render: () => [] },
+        execute: mutator,
+      });
+    try {
+      register("fixture_update");
+      installReviewToolPolicy(
+        h.scope.ctx as unknown as ForegroundReviewContext,
+        h.reviewer,
+        [],
+      );
+      register("fixture_alias");
+      const { results } = await h.run(h.reviewer, undefined, [
+        "fixture_update",
+        "fixture_alias",
+        "structured_output",
+      ]);
+      expect(results.map(({ result }) => result.isError)).toEqual([
+        true,
+        true,
+        false,
+      ]);
+      expect(mutator).not.toHaveBeenCalled();
+      expect(h.capture).toHaveBeenCalledOnce();
+    } finally {
+      await h.scope.dispose();
+    }
+  });
+
+  it("refuses an external worker before launch when the reviewer requires a tool policy", async () => {
+    const h = await harness({ external: true });
+    try {
+      installReviewToolPolicy(
+        h.scope.ctx as unknown as ForegroundReviewContext,
+        h.reviewer,
+        ["verify_source"],
+      );
+      expect((await h.run()).results[0]!.result.isError).toBe(true);
+      expect(h.start).not.toHaveBeenCalled();
+    } finally {
+      await h.scope.dispose();
+    }
+  });
+
   it("joins every parallel worker before the review can capture its verdict", async () => {
     const h = await harness();
     const workers = [deferred<Terminal>(), deferred<Terminal>()];
@@ -315,6 +367,11 @@ describe("foreground reviewer delegation through the real Host pipeline", () => 
 
   it("inherits foreground waiting through depth 3 and enforces the Host cap at depth 4", async () => {
     const h = await harness();
+    installReviewToolPolicy(
+      h.scope.ctx as unknown as ForegroundReviewContext,
+      h.reviewer,
+      ["verify_source"],
+    );
     const attempts: number[] = [];
     const childScopes: Scope[] = [];
     let fourthRefused = false;

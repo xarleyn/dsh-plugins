@@ -19,6 +19,7 @@ export const CATALOG: CatalogInfo = {
       title: "Filesystem",
       enforcement: "advisory",
       builtin: true,
+      form: null,
     },
   ],
   memoryProviders: [
@@ -154,7 +155,18 @@ export function ok<T>(data: T): ApiOutcome<T> {
 export function apiOf(
   overrides: Partial<DomainExpertsApi> = {},
 ): DomainExpertsApi {
+  const unavailable = () =>
+    Promise.resolve({
+      ok: false as const,
+      code: "test",
+      message: "Unavailable",
+    });
   return {
+    transfer: {
+      exportCatalog: unavailable,
+      previewCatalogImport: unavailable,
+      applyCatalogImport: unavailable,
+    },
     listDomains: () => Promise.resolve(ok({ domains: [SUMMARY] })),
     getDomain: () => Promise.resolve(ok({ domain: DEFINITION })),
     draftDomain: () => Promise.resolve(ok({ domain: DEFINITION })),
@@ -168,8 +180,7 @@ export function apiOf(
           issues: [],
         }),
       ),
-    createDomain: () => Promise.resolve(ok({ domain: DEFINITION })),
-    updateDomain: () => Promise.resolve(ok({ domain: DEFINITION })),
+    saveDomainFromEditor: () => Promise.resolve(ok({ domain: DEFINITION })),
     setDomainEnabled: () => Promise.resolve(ok({ domain: DEFINITION })),
     deleteDomain: () => Promise.resolve(ok({ deleted: true })),
     resolveScope: () => Promise.resolve(ok({ profile: PROFILE })),
@@ -208,6 +219,12 @@ export function apiOf(
       ),
     recentAudits: () =>
       Promise.resolve(ok({ ok: true, code: "", message: "", entries: [] })),
+    queryExecutionAudits: () =>
+      Promise.resolve({
+        ok: false,
+        code: "AUDIT_DISABLED",
+        message: "Execution audit is disabled.",
+      }),
     ...overrides,
   };
 }

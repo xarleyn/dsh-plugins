@@ -71,7 +71,7 @@ All keys are optional; defaults in parentheses.
 | `defaultWorker` | string | `default` | Worker profile used when no rule selects one. |
 | `context.includeLastUserMessage` | boolean | `true` | Pass the latest user task message to the worker. |
 | `context.maxParentContextBytes` | number | `12000` | Byte cap for the extracted parent task. |
-| `payload.maxBytes` | number | `300000` | Results larger than this pass through (chunking is planned). |
+| `payload.maxBytes` | number | `300000` | Larger results pass through in full, with zero worker calls. |
 | `validation.maxOutputBytes` | number | `20000` | Worker answers above this size are rejected. |
 | `validation.requireReduction` | boolean | `true` | Reject answers that did not actually shrink the result. |
 | `validation.minReductionRatio` | number | `0.15` | Required relative shrink (0.15 = at least 15 % smaller). |
@@ -124,6 +124,10 @@ pnpm nx run dsh-tool-offload:verify   # package gate
 The full design document (routing policy, safety model, phased plan) lives in
 [`docs/specs/design.md`](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-tool-offload/docs/specs/design.md);
 the behavioral contract is [`SPEC.md`](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-tool-offload/SPEC.md).
+
+The oversized-result benchmark measures what reaches the parent and what it
+can quote in its answer when the same input is passed through, split or
+reduced. [Measurements and reproduction commands](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-tool-offload/docs/benchmarks/oversized-offload.md)
 
 ## Credits
 

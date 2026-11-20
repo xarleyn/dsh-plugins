@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import {
+  existsSync,
   mkdtempSync,
   mkdirSync,
   readFileSync,
   readdirSync,
   rmSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { createRequire } from "node:module";
@@ -107,6 +109,15 @@ try {
       },
     );
   let skills = service();
+  const sharedRoot = path.join(workspace, ".dsh", "skills");
+  const collision = path.join(sharedRoot, names[0]);
+  mkdirSync(sharedRoot, { recursive: true });
+  writeFileSync(collision, "Operator file.", { flag: "wx" });
+  assert.equal(skills.has(scope, names[0]), false);
+  assert.equal(readFileSync(collision, "utf8"), "Operator file.");
+  assert.equal(existsSync(path.join(sharedRoot, `.seeded-${names[0]}`)), false);
+  unlinkSync(collision);
+  skills = service();
   assert.deepEqual(
     skills
       .list(scope)
@@ -120,10 +131,8 @@ try {
     invalidate = control.invalidate;
     return createQaUserSkillProvider(control, skills);
   });
-  const cwd = prepareQaUserWorkspace(
-    workspace,
-    "123e4567-e89b-42d3-a456-426614174000",
-  );
+  const userId = "123e4567-e89b-42d3-a456-426614174000";
+  const cwd = prepareQaUserWorkspace(workspace, userId);
   for (const name of names) {
     const document = skills.get(scope, name);
     assert.equal(document.valid, true, `seed must parse: ${name}`);
@@ -167,6 +176,24 @@ try {
       /changed after it was read/u,
     );
   }
+  const sharedDoc = skills.get(scope, names[0]);
+  const personal = skills.create(
+    { userId },
+    {
+      ...sharedDoc,
+      body: "Personal instructions.",
+      expectedRevision: null,
+    },
+  );
+  assert.equal(
+    (await ctx.skills.get(names[0], { cwd }))?.content,
+    personal.body,
+  );
+  skills.remove({ userId }, names[0], personal.revision);
+  assert.equal(
+    (await ctx.skills.get(names[0], { cwd }))?.content,
+    sharedDoc.body,
+  );
   // Recreate the service just as a process restart does. Seed receipts and
   // saved content must be the authority rather than the read-only originals.
   skills = service();
@@ -180,7 +207,7 @@ try {
   for (const name of names)
     assert.deepEqual(fingerprint(path.join(source, name)), before[name]);
   console.log(
-    `shared skills acceptance: ${names.length} seeds; editor save, stale-write refusal, metadata, registry load, resource hashes, restart and deletion persistence passed; source unchanged`,
+    `shared skills acceptance: ${names.length} seeds; collision retry, editor save, stale-write refusal, metadata, registry load, personal priority, resource hashes, restart and deletion persistence passed; source unchanged`,
   );
 } finally {
   disposeProvider?.();

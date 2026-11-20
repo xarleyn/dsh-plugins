@@ -397,7 +397,7 @@ describe("AuditService refresh", () => {
     const { service } = testService(root);
     await writeAudit(root, AUDIT_DIRECTORY, {
       analysis: {
-        schemaVersion: 2,
+        schemaVersion: 9,
         trajectory: { sessionId: SESSION_ID },
         verdict: "good",
       },
@@ -407,11 +407,11 @@ describe("AuditService refresh", () => {
     await service.refresh();
 
     const summary = await service.getSessionAuditSummary(SESSION_ID);
-    expect(summary?.schemaVersion).toBe(2);
+    expect(summary?.schemaVersion).toBe(9);
     expect(summary?.verdict).toBeUndefined();
 
     const audit = await service.getSessionAudit(SESSION_ID);
-    expect(audit?.analysis).toEqual({ kind: "unknown", schemaVersion: 2 });
+    expect(audit?.analysis).toEqual({ kind: "unknown", schemaVersion: 9 });
     expect(audit?.report).toContain("# Trajectory Review");
     expect((audit?.raw as { verdict?: string }).verdict).toBe("good");
   });

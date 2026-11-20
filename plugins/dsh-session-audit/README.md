@@ -17,10 +17,11 @@ view goes back to its empty state.
 
 ## Features
 
-- **A fourth session view.** `Chat | Trajectory | Audit`, with three tabs: the
-  report rendered from `REPORT.md` (tables, lists and a table of contents), the
-  structured findings from `analysis.json`, and the raw document as a tree or
-  text.
+- **Audit history in the session.** The Audit view opens the newest valid
+  audit. Select a version to keep it open as newer audits arrive. The Compare
+  tab shows added, removed and changed findings by ID and changed report
+  lines against a selected baseline. Large reports have a text preview and
+  a full download.
 - **Nothing to configure.** `trajectory.sessionId` in the analysis decides which
   session an audit belongs to. The directory name is only a fallback, and a
   name that could mean two sessions attaches to neither.

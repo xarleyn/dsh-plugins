@@ -43,6 +43,58 @@ function harness(overrides: Partial<ExpertExecutionBudget> = {}) {
 }
 
 describe("expert execution budget", () => {
+  it("disposes an activation bound after caller cancellation even with all limits disabled", async () => {
+    const ctx = new Context();
+    const on = vi.spyOn(ctx, "on");
+    const parent = new AbortController();
+    const monitor = expertExecutionBudget(ctx, "late-child", {
+      maxToolCalls: 0,
+      maxConsecutiveRefusals: 0,
+      timeoutMs: 0,
+      signal: parent.signal,
+    });
+    parent.abort();
+    const dispose = vi.fn(async () => {});
+    const activation = monitor.bind({
+      childId: "late-child",
+      result: Promise.resolve({ stopReason: "completed", output: [] }),
+      dispose,
+    } as unknown as SubagentActivation);
+    await expect(activation.result).rejects.toThrow("review-aborted");
+    await activation.dispose();
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(on).not.toHaveBeenCalled();
+  });
+
+  it("waits for the same disposal when the caller tears down an aborting child", async () => {
+    const parent = new AbortController();
+    const monitor = expertExecutionBudget(new Context(), "review-child", {
+      maxToolCalls: 0,
+      maxConsecutiveRefusals: 0,
+      timeoutMs: 0,
+      signal: parent.signal,
+    });
+    let finish!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const dispose = vi.fn(() => pending);
+    const activation = monitor.bind({
+      childId: "review-child",
+      result: new Promise(() => {}),
+      dispose,
+    } as unknown as SubagentActivation);
+    const result = expect(activation.result).rejects.toThrow("review-aborted");
+    parent.abort();
+    const done = vi.fn();
+    const closing = activation.dispose().then(done);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(done).not.toHaveBeenCalled();
+    finish();
+    await Promise.all([result, closing]);
+    expect(done).toHaveBeenCalledOnce();
+  });
   it("shares its budget with delegated descendants, while human forks remain separate", async () => {
     const h = harness({ maxToolCalls: 2 });
     for (const [id, parentSession, isSeeded] of [

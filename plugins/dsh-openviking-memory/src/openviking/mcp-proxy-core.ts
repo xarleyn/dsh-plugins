@@ -170,23 +170,60 @@ function snapshotsDiffer(
   return false;
 }
 
-function createSemaphore(limit: number): () => Promise<() => void> {
+function createSemaphore(limit: number) {
   let active = 0;
-  const queue: Array<() => void> = [];
-  return async function acquire(): Promise<() => void> {
-    if (active >= limit) {
-      await new Promise<void>((resolve) => queue.push(() => resolve()));
-    }
-    active += 1;
+  const queue = new Set<() => void>();
+  function releaseOnce() {
     let released = false;
     return () => {
       if (released) return;
       released = true;
-      active -= 1;
-      const next = queue.shift();
+      const next = queue.values().next().value;
+      // Transfer the occupied permit directly to the oldest waiter.
       if (next) next();
+      else active -= 1;
     };
+  }
+  return async function acquire(signal: AbortSignal): Promise<() => void> {
+    signal.throwIfAborted();
+    if (active < limit) {
+      active += 1;
+      return releaseOnce();
+    }
+    return new Promise((resolve, reject) => {
+      function grant() {
+        queue.delete(grant);
+        signal.removeEventListener("abort", abort);
+        resolve(releaseOnce());
+      }
+      function abort() {
+        queue.delete(grant);
+        reject(signal.reason);
+      }
+      queue.add(grant);
+      signal.addEventListener("abort", abort, { once: true });
+    });
   };
+}
+
+type PostPhase = "queue" | "upstream";
+class ProxyTimeout extends Error {
+  constructor(
+    readonly phase: PostPhase,
+    readonly timeoutMs: number,
+    readonly url: string,
+  ) {
+    super(
+      phase === "queue"
+        ? "Timed out waiting for an HTTP slot"
+        : "Upstream HTTP request timed out",
+    );
+  }
+}
+
+interface PendingRequest {
+  controller: AbortController;
+  dispatched: boolean;
 }
 
 function isRequest(message: unknown): boolean {
@@ -328,8 +365,10 @@ export function createOpenVikingMcpProxy({
   let protocolVersion = DEFAULT_PROTOCOL_VERSION;
   let initializeInFlight: Promise<unknown> | null = null;
   let reinitializeInFlight: Promise<void> | null = null;
-  let stdoutChain: Promise<unknown> = Promise.resolve();
-  let shuttingDown = false;
+  let stdoutChain: Promise<void> = Promise.resolve();
+  const lifetime = new AbortController();
+  const pending = new Map<unknown, PendingRequest>();
+  let closing: Promise<void> | undefined;
   let reinitCounter = 0;
   const acquire = createSemaphore(MAX_CONCURRENT_REQUESTS);
 
@@ -449,11 +488,12 @@ export function createOpenVikingMcpProxy({
     return headers;
   }
 
-  function writeMessage(obj: JsonRpcMessage): Promise<unknown> {
+  function writeMessage(obj: JsonRpcMessage): Promise<void> {
     const line = `${JSON.stringify(obj)}\n`;
     stdoutChain = stdoutChain
       .then(
-        () => new Promise<unknown>((resolve) => stdout.write(line, resolve)),
+        () =>
+          new Promise<void>((resolve) => stdout.write(line, () => resolve())),
       )
       .catch(() => {});
     return stdoutChain;
@@ -489,18 +529,15 @@ export function createOpenVikingMcpProxy({
       );
     }
     const msg = err instanceof Error ? err.message : String(err);
-    if (err && (err as { readonly name?: unknown }).name === "AbortError") {
-      // Client-side timeout, not an outage: the server may be healthy and
-      // still computing (rerank-inclusive find/search can legitimately take
-      // longer than the default budget). Keep -32001 for genuine
-      // connection failures so the two are not misdiagnosed as each other.
+    if (err instanceof ProxyTimeout) {
       return errorResponse(
         id,
         -32004,
-        `OpenViking MCP request timed out after ${proxyConfig.timeoutMs}ms (${proxyConfig.mcpUrl}). The server may still be processing (rerank can be slow) — check /health or raise OPENVIKING_TIMEOUT_MS.`,
+        `OpenViking MCP request timed out after ${err.timeoutMs}ms (${err.url}). ${err.message}.`,
         {
-          timeoutMs: proxyConfig.timeoutMs,
-          mcpUrl: proxyConfig.mcpUrl,
+          timeoutMs: err.timeoutMs,
+          mcpUrl: err.url,
+          phase: err.phase,
           cause: msg,
         },
       );
@@ -518,22 +555,39 @@ export function createOpenVikingMcpProxy({
     {
       includeSession = true,
       timeoutMs = proxyConfig.timeoutMs,
+      request,
     }: {
       readonly includeSession?: boolean;
       readonly timeoutMs?: number;
+      readonly request?: PendingRequest | undefined;
     } = {},
   ): Promise<McpPostResult> {
-    const release = await acquire();
+    let url = proxyConfig.mcpUrl;
+    const deadline = performance.now() + timeoutMs;
+    let phase: PostPhase = "queue";
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const signals = [controller.signal, lifetime.signal];
+    if (request) signals.push(request.controller.signal);
+    const signal = AbortSignal.any(signals);
+    const expire = () =>
+      controller.abort(new ProxyTimeout(phase, timeoutMs, url));
+    const timer = setTimeout(expire, timeoutMs);
+    let release: (() => void) | undefined;
     try {
-      const res = await fetchImpl(proxyConfig.mcpUrl, {
+      release = await acquire(signal);
+      if (performance.now() >= deadline) expire();
+      signal.throwIfAborted();
+      phase = "upstream";
+      url = proxyConfig.mcpUrl; // The endpoint and credential headers may reload together while queued.
+      if (request) request.dispatched = true;
+      const res = await fetchImpl(url, {
         method: "POST",
         headers: headersForRequest(includeSession),
         body: JSON.stringify(message),
-        signal: controller.signal,
+        signal,
       });
       const text = await res.text();
+      signal.throwIfAborted();
       const messages = parseHttpBody(
         res.headers.get("content-type"),
         text,
@@ -552,15 +606,18 @@ export function createOpenVikingMcpProxy({
         throw new HttpStatusError(res.status, res.statusText, text, messages);
       }
       return { status: res.status, messages };
+    } catch (error) {
+      // Fetch implementations may replace the signal reason with a generic abort error.
+      signal.throwIfAborted();
+      throw error;
     } finally {
       clearTimeout(timer);
-      release();
+      release?.();
     }
   }
 
   async function deleteSession(): Promise<void> {
-    if (!sessionId || shuttingDown) return;
-    shuttingDown = true;
+    if (!sessionId) return;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), DELETE_TIMEOUT_MS);
     try {
@@ -609,6 +666,7 @@ export function createOpenVikingMcpProxy({
   async function sendWithRetry(
     message: JsonRpcMessage,
     { expectsResponse }: { readonly expectsResponse: boolean },
+    request?: PendingRequest,
   ): Promise<McpPostResult> {
     if (message.method !== "initialize" && initializeInFlight) {
       await initializeInFlight.catch(() => {});
@@ -618,8 +676,11 @@ export function createOpenVikingMcpProxy({
     try {
       return await postToMcp(message, {
         includeSession: message.method !== "initialize",
+        request,
       });
     } catch (err) {
+      lifetime.signal.throwIfAborted();
+      request?.controller.signal.throwIfAborted();
       if (
         err instanceof HttpStatusError &&
         (err.status === 401 || err.status === 403)
@@ -631,6 +692,7 @@ export function createOpenVikingMcpProxy({
           }
           return await postToMcp(message, {
             includeSession: message.method !== "initialize",
+            request,
           });
         }
       }
@@ -641,7 +703,7 @@ export function createOpenVikingMcpProxy({
         initializeRequest
       ) {
         await reinitialize(failedSessionId);
-        return await postToMcp(message, { includeSession: true });
+        return await postToMcp(message, { includeSession: true, request });
       }
       if (!expectsResponse) {
         logError("notification_failed", err);
@@ -651,6 +713,7 @@ export function createOpenVikingMcpProxy({
   }
 
   async function handleMessage(message: unknown): Promise<void> {
+    if (lifetime.signal.aborted) return;
     if (
       !message ||
       typeof message !== "object" ||
@@ -664,6 +727,20 @@ export function createOpenVikingMcpProxy({
 
     const request = message as JsonRpcMessage;
     const expectsResponse = isRequest(request);
+    if (!expectsResponse && request.method === "notifications/cancelled") {
+      const target = pending.get(
+        (request.params as { requestId?: unknown } | null)?.requestId,
+      );
+      if (target) {
+        target.controller.abort();
+        if (!target.dispatched) return;
+      }
+    }
+    const operation =
+      expectsResponse && request.method !== "initialize"
+        ? { controller: new AbortController(), dispatched: false }
+        : undefined;
+    if (operation) pending.set(request.id, operation);
     if (request.method === "initialize") {
       initializeRequest = cloneMessage(request);
       protocolVersion = DEFAULT_PROTOCOL_VERSION;
@@ -689,6 +766,8 @@ export function createOpenVikingMcpProxy({
         return;
       }
       const localResult = await callLocalTool(request);
+      if (operation?.controller.signal.aborted || lifetime.signal.aborted)
+        return;
       if (localResult !== null) {
         if (expectsResponse) {
           await writeMessage({
@@ -699,7 +778,7 @@ export function createOpenVikingMcpProxy({
         }
         return;
       }
-      const send = sendWithRetry(request, { expectsResponse });
+      const send = sendWithRetry(request, { expectsResponse }, operation);
       if (request.method === "initialize") {
         initializeInFlight = send
           .catch(() => {})
@@ -708,7 +787,12 @@ export function createOpenVikingMcpProxy({
           });
       }
       const result = await send;
-      if (!expectsResponse) return;
+      if (
+        !expectsResponse ||
+        operation?.controller.signal.aborted ||
+        lifetime.signal.aborted
+      )
+        return;
       if (result.messages.length === 0) {
         await writeMessage(
           errorResponse(
@@ -723,11 +807,16 @@ export function createOpenVikingMcpProxy({
         await writeMessage(appendLocalTools(request, outbound));
       }
     } catch (err) {
+      if (operation?.controller.signal.aborted || lifetime.signal.aborted)
+        return;
       if (expectsResponse) {
         await writeMessage(mapError(request, err));
       } else {
         logError("notification_unhandled", err);
       }
+    } finally {
+      if (operation && pending.get(request.id) === operation)
+        pending.delete(request.id);
     }
   }
 
@@ -744,15 +833,9 @@ export function createOpenVikingMcpProxy({
     await handleMessage(message);
   }
 
-  async function closeAndExit(code: number = 0): Promise<void> {
-    await deleteSession();
-    await stdoutChain;
-    process.exit(code);
-  }
-
-  async function closeSession(): Promise<void> {
-    await deleteSession();
-    await stdoutChain;
+  function closeSession(): Promise<void> {
+    lifetime.abort();
+    return (closing ??= deleteSession().then(() => stdoutChain));
   }
 
   function start(): { close: () => Promise<void> } {
@@ -767,19 +850,26 @@ export function createOpenVikingMcpProxy({
       crlfDelay: Infinity,
       terminal: false,
     });
+    function stop(code = 0): Promise<void> {
+      if (!closing) process.exitCode = code;
+      const done = closeSession();
+      rl.close();
+      stdin.pause();
+      return done;
+    }
     rl.on("line", (line: string) => {
       void handleLine(line);
     });
     rl.on("close", () => {
-      void closeAndExit(0);
+      void stop();
     });
     process.on("SIGINT", () => {
-      void closeAndExit(130);
+      void stop(130);
     });
     process.on("SIGTERM", () => {
-      void closeAndExit(143);
+      void stop(143);
     });
-    return { close: () => closeAndExit(0) };
+    return { close: () => stop() };
   }
 
   return { start, handleMessage, parseSseMessages, closeSession };

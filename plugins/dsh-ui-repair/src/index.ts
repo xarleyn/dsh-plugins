@@ -29,6 +29,7 @@ export type {
   ScanReport,
   UIRepairConfig,
   UIRepairService,
+  RepairRecipe,
 } from "./client/types.js";
 export { ConfigSchema } from "./config.js";
 export {

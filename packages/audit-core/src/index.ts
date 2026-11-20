@@ -12,6 +12,8 @@
 export type {
   AuditAnalysis,
   AuditAnalysisV1,
+  AuditAnalysisV2,
+  KnownAuditAnalysis,
   AuditAuditor,
   AuditError,
   AuditErrorCode,

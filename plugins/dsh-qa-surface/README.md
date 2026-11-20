@@ -61,6 +61,21 @@ this browser's history and retains an existing server selection from another
 browser. New API chats can recreate a selected folder that was deleted locally;
 clear or change the token default to stop using that destination.
 
+### Delete a personal QA chat
+
+In an account-backed profile, open the chat menu and confirm **Удалить чат**.
+Only the owner can delete a personal QA chat. Revoke all sharing grants first.
+An older browser-imported chat with no recorded QA capability snapshot needs
+operator removal. The server removes the history and delegated subagent sessions.
+Independent forks retain their copied history. The chat disappears from the
+account list and the old QA URL loses access to its history as soon as the
+server accepts the deletion.
+
+If Harness still holds a session open, the UI reports a pending deletion.
+The server retries after the writer closes, including on the next Host start.
+This path supports the local directory-backed JSONL session store. The
+attachment store retains its file bytes independently of chat deletion.
+
 Corporate sign-in through Keycloak or another OpenID Connect provider is opt-in.
 The source tree includes `plugins/dsh-qa-surface/docs/oidc.md` with client settings,
 account linking, role admission, session limits and deployment acceptance.
@@ -88,6 +103,27 @@ previous single-model behavior until an administrator grants alternatives.
 The server filters the catalog and validates every selection against the
 owner's current policy, including model replacement rules.
 
+A provider can advertise several reasoning levels for one model. To offer
+specific levels, pin the default and add each alternative to the role or account
+policy. For example, this role starts new chats at `low` and also offers `high`.
+
+```json
+{
+  "model": { "provider": "demo", "model": "reasoner", "reasoningEffort": "low" },
+  "allowedModels": [
+    { "provider": "demo", "model": "reasoner", "reasoningEffort": "high" }
+  ]
+}
+```
+
+The menu shows two rows with the model name and level. The checkmark follows
+the current chat, and the default label stays on `low`. In `accessUserModels`,
+`models` describes the provider catalog and `choices` contains the policy
+grants. Even if the catalog also lists `medium`, the example policy excludes it
+from the menu and the server rejects it in `chatSelectModel`. A grant without
+`reasoningEffort` keeps one preset-controlled menu entry and permits any
+provider-supported effort via the API.
+
 Chat-local selection uses the Session controller's guarded selection commit
 capability, which records the native `model/selection` event and updates the
 next-request selection without saving the Host operator's global default.
@@ -101,6 +137,18 @@ directory. This pass exercises synthetic model routes without real provider
 credentials, including access filtering, switching, reload persistence,
 new-chat defaults, and desktop/phone layout. It does not run the separate LAN
 deployment-overlay acceptance pass.
+
+For a real inference check, start two local OpenAI-compatible models. Set
+`DSH_QA_MODEL_A_URL` and `DSH_QA_MODEL_B_URL` to their loopback API base URLs
+(including `/v1`), and `DSH_QA_MODEL_A_ID` and `DSH_QA_MODEL_B_ID` to the
+distinct IDs advertised by their model catalogs. Run
+`pnpm --filter @yadsh/dsh-qa-surface e2e:browser --live-model-selection`.
+The disposable profile grants its general role both models. An ordinary user
+switches in both directions, reloads the chat and sends a fresh prompt after
+each switch. A loopback test listener forwards the completion stream and checks
+the first upstream request's prompt, destination, model ID and HTTP status.
+The chat transcript must record a text reply from the same provider and model.
+Set `DSH_QA_MODEL_EVIDENCE` to save screenshots.
 
 Run `pnpm --filter @yadsh/dsh-qa-surface e2e:browser --chat-layout` to
 check the theme, reading width, document panel and private-chat bylines in
@@ -617,6 +665,14 @@ several entries without a default require an explicit choice. A missing,
 unreadable or unknown source fails without falling back to another tree.
 Use the same id in `dsh_git_*` calls. Generic `read`, `glob` and `grep` still
 use explicit paths; use the source-aware tools for version-scoped work.
+
+A new delegated chat or fork inherits the source in effect for its QA parent.
+A parent choice, catalogue default or sole entry pins that source ID. Later
+parent edits and default changes leave the pinned ID in place. If the operator
+removes it, the chat reports it as unavailable. When the parent has no effective
+source at creation, the child follows the deployment catalogue, including a
+default configured later. Both behaviours survive a restart. Older delegated
+chats with no stored selection still resolve through their recorded parent.
 
 Search is literal and case-insensitive, bounded to 1,000 attempted text
 files, 10,000 visited entries, 8 MiB of input, three seconds and 32 KiB of
@@ -1848,48 +1904,29 @@ trusted reverse proxy if iframe embedding is required.
 
 ### Serving the QA rig over the LAN
 
-The plugin itself needs no changes to be reachable from other machines; the
-web server's bind address is a deployment composition decision. DSH refuses
-`dsh --host 0.0.0.0` on the command line on purpose, so network exposure is
-expressed with the shipped patch overlay instead:
+Choose one concrete IP address assigned to the serving machine. The QA overlay
+uses port 3082 by default and binds to loopback until you supply `--host`.
 
 ```bash
-pnpm dsh --profile qa-surface --no-open --port 3082 \
-  --patch plugins/dsh-qa-surface/deploy/qa-lan.patch.yml
+dsh --profile qa-surface --patch ./node_modules/@yadsh/dsh-qa-surface/deploy/qa-lan.patch.yml \
+  --no-open --host <local-interface-ip> --port 3082
 ```
 
-The overlay sets the `webserver` row to `0.0.0.0` while keeping the `--port`
-flag working. On an all-interfaces bind DSH derives trusted `/api` authorities
-from the machine's LAN IPv4 addresses, so `http://<lan-ip>:3082/qa` works
-without extra configuration; users reaching a DNS name instead of an IP
-literal need `--trusted-host <name>` on the same command line.
+Open the launch URL printed by Harness to establish the browser session, then
+visit `/qa` on that origin. The gateway accepts the listener's IP authority.
+For a DNS name, supply its authority with `--trusted-host`. To serve HTTPS
+directly, pass the certificate chain and key with `--tls-cert` and `--tls-key`.
 
-LAN browsers cannot read the DSH settings namespace (settings RPCs are pinned
-to loopback by the gateway). The plugin covers this itself: a browser that
-sees the namespace as unavailable reads the effective configuration through
-the `qaSurface/describe` Host Remote, so branding, session pinning and
-lockdown UI switches keep working over the LAN. Host-side enforcement was
-never dependent on that read path.
+LAN browsers read the effective QA configuration through `qaSurface/describe`.
+The settings namespace, directory picker and credential RPCs require loopback.
+Keep secrets out of QA configuration. The describe response includes operator
+settings such as `lockdown.sharedReadOnlyRoots`.
 
-`describe` takes no token on purpose — the browser needs the configuration
-before it can render anything — so treat its answer as public deployment
-metadata: any `/qa` visitor can read the full resolved configuration, not
-only the audience-facing projection, including operator-side values such as
-the `lockdown.sharedReadOnlyRoots` paths. Keep credentials and secrets out of
-the `qa-surface` configuration entirely; the plugin declares no field for
-them, and nothing in the channel redacts the resolved values.
+The same listener serves the Harness UI at `/`. Use a dedicated profile and
+limit access to the intended users. Treat the printed launch URL as a credential.
 
-What a LAN deployment does not change:
-
-- DSH has no authentication or TLS on this port; anyone who can reach it can
-  drive the harness, and the full operator UI at `/` stays reachable next to
-  `/qa`. Scope the port's reachability (subnet-limited firewall rule, VPN or
-  tailnet, authenticating reverse proxy) and use a dedicated process identity.
-- Loopback-only settings, directory picking and credential RPCs stay refused
-  for LAN clients. On `/qa`, the plugin replaces DSH's non-persistent welcome
-  step with a QA-specific testing disclosure and remembers its exact copy
-  version in that browser's local storage. The stock DSH notice remains
-  unchanged on operator routes.
+On `/qa`, the QA testing disclosure remembers its copy version in the browser's
+local storage. Operator routes use the stock Harness welcome notice.
 
 See [Configuration](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-qa-surface/docs/CONFIGURATION.md) for the config-channel details.
 

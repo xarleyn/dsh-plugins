@@ -116,6 +116,16 @@ export function ReviewSettingsCard({
         bounds the complete backend call; the earlier deadline wins. Zero
         disables an individual deadline or tool budget.
       </p>
+      {state.status === "ready" && (
+        <p className="review-settings__hint">
+          {value?.reviewer?.enforceAllowedTools
+            ? "This profile requires the tool allow-list on the reviewer and every delegated worker."
+            : "The review tool allow-list is advisory. The Host and its plugins determine the tools available to each worker."}
+          {value?.reviewer?.backend === "subagent" &&
+            value.reviewer.agentPreset &&
+            ` Reviewer preset: ${value.reviewer.agentPreset}.`}
+        </p>
+      )}
       {!writable && (
         <p className="review-settings__notice" role="status">
           {state.status === "ready"

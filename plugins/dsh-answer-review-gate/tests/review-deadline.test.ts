@@ -200,6 +200,7 @@ describe("per-round review deadline", () => {
   /** A reviewer child that never answers: the stuck-reviewer pathology. */
   class HangingFace implements SubagentsFace {
     readonly started: SubagentActivationSpec[] = [];
+    readonly dispose = vi.fn();
 
     getProvider(name: string) {
       if (name !== "spawn") return undefined;
@@ -215,7 +216,7 @@ describe("per-round review deadline", () => {
       return Promise.resolve({
         childId: "child-session",
         result: new Promise<never>(() => {}),
-        dispose: () => {},
+        dispose: this.dispose,
       });
     }
   }
@@ -246,6 +247,7 @@ describe("per-round review deadline", () => {
     await vi.advanceTimersByTimeAsync(5_500);
     await aborted;
     expect(await pending).toBe("failure");
+    expect(face.dispose).toHaveBeenCalledOnce();
 
     // The turn keeps running: the honest qualification is steered and the
     // failure is audited with its own reason.
@@ -267,6 +269,7 @@ describe("per-round review deadline", () => {
     expect(face.started).toHaveLength(2);
     await vi.advanceTimersByTimeAsync(5_500);
     expect(await second).toBe("failure");
+    expect(face.dispose).toHaveBeenCalledTimes(2);
     // One failure steer per user turn: the second timeout adds none.
     expect(steers).toHaveLength(1);
   });

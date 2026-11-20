@@ -1,7 +1,7 @@
 /**
  * Text → analysis. The only place JSON is decoded.
  */
-import type { AuditAnalysis } from "../types.js";
+import { isKnownAnalysis, type AuditAnalysis } from "../types.js";
 import {
   validateAuditAnalysis,
   type AuditAnalysisResult,
@@ -61,5 +61,5 @@ export function parseAuditAnalysis(text: string): AuditAnalysisResult {
  * rather than attached to a guess.
  */
 export function getAuditSessionId(analysis: AuditAnalysis): string | null {
-  return analysis.kind === "v1" ? analysis.trajectory.sessionId : null;
+  return isKnownAnalysis(analysis) ? analysis.trajectory.sessionId : null;
 }

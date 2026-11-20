@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ToolRunContext } from "@deepseek-ai/dsh-tools";
 import type { Context } from "@deepseek-ai/cordis";
 import { QaFormGate } from "../../src/forms/gate.js";
@@ -11,6 +11,7 @@ import { fixture, intake, textOnly } from "./fixture.js";
 const cleanup: (() => void)[] = [];
 afterEach(() => {
   for (const f of cleanup.splice(0)) f();
+  vi.useRealTimers();
 });
 function setup(filesAvailable = false) {
   const f = fixture();
@@ -47,6 +48,74 @@ function setup(filesAvailable = false) {
   };
 }
 describe("form tool lifecycle", () => {
+  it("reclaims a burst of expired chats in batches while another tab keeps polling", async () => {
+    vi.useFakeTimers();
+    const { gate, exec } = setup();
+    const validate = () =>
+      gate.request({ action: "validate", form: textOnly }, exec());
+    for (let i = 0; i < 2048; i++) gate.touch(`chat-${i}`);
+    gate.touch("chat-a");
+    expect(vi.getTimerCount()).toBe(1);
+    vi.advanceTimersByTime(29_999);
+    await expect(validate()).resolves.toMatchObject({
+      interactive_client_ready: true,
+    });
+    vi.advanceTimersByTime(1);
+    // One callback yields before the burst is drained. A queued key must
+    // already report its true deadline, even before it is reclaimed.
+    expect(gate["clients"].size).toBeGreaterThan(1);
+    expect(gate["clients"].size).toBeLessThan(2049);
+    await expect(validate()).resolves.toMatchObject({
+      interactive_client_ready: false,
+    });
+    gate.touch("chat-a");
+    vi.advanceTimersByTime(10_000);
+    expect([...gate["clients"].keys()]).toEqual(["chat-a"]);
+    gate.touch("chat-a");
+    vi.advanceTimersByTime(29_999);
+    await expect(validate()).resolves.toMatchObject({
+      interactive_client_ready: true,
+    });
+    vi.advanceTimersByTime(1);
+    expect(gate["clients"].size).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("keeps a waiting form available across poll expiry and reload", async () => {
+    vi.useFakeTimers();
+    const { f, gate, exec } = setup();
+    const pending = gate.request(
+      { action: "create", request_key: "intake", form: textOnly },
+      exec(),
+    );
+    const draft = f.store.list("chat-a")[0]!;
+    vi.advanceTimersByTime(30_000);
+    expect(gate.waiting(draft.id)).toBe(true);
+    gate.touch("chat-a");
+    await expect(
+      gate.request({ action: "resume", form_id: draft.id }, exec()),
+    ).rejects.toMatchObject({ code: "INTERACTION_BUSY" });
+    gate.notify(f.command(draft.id, { action: "pause" }), true);
+    await expect(pending).resolves.toMatchObject({ status: "paused" });
+  });
+
+  it("forgets vanished chats individually and clears all polls on disable or shutdown", () => {
+    vi.useFakeTimers();
+    const { gate } = setup();
+    gate.touch("chat-b");
+    gate.cancel("chat-a");
+    expect([...gate["clients"].keys()]).toEqual(["chat-b"]);
+    gate.cancelAll();
+    expect(gate["clients"].size).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
+    gate.touch("chat-a");
+    expect(gate["clients"].size).toBe(1);
+    gate.dispose();
+    gate.touch("chat-b");
+    expect(gate["clients"].size).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("validates without a UI poll, waiter, request_key or saved form", async () => {
     const t = setup();
     const headless = new QaFormGate(
@@ -239,6 +308,13 @@ describe("form tool lifecycle", () => {
       await refused;
       expect(t.f.store.get("chat-a", r.id).status).toBe("draft");
       expect(t.gate.waiting(r.id)).toBe(false);
+      if (ending === "idle" || ending === "disposed") {
+        await expect(
+          t.gate.request({ action: "validate", form: textOnly }, t.exec()),
+        ).resolves.toMatchObject({
+          interactive_client_ready: ending !== "disposed",
+        });
+      }
     },
   );
   it("pauses without completion and refuses revoked access at wakeup", async () => {

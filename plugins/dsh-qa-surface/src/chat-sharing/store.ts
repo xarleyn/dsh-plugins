@@ -1,6 +1,7 @@
 import { SqliteDatabase } from "@yadsh/dsh-plugin-kit/sqlite";
 import type { DatabaseSync } from "node:sqlite";
 import type { QaAccounts } from "../accounts/store.js";
+import { QaAccountsError } from "../accounts/errors.js";
 import type {
   QaChatAccess,
   QaChatGrant,
@@ -119,6 +120,20 @@ export class QaChatSharingStore {
     const access = this.access(token, sessionId);
     if (access.mode === "read") throw new Error("This chat is read-only.");
     return access;
+  }
+
+  withoutChatGrants<T>(sessionIds: readonly string[], work: () => T): T {
+    return this.storage.transaction(() => {
+      const grant = this.storage.db.prepare(
+        "SELECT 1 FROM grants WHERE session_id=? LIMIT 1",
+      );
+      if (sessionIds.some((id) => grant.get(id) !== undefined))
+        throw new QaAccountsError(
+          "conversation-shared",
+          "Revoke chat access before deleting it.",
+        );
+      return work();
+    });
   }
 
   /** Exact address lookup after ownership, never an account directory. */

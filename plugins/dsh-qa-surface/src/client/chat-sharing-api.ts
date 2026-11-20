@@ -4,6 +4,7 @@ import type {
   RemoteStreamHandle,
 } from "@deepseek-ai/dsh-typert-protocol";
 import type * as Native from "@deepseek-ai/dsh-api-session-controller/types";
+import type { QaChatDeletionResult } from "../types.js";
 import type {
   QaChatAccess,
   QaChatAuthor,
@@ -13,6 +14,10 @@ import type {
 } from "../chat-sharing/types.js";
 
 export interface QaSharingApi {
+  delete?(
+    token: string,
+    id: string,
+  ): Promise<RemoteResult<QaChatDeletionResult>>;
   attachmentPath?(
     token: string,
     id: string,
@@ -33,6 +38,10 @@ export interface QaSharingApi {
 }
 /** Handwritten face is checked against the generated transport at package build. */
 export interface QaChatWire {
+  chatDelete(
+    token: string,
+    id: string,
+  ): Promise<RemoteResult<QaChatDeletionResult>>;
   chatAudit(
     token: string,
     id: string,

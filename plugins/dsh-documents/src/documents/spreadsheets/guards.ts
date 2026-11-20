@@ -44,7 +44,11 @@ export function checkSignal(signal?: AbortSignal): void {
 }
 
 /** Check actual inflated bytes, names and cell coordinates before ExcelJS loads anything. */
-export function validateXlsx(bytes: Buffer, signal?: AbortSignal): void {
+export function validateXlsx(
+  bytes: Buffer,
+  signal?: AbortSignal,
+  visitXml?: (name: string, xml: string) => void,
+): void {
   const entries = readZipEntries(bytes);
   if (
     entries === undefined ||
@@ -99,6 +103,7 @@ export function validateXlsx(bytes: Buffer, signal?: AbortSignal): void {
         SPREADSHEET_LIMITS.sheets
     )
       tooLarge("XLSX has more than 128 sheets");
+    visitXml?.(entry.name, xml);
     if (!/^xl\/worksheets\/[^/]+\.xml$/u.test(entry.name)) continue;
     sheets += 1;
     if (sheets > SPREADSHEET_LIMITS.sheets)

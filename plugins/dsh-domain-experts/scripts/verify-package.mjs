@@ -115,6 +115,7 @@ await runVerifyPackage({
       "domainExperts/resolveScope",
       "domainExperts/inspectMemory",
       "domainExperts/testExpert",
+      "domainExperts/queryExecutionAudits",
     ]) {
       assert.match(
         remote,

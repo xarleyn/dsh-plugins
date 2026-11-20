@@ -1,4 +1,6 @@
 import ExcelJS from "exceljs";
+import JSZip from "jszip";
+import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -16,6 +18,7 @@ import {
 } from "../src/documents/spreadsheets/guards.js";
 import { buildZip } from "./helpers/document-fixtures.js";
 import { readZipEntryByName } from "../src/documents/inspect/zip.js";
+import { xlsxReaderBytes } from "../src/documents/spreadsheets/reader-xlsx.js";
 import type { ToolRunContext } from "@deepseek-ai/dsh-tools";
 
 let workspace: string;
@@ -57,6 +60,61 @@ const input: SpreadsheetCreateInput = {
 };
 
 describe("XLSX artifact round trip", () => {
+  test.each([true, false])(
+    "reads prefixed worksheet markup with a prefixed workbook: %s",
+    async (prefixBook) => {
+      const ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+      const book = new ExcelJS.Workbook();
+      book.addWorksheet("Register").getCell("A1").value = "original";
+      const zip = await JSZip.loadAsync(await book.xlsx.writeBuffer());
+      const wb = await zip.file("xl/workbook.xml")!.async("string");
+      if (prefixBook)
+        zip.file(
+          "xl/workbook.xml",
+          wb
+            .replace(/<(\/?)(workbook|sheets|sheet)(?=[\s/>])/gu, "<$1ss:$2")
+            .replace("<ss:workbook ", `<ss:workbook xmlns:ss="${ns}" `),
+        );
+      zip.file(
+        "xl/worksheets/sheet1.xml",
+        `<q:worksheet xmlns:q="${ns}"><q:sheetData>
+      <q:row r="1"><q:c r="A1" t="str"><q:v>0007</q:v></q:c></q:row>
+      <q:row r="2"><q:c r="B2" t="str"><q:v>keep &lt;q:v/&gt;</q:v></q:c></q:row>
+      <q:row r="3"><q:c r="A3" t="str"><q:v>0007</q:v></q:c></q:row>
+    </q:sheetData><q:extLst><q:ext uri="demo"><q:item xmlns:q="urn:example"><![CDATA[<q:v/>]]></q:item></q:ext></q:extLst></q:worksheet>`,
+      );
+      const bytes = await zip.generateAsync({ type: "nodebuffer" });
+      expect(
+        readZipEntryByName(
+          await xlsxReaderBytes(bytes),
+          "xl/worksheets/sheet1.xml",
+        )?.toString(),
+      ).toContain('<q:item xmlns:q="urn:example"><![CDATA[<q:v/>]]></q:item>');
+      const file = path.join(workspace, "qualified.xlsx");
+      await writeFile(file, bytes);
+      const info = await runtime.inspectSpreadsheet({ file }, scope());
+      expect(info.sha256).toBe(
+        createHash("sha256").update(bytes).digest("hex"),
+      );
+      expect(info.sheets[0]).toMatchObject({
+        name: "Register",
+        rows: 3,
+        columns: 2,
+      });
+      const page = await runtime.readSpreadsheet(
+        { file, sheet: "Register" },
+        scope(),
+      );
+      expect(
+        page.rows.map((row) => row.cells.map((cell) => cell.value)),
+      ).toEqual([
+        ["0007", null],
+        [null, "keep <q:v/>"],
+        ["0007", null],
+      ]);
+      expect(await readFile(file)).toEqual(bytes);
+    },
+  );
   test("creates a real multi-sheet workbook with typed cells and usable layout", async () => {
     const created = await runtime.createSpreadsheet(input, scope());
     const file = created.files[0]!;

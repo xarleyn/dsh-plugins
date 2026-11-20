@@ -229,6 +229,8 @@ export interface ReviewerBackend {
  * handled by the failure policy, never a load-time dependency.
  */
 export interface DomainExpertsFace {
+  /** The service can pass a per-review tool policy to every managed worker. */
+  readonly supportsReviewToolPolicy?: boolean;
   /** Explicit capability; an older service must not silently ignore review limits. */
   reviewExpertBounded?(
     domainId: string,
@@ -240,6 +242,7 @@ export interface DomainExpertsFace {
       readonly maxConsecutiveRefusals: number;
       readonly timeoutMs: number;
       readonly signal: AbortSignal;
+      readonly allowedTools?: readonly string[];
     },
   ): Promise<ExpertRunOutcome>;
   /** Host-only entry; older installations must fail explicitly for image reviews. */
@@ -292,6 +295,8 @@ export interface ExpertRunResult {
  * child's persona and tools are composed from its Agent Preset.
  */
 export interface SubagentsFace {
+  /** Set by the local adapter when this reviewer has a required tool policy. */
+  readonly enforcesReviewToolPolicy?: boolean;
   /** Look up one provider's capability advertisement before composing a child. */
   getProvider(name: string): SubagentProviderFace | undefined;
   startActivation(spec: SubagentActivationSpec): Promise<SubagentActivation>;

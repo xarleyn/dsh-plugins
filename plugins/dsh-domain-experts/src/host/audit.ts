@@ -4,9 +4,8 @@ import type { ExpertAuditEntry } from "../types.js";
  * Bounded in-memory audit ring (design §33).
  *
  * Records execution metadata only: never a task text, retrieved memory or a
- * secret. Durable audit storage is a Phase 2 concern; the ring exists so the
- * cross-domain delegation trail is visible in the UI without a new table, and
- * every record is mirrored to the plugin log for anything longer-lived.
+ * secret. The ring exposes the current process's delegation trail. Host logs
+ * and the optional execution archive receive separate projections.
  */
 export class AuditRing {
   private readonly entries: ExpertAuditEntry[] = [];

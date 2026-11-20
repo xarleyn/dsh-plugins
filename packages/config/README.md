@@ -61,6 +61,20 @@ Plugins that need extra options should import
 `definePluginVitestConfig` from `@yadsh/dsh-config/vitest` instead of
 hand-rolling `defineConfig`.
 
+Every Vitest command using this preset creates one owned `dsh-tests-*`
+directory below the caller's temporary directory. Workers redirect `TEMP`,
+`TMP` and `TMPDIR` into it. The parent removes only that directory when the
+command exits, after worker file handles close, on successful and failing runs.
+Directory links are removed before the tree so external targets stay intact.
+A force-killed command can leave its directory and `.test-owner.json` for
+inspection; the preset never sweeps earlier runs or the operating system's Temp.
+
+Set the command's temporary-directory variables to a development disk when
+needed, using a directory outside any Git checkout so tests of non-repository
+paths do not discover the caller's repository through a parent directory.
+The QA workspace's two 256 MiB disk-quota cases are skipped by default;
+`DSH_RUN_DISK_QUOTA_TESTS=1` opts into those cases with the same cleanup.
+
 The Vitest preset also carries the coverage defaults, so every package measures
 the same denominator: the V8 provider, the `text` and `json-summary` reporters,
 and `src/**/*.ts` plus `src/**/*.tsx` as the instrumented tree. `mergeConfig`

@@ -1,4 +1,5 @@
 import picomatch from "picomatch";
+import { assertSupportedGlob } from "../config/glob.js";
 import type { FileSelector } from "../config/types.js";
 import { normalizeWorkspacePath, uniqueSorted } from "../utils/paths.js";
 
@@ -12,7 +13,8 @@ function patternMatches(path: string, pattern: string): boolean {
   if (!isGlobPattern(pattern)) {
     return path === pattern || path.startsWith(`${pattern}/`);
   }
-  return picomatch.isMatch(path, pattern, { dot: true });
+  assertSupportedGlob(pattern);
+  return picomatch.isMatch(path, pattern, { dot: true, noextglob: true });
 }
 
 export function matchesSelector(

@@ -1,6 +1,10 @@
 import { randomBytes } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import { QaAccountsError } from "./errors.js";
+import {
+  QaAccountChatDeletions,
+  chatDeletionMigration,
+} from "./chat-deletions.js";
 import { dropAttachedUserSharing } from "../chat-sharing/store.js";
 import {
   journalAccountRemoval,
@@ -188,6 +192,7 @@ const MIGRATIONS: readonly SqliteMigration[] = [
     `,
   },
   removalJournalMigration,
+  chatDeletionMigration,
 ];
 
 interface AccountRow {
@@ -344,10 +349,15 @@ function toUser(row: AccountRow): StoredUser {
  */
 export class QaAccountsDatabase {
   readonly storage: SqliteDatabase;
+  readonly chatDeletions: QaAccountChatDeletions;
   private observedDataVersion: number;
 
   constructor(readonly filePath: string) {
     this.storage = new SqliteDatabase(filePath, MIGRATIONS);
+    this.chatDeletions = new QaAccountChatDeletions(
+      this.storage,
+      (sessionIds) => this.removeOwnershipRows(sessionIds),
+    );
     this.observedDataVersion = this.readDataVersion();
     this.ensureSecret();
   }
@@ -405,7 +415,10 @@ export class QaAccountsDatabase {
           `SELECT o.session_id, o.user_id, o.claimed_at, o.subrole_id,
                   o.admin_preview, s.json AS snapshot_json
              FROM qa_ownership o
-             LEFT JOIN qa_snapshots s ON s.hash = o.snapshot_hash`,
+             LEFT JOIN qa_snapshots s ON s.hash = o.snapshot_hash
+            WHERE NOT EXISTS (
+              SELECT 1 FROM qa_deleted_chats d WHERE d.session_id = o.session_id
+            )`,
         )
         .all(),
     );
@@ -607,10 +620,20 @@ export class QaAccountsDatabase {
   }
 
   /** Claim one chat for an account. */
-  insertOwnership(sessionId: string, owner: StoredOwnership): void {
+  insertOwnership(
+    sessionId: string,
+    owner: StoredOwnership,
+    reserved = false,
+  ): void {
     this.storage.transaction(() => {
       this.requireExistingOwner(owner.userId);
       this.writeOwnership(sessionId, owner);
+      if (reserved)
+        this.storage.db
+          .prepare(
+            "UPDATE qa_ownership SET qa_owner_delete=1 WHERE session_id=?",
+          )
+          .run(sessionId);
     });
   }
 
@@ -1144,6 +1167,11 @@ export class QaAccountsDatabase {
   }
 
   private writeOwnership(sessionId: string, owner: StoredOwnership): void {
+    if (this.chatDeletions.chatDeleted(sessionId))
+      throw new QaAccountsError(
+        "conversation-unknown",
+        "This chat is unavailable.",
+      );
     if (
       this.storage.db
         .prepare("SELECT 1 FROM qa_pending_session_removals WHERE session_id=?")

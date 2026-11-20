@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { QaAuditDialog } from "../../../src/client/audit/QaAuditDialog.js";
 import { createQaAuditApi } from "../../../src/client/audit/types.js";
@@ -53,6 +59,45 @@ describe("QaAuditDialog", () => {
     fireEvent.click(screen.getByRole("tab", { name: "JSON" }));
 
     expect(screen.getByText("schemaVersion")).toBeDefined();
+  });
+
+  it("separates the producer, auditor and audited session in the loaded document", async () => {
+    const ready = summary({ schemaVersion: 2, model: "demo/session" });
+    const audit = document_({
+      summary: ready,
+      analysisJson: JSON.stringify({
+        schemaVersion: 2,
+        trajectory: { sessionId: ready.sessionId, model: "demo/session" },
+        audit: { producer: { name: "Demo report builder", version: "2.0.0" } },
+        auditor: { type: "llm", model: "demo/auditor" },
+      }),
+    });
+    render(
+      <QaAuditDialog
+        open
+        sessionId={ready.sessionId}
+        title="Аудит чата"
+        api={createQaAuditApi(remoteOf(audit))}
+        summary={ready}
+        onClose={() => {}}
+      />,
+    );
+    const provenance = within(await screen.findByTestId("audit-provenance"));
+    expect(
+      provenance.getByText("Генератор отчёта").nextElementSibling?.textContent,
+    ).toBe("Demo report builder");
+    expect(
+      provenance.getByText("Версия генератора").nextElementSibling?.textContent,
+    ).toBe("2.0.0");
+    expect(
+      provenance.getByText("Тип аудитора").nextElementSibling?.textContent,
+    ).toBe("llm");
+    expect(
+      provenance.getByText("Модель аудитора").nextElementSibling?.textContent,
+    ).toBe("demo/auditor");
+    expect(
+      provenance.getByText("Модель сессии").nextElementSibling?.textContent,
+    ).toBe("demo/session");
   });
 
   it("renders a malicious report as text", async () => {

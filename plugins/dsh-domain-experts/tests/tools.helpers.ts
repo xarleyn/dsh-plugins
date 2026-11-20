@@ -17,7 +17,7 @@ import type {
 import {
   agentOf,
   domainOf,
-  domainTableOf,
+  catalogOf,
   fixedClock,
   memoryRecordTableOf,
   recordingLogger,
@@ -100,7 +100,7 @@ export function harnessOf(
 ): Harness {
   const clock = fixedClock();
   const domains = new DomainRegistry(
-    domainTableOf(
+    catalogOf(
       definitions.map((definition) => [definition.id, definition] as const),
     ),
     clock,

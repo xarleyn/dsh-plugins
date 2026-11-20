@@ -358,12 +358,6 @@ export class AuditService implements SessionAuditProvider {
     const parsed = parseAuditAnalysis(analysisRead.text);
     if (!parsed.ok) return this.reject(found, next, parsed.errors);
 
-    // These are the bytes the record below describes, so they are what a reader
-    // gets back. A later version that cannot be read must not cost a reader the
-    // audit that was good, and a summary alone would leave the detail view
-    // reading a file that no longer matches it (SPEC §66).
-    this.retain(found.name, analysisRead.text, reportRead.text);
-
     const errors: AuditError[] = [...parsed.errors];
     const declared = getAuditSessionId(parsed.analysis);
     const resolution = await this.resolver.resolve(declared, found.name);
@@ -397,6 +391,10 @@ export class AuditService implements SessionAuditProvider {
       new Date().toISOString();
     this.discovered.set(found.name, discoveredAt);
     const before = this.registry.get(found.name);
+
+    // Publish the bytes and their registry record together, after the async
+    // session resolution. Readers during resolution still see the previous pair.
+    this.retain(found.name, analysisRead.text, reportRead.text);
 
     if (resolution.status === "unresolved") {
       this.registry.upsert({
@@ -647,6 +645,28 @@ export class AuditService implements SessionAuditProvider {
     return this.readArtifact(auditId, "analysis");
   }
 
+  /** Read both documents from one registered revision. */
+  async readDocuments(record: AuditRecord): Promise<{
+    readonly analysisJson: string;
+    readonly report: string;
+  } | null> {
+    const cached = this.lastGood.has(record.auditId);
+    const [analysisJson, report] = await Promise.all([
+      this.readAnalysisJson(record.auditId),
+      this.readReport(record.auditId),
+    ]);
+    if (
+      analysisJson === null ||
+      report === null ||
+      this.registry.get(record.auditId) !== record ||
+      (!cached &&
+        computeFingerprint(analysisJson, report) !== record.fingerprint)
+    ) {
+      return null;
+    }
+    return { analysisJson, report };
+  }
+
   private async readArtifact(
     auditId: string,
     which: "analysis" | "report",
@@ -680,18 +700,15 @@ export class AuditService implements SessionAuditProvider {
 
   /** Re-read one record's bytes and rebuild the semantic view from them. */
   private async load(record: AuditRecord): Promise<SessionAudit | null> {
-    const [analysisText, reportText] = await Promise.all([
-      this.readArtifact(record.auditId, "analysis"),
-      this.readArtifact(record.auditId, "report"),
-    ]);
-    if (analysisText === null || reportText === null) {
+    const documents = await this.readDocuments(record);
+    if (documents === null) {
       this.logger.warn("audit load failed", { auditId: record.auditId });
       return null;
     }
 
     let raw: unknown;
     try {
-      raw = JSON.parse(analysisText);
+      raw = JSON.parse(documents.analysisJson);
     } catch {
       this.logger.warn("audit load failed", {
         auditId: record.auditId,
@@ -715,7 +732,7 @@ export class AuditService implements SessionAuditProvider {
           modifiedAt: record.modifiedAt,
         }),
       analysis,
-      report: reportText,
+      report: documents.report,
       raw,
     };
   }

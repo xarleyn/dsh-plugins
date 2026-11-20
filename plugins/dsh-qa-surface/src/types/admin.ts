@@ -154,6 +154,10 @@ export interface QaConversationDeletion {
   readonly qualityRows: number;
 }
 
+export interface QaChatDeletionResult {
+  readonly state: "deleted" | "pending";
+}
+
 /**
  * Server-side filter for the conversation list. Every field is optional and
  * accepts an explicit null: the wire carries whatever the browser has, and an

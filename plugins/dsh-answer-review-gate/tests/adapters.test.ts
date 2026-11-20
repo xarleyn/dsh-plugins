@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   createDomainExpertBackend,
@@ -122,10 +122,11 @@ describe("domain-expert backend", () => {
   });
 
   it("passes the stable domain id, the task, and the reviewed session id", async () => {
-    const calls: [string, string, string, boolean | undefined][] = [];
+    const calls: [string, string, string][] = [];
     const face: DomainExpertsFace = {
-      async testExpert(domainId, task, parentSessionId, structuredOutput) {
-        calls.push([domainId, task, parentSessionId, structuredOutput]);
+      testExpert: vi.fn(),
+      async reviewExpertBounded(domainId, task, parentSessionId) {
+        calls.push([domainId, task, parentSessionId]);
         const outcome: ExpertRunOutcome = {
           ok: true,
           code: "",
@@ -144,8 +145,7 @@ describe("domain-expert backend", () => {
     const verdict = await backend.review(reviewInput());
     expect(verdict.verdict).toBe("pass");
     expect(calls).toHaveLength(1);
-    const [domainId, task, parentSessionId, structuredOutput] = calls[0]!;
-    expect(structuredOutput).toBe(true);
+    const [domainId, task, parentSessionId] = calls[0]!;
     expect(domainId).toBe("answer-reviewer");
     expect(parentSessionId).toBe("session-1");
     expect(task).toContain("What locks does the runtime use?");
@@ -182,7 +182,8 @@ describe("domain-expert backend", () => {
     ];
     let index = 0;
     const face: DomainExpertsFace = {
-      async testExpert() {
+      testExpert: vi.fn(),
+      async reviewExpertBounded() {
         return outcomes[index++]!;
       },
     };
@@ -199,12 +200,10 @@ describe("domain-expert backend", () => {
   });
 
   it("does not launch a reviewer run for a turn already aborted at the boundary", async () => {
-    // The domain-experts `testExpert` face owns its run and exposes no abort
-    // signal, so the most the gate can honour is the signal's state at entry:
-    // an already-cancelled turn must not start a doomed reviewer.
     let calls = 0;
     const face: DomainExpertsFace = {
-      async testExpert() {
+      testExpert: vi.fn(),
+      async reviewExpertBounded() {
         calls += 1;
         return {
           ok: true,

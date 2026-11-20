@@ -1,4 +1,8 @@
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { createPluginLogger } from "@yadsh/dsh-plugin-log";
 import {
   assertObjectJsonSchema,
   validateJsonSchemaValue,
@@ -10,6 +14,7 @@ import {
   type ExecutionDependencies,
 } from "../src/host/execution.js";
 import { AuditRing } from "../src/host/audit.js";
+import { ExecutionAuditArchive } from "../src/host/audit-archive.js";
 import { DomainRegistry } from "../src/host/registry.js";
 import { DEPLOYMENT_MEMORY_OWNER } from "../src/host/resolver.js";
 import { createBuiltinMemoryProvider } from "../src/host/memory/builtin.js";
@@ -17,11 +22,11 @@ import { MemoryProviderRegistry } from "../src/host/memory/registry.js";
 import { ScopeProviderRegistry } from "../src/host/scopes/registry.js";
 import { createFilesystemProvider } from "../src/host/scopes/filesystem.js";
 import { WorkerRegistry } from "../src/host/workers/registry.js";
-import type { DomainDefinition } from "../src/types.js";
+import type { DomainDefinition, ExpertMode } from "../src/types.js";
 import {
   agentOf,
   domainOf,
-  domainTableOf,
+  catalogOf,
   fakeSubagents,
   fixedClock,
   memoryRecordTableOf,
@@ -81,7 +86,7 @@ function harnessOf(
   const audits = new AuditRing(50);
   const log: RecordedLog = { events: [] };
   const domains = new DomainRegistry(
-    domainTableOf([[definition.id, definition]]),
+    catalogOf([[definition.id, definition]]),
     clock,
   );
   const scopeProviders = new ScopeProviderRegistry();
@@ -126,6 +131,7 @@ async function run(
     readonly background?: boolean;
     readonly id?: string;
     readonly structuredOutput?: boolean;
+    readonly mode?: ExpertMode;
   } = {},
 ) {
   return await runExpert(harness.dependencies, {
@@ -135,12 +141,106 @@ async function run(
       ...(options.depth === undefined ? {} : { depth: options.depth }),
     }),
     definition,
-    request: { ...REQUEST, background: options.background ?? false },
+    request: {
+      ...REQUEST,
+      mode: options.mode ?? REQUEST.mode,
+      background: options.background ?? false,
+    },
     signal: new AbortController().signal,
     callerDomain: options.callerDomain ?? null,
     ...(options.structuredOutput ? { structuredOutput: true } : {}),
   });
 }
+
+it("cannot reconstruct failed foreground reviews from host logs after the ring resets", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "dsh-expert-audit-log-"));
+  const logger = createPluginLogger({
+    pluginId: "domain-experts-fixture",
+    dir,
+    file: true,
+    format: "json",
+    level: "info",
+    console: "silent",
+  });
+  try {
+    const harness = harnessOf(PAYMENTS, { stopReason: "error" });
+    let now = 9_000;
+    const timedHarness = {
+      ...harness,
+      dependencies: {
+        ...harness.dependencies,
+        logger,
+        now: () => (now += 275),
+      },
+    };
+    for (const mode of ["review", "investigate"] as const) {
+      expect((await run(timedHarness, PAYMENTS, { mode })).status).toBe(
+        "error",
+      );
+    }
+    expect(
+      harness.audits
+        .recent()
+        .filter(
+          (entry) =>
+            entry.domainId === PAYMENTS.id &&
+            entry.mode === "review" &&
+            !entry.background &&
+            entry.status === "error",
+        ),
+    ).toHaveLength(1);
+    expect(new AuditRing(50).recent()).toEqual([]);
+
+    await logger.close();
+    const records = readdirSync(dir)
+      .flatMap((file) =>
+        readFileSync(join(dir, file), "utf8").trim().split("\n"),
+      )
+      .map((line) => JSON.parse(line))
+      .filter((record) => record.msg === "domain-expert/run");
+    expect(records).toHaveLength(2);
+    for (const record of records) {
+      expect(record).toMatchObject({
+        domain: PAYMENTS.id,
+        status: "error",
+        durationMs: 275,
+      });
+      for (const field of ["mode", "background", "runId"]) {
+        expect(record).not.toHaveProperty(field);
+      }
+    }
+  } finally {
+    await logger.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+it("returns the expert outcome and records the ring when the execution archive cannot write", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "dsh-expert-archive-failure-"));
+  const harness = harnessOf(PAYMENTS, { text: "Settlement is complete." });
+  const executionAudit = new ExecutionAuditArchive(
+    dir,
+    true,
+    harness.dependencies.logger,
+  );
+  try {
+    const result = await run({
+      ...harness,
+      dependencies: { ...harness.dependencies, executionAudit },
+    });
+    expect(result).toMatchObject({
+      status: "completed",
+      summary: "Settlement is complete.",
+    });
+    expect(harness.audits.recent()).toHaveLength(1);
+    expect(harness.log.events).toContainEqual(
+      expect.objectContaining({ event: "domain-expert/audit-open-failed" }),
+    );
+  } finally {
+    executionAudit.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 /** The `text` payload of one block of the child's first message. */
 function textBlockOf(spec: SubagentActivationSpec, index: number): string {

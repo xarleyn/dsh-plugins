@@ -114,6 +114,24 @@ describe("QA capability policy", () => {
     });
   });
 
+  it("retains distinct effort grants for one model through a configuration round trip", () => {
+    const low = { provider: "demo", model: "reasoner", reasoningEffort: "low" };
+    const high = { ...low, reasoningEffort: "high" };
+    const role = {
+      ...config.subroles[0]!,
+      model: low,
+      allowedModels: [low, high, low],
+    };
+    const saved = normalizeCapabilityConfig({ ...config, subroles: [role] });
+    const reloaded = normalizeCapabilityConfig(
+      JSON.parse(JSON.stringify(saved)),
+    );
+    expect(reloaded.subroles[0]).toMatchObject({
+      model: low,
+      allowedModels: [low, high],
+    });
+  });
+
   it("rejects duplicate ids and disabling every role", () => {
     expect(() =>
       normalizeCapabilityConfig({

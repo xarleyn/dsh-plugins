@@ -37,7 +37,7 @@ Numbered, verifiable guarantees for release `0.1.0` (acceptance criteria §74):
    runtime identity matches (server instance, provider, model,
    `runtimeKey`-derived compatibility version, §13-§15, Invariant 4).
    Incompatible snapshots are marked invalid (`MODEL_FINGERPRINT_CHANGED`),
-   never deleted (§31).
+   retained during invalidation (§31) and subject to opt-in retention (§43).
 8. **A8 — Verified restore.** An HTTP 200 is not enough: when the server
    reports `n_restored <= 0` and `restore.verify` is on, the restore counts
    as failed (§24, Invariant 10).
@@ -83,8 +83,9 @@ Numbered, verifiable guarantees for release `0.1.0` (acceptance criteria §74):
   an invalidation reason. Corruption fails loudly (`KV_MANIFEST_INVALID`) —
   the plugin never silently resets metadata (guidelines §3.5).
 - **Binary snapshots** (server-owned, llama.cpp `--slot-save-path`, §17):
-  the plugin only generates filenames; it never reads or deletes binaries.
-  One rolling snapshot per (session, route) pair (§41).
+  by default the plugin only generates filenames. Shared-directory retention
+  measures and removes files associated with locally verified ownership metadata.
+  One committed snapshot per (session, route) pair with two rotating binary names (§41).
 - **Runtime state** (in memory, per session): route, `dirtyRevision`,
   `persistedRevision`, in-flight save handle (§27, §28).
 
@@ -111,7 +112,7 @@ fake-backend test suite (§75-§77).
 
 ### Deferred (§68, roadmap §83)
 
-Multi-slot, managed-slots mode, UI, disk GC/retention, multiple servers,
+Multi-slot, managed-slots mode, UI, multiple servers,
 snapshot migration, Prometheus metrics, custom llama transport adapter,
 automatic server startup, snapshot fingerprinting of request content (§30).
 
@@ -145,9 +146,9 @@ automatic server startup, snapshot fingerprinting of request content (§30).
 | Structured logging, metrics counters, status, doctor (§45-§48) | Implemented (in-memory counters) |
 | `sessionSeq` metadata (§29) | Field present, not yet populated |
 | Request fingerprints (§30) | Planned (0.2) |
-| Snapshot rotation `<hash>.a/.b.bin` (§41) | Planned (0.2) |
-| Shared-filesystem binary cleanup (§42) | Planned (0.2) |
-| Disk quota / GC (§43) | Deferred |
+| Snapshot rotation (§41) | Implemented with legacy `<hash>.bin` and alternate `<hash>.b.bin`. A process-interruption test on llama.cpp b12032 covers restart and restore. |
+| Shared-filesystem binary cleanup (§42) | Implemented for an explicitly mapped single-owner store. Detached manifests allow interrupted cleanup to resume. |
+| Disk quota / GC (§43) | Opt-in byte budget, dry-run and enforcement by last successful save. Active sessions are protected. |
 | Multi-slot, multi-server, transport adapter (§63-§66) | Deferred (0.3) |
 | CLI (`dsh kv …`, §48), UI (§81) | Deferred |
 | Prometheus export (§46) | Deferred |

@@ -18,6 +18,10 @@ export interface SessionAuditRemote {
   audits(sessionId: string): Promise<RemoteResult<AuditSummaryValue[]>>;
   unattached(): Promise<RemoteResult<UnattachedAuditValue[]>>;
   audit(sessionId: string): Promise<RemoteResult<SessionAuditValue>>;
+  auditById(
+    sessionId: string,
+    auditId: string,
+  ): Promise<RemoteResult<SessionAuditValue>>;
   report(auditId: string): Promise<RemoteResult<string>>;
   analysis(auditId: string): Promise<RemoteResult<string>>;
 }
@@ -28,6 +32,8 @@ export interface AuditApi {
   summary(sessionId: string): Promise<AuditSummaryValue>;
   /** The full audit for one session. */
   audit(sessionId: string): Promise<SessionAuditValue>;
+  audits(sessionId: string): Promise<readonly AuditSummaryValue[]>;
+  auditById(sessionId: string, auditId: string): Promise<SessionAuditValue>;
   /** The registered audits no session view can show. */
   unattached(): Promise<readonly UnattachedAuditValue[]>;
 }
@@ -51,6 +57,13 @@ export function createAuditApi(remote: SessionAuditRemote): AuditApi {
       unwrap(() => remote.summary(sessionId), "sessionAudit/summary"),
     audit: (sessionId) =>
       unwrap(() => remote.audit(sessionId), "sessionAudit/audit"),
+    audits: (sessionId) =>
+      unwrap(() => remote.audits(sessionId), "sessionAudit/audits"),
+    auditById: (sessionId, auditId) =>
+      unwrap(
+        () => remote.auditById(sessionId, auditId),
+        "sessionAudit/auditById",
+      ),
     unattached: () =>
       unwrap(() => remote.unattached(), "sessionAudit/unattached"),
   };

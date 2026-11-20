@@ -185,9 +185,11 @@ export function apply(
     // plugin was running right next to this one.
     domainExperts: () =>
       ctx.get("domainExperts") as DomainExpertsFace | undefined,
-    subagents: () => {
+    subagents: (allowedTools) => {
       const face = ctx.get("subagents") as SubagentsFace | undefined;
-      return face === undefined ? undefined : foregroundReviewers(ctx, face);
+      return face === undefined
+        ? undefined
+        : foregroundReviewers(ctx, face, allowedTools);
     },
     // The QA surface is read structurally and per call: an installation
     // without it simply has no model policy to follow.

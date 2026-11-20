@@ -144,7 +144,44 @@ export interface DomainDefinition {
   readonly updatedAt: number;
 }
 
-/** Lightweight list projection for the domain list screen. */ export interface DomainSummary {
+/** Portable catalog contract, independent of the Host storage layout. */
+export const CATALOG_FORMAT = "dsh-domain-catalog";
+export const CATALOG_VERSION = 1;
+export const MAX_CATALOG_BYTES = 512 * 1024;
+export const MAX_CATALOG_DOMAINS = 500;
+
+export type CatalogImportMode = "merge" | "replace";
+
+export interface CatalogChange {
+  readonly id: string;
+  readonly action: "add" | "keep" | "update" | "remove" | "unchanged";
+}
+
+export interface CatalogPreview {
+  readonly changes: readonly CatalogChange[];
+  readonly token: string;
+}
+
+interface CatalogResultEnvelope {
+  readonly ok: boolean;
+  readonly code: string;
+  readonly message: string;
+}
+
+export interface CatalogExportResult extends CatalogResultEnvelope {
+  readonly document: string;
+}
+
+export interface CatalogPreviewResult extends CatalogResultEnvelope {
+  readonly preview: CatalogPreview | null;
+}
+
+export interface CatalogApplyResult extends CatalogResultEnvelope {
+  readonly changed: number;
+}
+
+/** Lightweight list projection for the domain list screen. */
+export interface DomainSummary {
   readonly id: string;
   readonly name: string;
   readonly description: string;
@@ -353,6 +390,15 @@ export type DomainErrorCode =
   | "DOMAIN_DISABLED"
   | "DOMAIN_INVALID"
   | "DOMAIN_EXISTS"
+  | "DOMAIN_ACCESS_DENIED"
+  | "PROVIDER_CONFIG_INVALID"
+  | "PROVIDER_CONFIG_READ_ONLY"
+  | "PROVIDER_CONFIG_STALE"
+  | "CATALOG_ACCESS_DENIED"
+  | "CATALOG_INVALID"
+  | "CATALOG_VERSION_UNSUPPORTED"
+  | "CATALOG_PREVIEW_STALE"
+  | "CATALOG_SENSITIVE_CONTENT"
   | "UNSUPPORTED_SUBAGENT_CAPABILITY"
   | "SUBAGENT_PROVIDER_MISSING"
   | "SCOPE_PROVIDER_MISSING"
@@ -370,12 +416,52 @@ export type DomainErrorCode =
   | "TASK_REJECTED"
   | "STORAGE_UNAVAILABLE";
 
+export const SCOPE_PROVIDER_FORM_VERSION = 1;
+
+export interface ScopeProviderFormOption {
+  readonly value: string;
+  readonly label: string;
+}
+
+export interface ScopeProviderFormField {
+  readonly key: string;
+  readonly label: string;
+  readonly kind: "text" | "integer" | "boolean" | "choice";
+  readonly required: boolean;
+  readonly options: readonly ScopeProviderFormOption[];
+}
+
+export interface ScopeProviderDocumentVersion {
+  readonly key: string;
+  readonly current: number;
+}
+
+/** A provider-owned, serializable description of its editable fields. */
+export interface ScopeProviderForm {
+  readonly version: number;
+  readonly revision: number;
+  readonly documentVersion: ScopeProviderDocumentVersion | null;
+  readonly fields: readonly ScopeProviderFormField[];
+}
+
+export interface ScopeProviderFieldEdit {
+  readonly key: string;
+  readonly value: string;
+}
+
+export interface ScopeProviderFormEdit {
+  readonly providerId: string;
+  readonly revision: number;
+  readonly fields: readonly ScopeProviderFieldEdit[];
+}
+
 /** Domain-provider catalog surfaced to the browser. */
 export interface ScopeProviderInfo {
   readonly id: string;
   readonly title: string;
   readonly enforcement: ScopeEnforcement;
   readonly builtin: boolean;
+  readonly form: ScopeProviderForm | null;
 }
 
 export interface MemoryProviderInfo {
@@ -418,6 +504,42 @@ export interface ExpertAuditEntry {
   readonly durationMs: number;
   readonly delegatePath: readonly string[];
   readonly degraded: readonly DomainDegradationCode[];
+}
+
+export interface ArchivedExpertRun {
+  /** ID local to this archive. */
+  readonly id: number;
+  /** Unix time in milliseconds when the outcome or dispatch was recorded. */
+  readonly at: number;
+  readonly domainId: string;
+  readonly mode: ExpertMode;
+  readonly background: boolean;
+  readonly status: DomainExpertStatus;
+  readonly durationMs: number;
+}
+
+export interface ExecutionAuditQuery {
+  readonly domainId: string;
+  /** Zero leaves the query unfiltered by run ID. */
+  readonly runId: number;
+  readonly mode: ExpertMode | "";
+  readonly status: DomainExpertStatus | "";
+  readonly execution: "foreground" | "background" | "";
+  /** Inclusive Unix time in milliseconds, or zero for all retained entries. */
+  readonly since: number;
+  /** Exclusive cursor from the previous page, or zero for the newest page. */
+  readonly beforeId: number;
+  /** 1–100 entries, ordered by descending ID. */
+  readonly limit: number;
+}
+
+export interface ExecutionAuditResult {
+  readonly ok: boolean;
+  readonly code: string;
+  readonly message: string;
+  readonly entries: readonly ArchivedExpertRun[];
+  /** Zero means the query has no older page. */
+  readonly nextBeforeId: number;
 }
 
 /**

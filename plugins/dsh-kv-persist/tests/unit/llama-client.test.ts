@@ -42,7 +42,7 @@ describe("LlamaCppClient response validation", () => {
   it("accepts a save object with explicit success=true", async () => {
     await expect(
       client(response('{"success":true}')).saveSlot(0, "snapshot.bin"),
-    ).resolves.toEqual({ success: true });
+    ).resolves.toEqual({ success: true, bytes: null });
   });
 
   it("rejects a non-200 save response", async () => {

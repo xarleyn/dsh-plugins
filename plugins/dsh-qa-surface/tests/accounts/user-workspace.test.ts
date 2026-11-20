@@ -19,6 +19,9 @@ import {
 } from "../../src/user-workspace.js";
 
 const USER_ID = "123e4567-e89b-42d3-a456-426614174000";
+// Each case materializes a 256 MiB quota fixture. Keep routine runs small;
+// DSH_RUN_DISK_QUOTA_TESTS=1 explicitly enables both cases in an owned temp run.
+const diskQuotaTests = process.env.DSH_RUN_DISK_QUOTA_TESTS === "1";
 
 describe("per-user QA workspace", () => {
   it("creates one unregistered child rooted below the configured workspace", () => {
@@ -272,28 +275,31 @@ describe("per-user QA workspace", () => {
     ).toMatch(/outside/u);
   });
 
-  it("counts editor create file_text toward per-write and remaining storage quotas", () => {
-    const base = mkdtempSync(path.join(tmpdir(), "qa-editor-quota-"));
-    const root = prepareQaUserWorkspace(base, USER_ID);
-    const create = (file_text: string) =>
-      qaUserWorkspaceDenial(
-        {
-          name: "str_replace_editor",
-          arguments: { command: "create", path: "new.txt", file_text },
-        },
-        root,
-      );
-    expect(
-      create("я".repeat(QA_USER_WORKSPACE_MAX_WRITE_BYTES / 2 + 1)),
-    ).toMatch(/quota/u);
-    const occupied = path.join(root, "occupied.bin");
-    writeFileSync(occupied, "");
-    truncateSync(occupied, QA_USER_WORKSPACE_MAX_BYTES - 2);
-    expect(create("abc")).toMatch(/quota/u);
-    expect(create("ab")).toBeUndefined();
-  });
+  it.skipIf(!diskQuotaTests)(
+    "counts editor create file_text toward per-write and remaining storage quotas",
+    () => {
+      const base = mkdtempSync(path.join(tmpdir(), "qa-editor-quota-"));
+      const root = prepareQaUserWorkspace(base, USER_ID);
+      const create = (file_text: string) =>
+        qaUserWorkspaceDenial(
+          {
+            name: "str_replace_editor",
+            arguments: { command: "create", path: "new.txt", file_text },
+          },
+          root,
+        );
+      expect(
+        create("я".repeat(QA_USER_WORKSPACE_MAX_WRITE_BYTES / 2 + 1)),
+      ).toMatch(/quota/u);
+      const occupied = path.join(root, "occupied.bin");
+      writeFileSync(occupied, "");
+      truncateSync(occupied, QA_USER_WORKSPACE_MAX_BYTES - 2);
+      expect(create("abc")).toMatch(/quota/u);
+      expect(create("ab")).toBeUndefined();
+    },
+  );
 
-  it("caps one model-controlled write", () => {
+  it.skipIf(!diskQuotaTests)("caps one model-controlled write", () => {
     const workspace = mkdtempSync(path.join(tmpdir(), "qa-workspace-quota-"));
     const root = prepareQaUserWorkspace(workspace, USER_ID);
     expect(

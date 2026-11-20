@@ -4,11 +4,15 @@ Give a part of your product its own expert agent: one persona, one scope, one
 memory namespace, one tool policy — configured in the DSH Web UI and executed
 as an ordinary DeepSeek Harness subagent.
 
-Structured review runs cannot delegate to other agents. Before the first prompt,
-the Host installs an execution guard on the review child's registry: it refuses
-domain delegation and native activation tools, including deployment-owned aliases.
-The reviewer verifies sources with its own read/search tools and completes with
-`structured_output`. Ordinary expert runs retain their configured delegation policy.
+Structured reviewers can delegate verification through the tools available to
+their domain, including deployment-owned aliases. Each delegation returns its
+completed result in the same tool call. Local descendants also wait for their
+children, subject to the Host's depth and capacity limits. The reviewer evaluates
+the returned evidence before submitting `structured_output`.
+
+When the answer review gate requires a tool allow-list, the managed reviewer and
+its local workers also enforce that list at dispatch. Include trusted delegation
+tools by name. External workers cannot accept this scoped policy.
 
 Native structured review output requires a `comparisons` array independently
 of its prose summary. Each document witness names its `source` and `target`
@@ -85,15 +89,40 @@ chat when that session is unavailable.
 The tab lists every domain with its scope counts and degradations. `Edit` — or
 the card itself — opens one in the same pane: identity and status, persona,
 filesystem and knowledge scope, memory namespaces, tool policy, cross-domain
-delegation, model route, the test screen and the run history. The history lists
-every execution of the domain whichever surface started it — a conversation,
-the agents panel or the test screen — with the caller session, the delegation
-path and the outcome. It is read from the host's bounded in-memory audit ring
-(mirrored to the plugin log), so it covers the running process. `All domains`
+delegation, model route, the test screen and the Runs tab. The current-process
+list reads the bounded audit ring and shows the caller session, delegation path
+and outcome. `All domains`
 goes back to the list,
 asking first when the form holds unsaved edits, and `Save` writes the record in
 place. Every domain is an ordinary record in the plugin's storage, no matter who
 created it: there is no built-in expert the UI refuses to change.
+
+### Search execution history
+
+Enable `executionAuditEnabled` in the Domain Experts Host settings, then open a
+domain's **Runs** tab and choose **Search archive**. For example, select
+`review`, `error` and `foreground` to find failed reviews and their durations
+across restarts. The Host operator can also call
+`domainExperts/queryExecutionAudits` with `domainId`, `runId`, `mode`, `status`,
+`execution`, `since`, `beforeId` and `limit`. Use empty strings for unused enum
+filters and zero for unused numeric filters. Pass the returned `nextBeforeId`
+to fetch an older page. The maximum page size is 100.
+
+The archive retains up to 7 days and 10,000 entries per Host home, across all
+domains. Each entry contains an archive-local run ID, event time, domain ID,
+mode, status, foreground or background, and duration in milliseconds. Task
+content, output, retrieved memory, credentials, session IDs and delegation paths
+are excluded. The Host writes foreground outcomes and accepted background
+dispatches. For a background run the duration covers dispatch. Rejections
+before subagent activation and background completion are outside this history.
+
+Committed entries survive restarts when the Host reopens the same
+`<DSH_HOME>/domain-experts-audit.db` file (working directory when no home is set).
+Expiry runs on open, on writes and every 15 minutes while the plugin runs,
+including when a previously enabled archive is disabled. Disabling it stops
+writes and queries. Host log configuration has its own retention and log level,
+and historical log files are never imported. Write failures are reported in the
+plugin log while the expert returns its original result.
 
 ## Tools
 
@@ -126,7 +155,8 @@ the Host serves their form for the `dsh-domain-experts` entry. The
 | `memoryDbPath` | string | `<DSH_HOME>/domain-experts-memory.db` | Database file the `sqlite` memory provider owns. |
 | `perUserMemory` | boolean | `true` | Keep a separate memory namespace per account, in a deployment that has accounts. Takes effect only while the host's accounts surface is mounted. |
 | `recallLimit` | number | `5` | Memory records recalled into an expert's persona. |
-| `auditLimit` | number | `200` | Execution audit entries kept in memory and mirrored to the log. |
+| `auditLimit` | number | `200` | Execution audit entries kept in the current process. |
+| `executionAuditEnabled` | boolean | `false` | Retain bounded execution metadata for the Host operator across restarts. |
 
 ### Where memory lives
 
@@ -159,7 +189,8 @@ storage unit no longer touches memory held by the `sqlite` provider.
 
 What an expert recorded is maintenance data, not a write-once log. The service
 exposes a host-plane seam for it — `ctx.domainExperts.memoryAdmin` — which lists
-every namespace the enabled experts declare, searches one, corrects a record in
+every namespace the enabled experts declare, including existing per-account
+namespaces in the configured memory provider, searches one, corrects a record in
 place, and deletes one record, a named set, or a whole namespace. It is not a
 Remote: a browser must not hold an unauthenticated write endpoint over the store
 that feeds every expert's prompt, so the calling surface — the QA console in
@@ -191,6 +222,87 @@ honours tool cancellation. Cold attribution recovers delegation identity, not
 account memory ownership: `domain_memory` continues to require a live expert
 record, and a cold delegation audit records only the known caller-to-target
 suffix.
+
+## Edit provider scope settings
+
+Open a domain in **Plugins → Domain Experts** and select **Resources**.
+A scope provider can contribute fields for its configuration. Changes use the
+domain's **Save** button. Provider entries without a form, unavailable providers
+and unsupported versions remain visible as read-only entries.
+
+A plugin can supply `configForm` on the provider passed to
+`ctx.domainExperts.registerScopeProvider(provider)`. Form version 1 supports
+`text`, `integer`, `boolean` and `choice` fields. Use a stable field key that
+matches a top-level JSON property. Set `required` for mandatory values and
+supply `options` with values and labels for choices. Use an empty options list
+for other fields. Increment the form's `revision` whenever its contract changes.
+
+```ts
+const configForm = {
+  version: 1,
+  revision: 1,
+  documentVersion: { key: "schemaVersion", current: 2 },
+  fields: [
+    {
+      key: "collection",
+      label: "Collection",
+      kind: "text",
+      required: true,
+      options: [],
+    },
+  ],
+} satisfies ScopeProviderForm
+```
+
+Import the `ScopeProviderForm` type from
+`@yadsh/dsh-domain-experts/types`. Set `documentVersion` to `null` for an
+unversioned document. With a version key, an existing object that lacks it
+receives the current version on the first successful form edit. A document
+with an unrecognized version remains read-only. Forms should describe operator
+settings. Credentials belong in the provider's credential configuration.
+
+The Host applies only edited keys and validates the resulting document with
+the provider's `validate(config)` callback. Clearing an optional field removes
+that key. Unknown fields remain in the document, including the numeric tokens
+of opaque data. Untouched provider documents keep their original bytes. Saving
+an edited provider whose configuration or form revision changed requires
+reopening the domain.
+
+## Import and export a catalog
+
+In the Plugins panel, open Domain Experts and expand **Import or export
+catalog**. Export downloads a UTF-8 JSON document sorted by domain ID. To
+import, choose a file and mode, review the actions for each ID, then apply.
+Only the Host operator can use these operations.
+
+| Mode | Existing ID with different data | New ID | Installed ID absent from file |
+| --- | --- | --- | --- |
+| Merge | Keep installed definition | Add | Keep |
+| Replace | Update the definition | Add | Remove |
+
+Both modes keep unchanged definitions as they are. A preview makes no writes.
+Apply requires the exact file, mode and catalog state from the preview.
+Concurrent edits or a Host restart require a new preview. Each apply publishes
+one durable catalog snapshot, so additions, updates and removals land together.
+
+The envelope has `format: "dsh-domain-catalog"`, `version: 1` and a
+`domains` array, with at most 500 definitions and 512 KiB per document.
+Definitions carry the ID, display fields, persona, built-in filesystem and
+documentation scopes, memory namespace references, tool policy, delegation and
+model selection. Import validates the complete document before planning. An
+unknown version, duplicate ID, unknown field or invalid definition is refused.
+
+Credentials, stored memory, audit records, timestamps and opaque configuration
+under `scope.providers` are outside the transfer format. Replacement retains
+the destination's provider configuration for a matching domain ID. Configure
+providers locally for newly added domains. Export and import also refuse
+recognizable credentials in included text. Review free-text fields before
+sharing an export, since arbitrary private text has no reliable marker.
+Removing a definition leaves its memory records on the Host.
+
+Existing installations read their stored domain rows until the first catalog
+write. From then on storage unit v2 reads the committed snapshot. Back up the
+storage before upgrading if you need to return to an older build.
 
 ## Enforcement model
 

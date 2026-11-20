@@ -33,6 +33,10 @@ function ownsRepairUI(element: Element): boolean {
   }
 }
 
+export function insideRepairUI(node: ParentNode): boolean {
+  return isElement(node) && node.closest(REPAIR_UI_SELECTOR) !== null;
+}
+
 export function matches(element: Element, selector: string): boolean {
   try {
     return element.matches(selector);

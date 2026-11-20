@@ -45,7 +45,9 @@ Two guarantees shape every reader in this package:
 
 - **A malformed artefact never throws.** Wrong types are dropped, absent fields
   are absent, and the view degrades field by field.
-- **A future schema is not an error.** `schemaVersion: 2` parses to
+- Schema v2 retains the v1 analysis fields and can carry producer and auditor
+  metadata. Both versions bind by `trajectory.sessionId`.
+- **A future schema is not an error.** An unrecognized version parses to
   `{ kind: "unknown" }` with an `UNSUPPORTED_SCHEMA` *warning*, so the report and
   the raw JSON remain readable while the semantic view waits for a newer build.
 

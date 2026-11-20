@@ -691,7 +691,11 @@ If the result is larger:
 - use fallback; or
 - deterministic truncate.
 
-### 12.2 Preferred v1: map/reduce chunking
+### 12.2 Evaluated proposal for map/reduce chunking
+
+The [oversized-result benchmark](../benchmarks/oversized-offload.md)
+compares this proposal with the shipped passthrough and with ordered map
+outputs alone. The settings below describe the proposal.
 
 For oversized results:
 
@@ -1767,7 +1771,8 @@ Exit criterion:
 
 ### Phase 4 — oversized payloads
 
-Implement:
+The [benchmark decision](../benchmarks/oversized-offload.md) supersedes the
+original scope of this phase.
 
 - chunking;
 - bounded parallel map;

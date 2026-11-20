@@ -1,47 +1,94 @@
-import type { DomainDefinition } from "../types.js";
+import { randomBytes } from "node:crypto";
+import type {
+  CatalogImportMode,
+  CatalogPreview,
+  DomainDefinition,
+} from "../types.js";
+import {
+  exportCatalog,
+  prepareCatalogWrite,
+  previewCatalog,
+} from "./catalog-transfer.js";
 import { DomainExpertsError } from "./errors.js";
 import {
   assertValidDomain,
-  normalizeDomainDefinition,
   parseDomainDefinition,
   summarizeDomain,
   validateDomainDefinition,
   type ValidationIssue,
 } from "./schema.js";
-import type { DomainTable } from "./storage.js";
+import type { CatalogStore } from "./storage.js";
 import type { DomainSummary } from "../types.js";
 
+type PrepareDefinition = (
+  draft: DomainDefinition,
+  existing: DomainDefinition | undefined,
+) => DomainDefinition;
+
 /**
- * CRUD over the durable domain table.
+ * CRUD and imports over the durable catalog.
  *
  * The registry owns identity rules: an id is assigned on create and never
  * changes, `createdAt` survives updates, and `updatedAt` is stamped from the
  * injected clock so tests are deterministic. Reads are synchronous — the
- * storage layer keeps authoritative state in memory and every write awaits
- * durability before it mutates that state.
+ * storage layer keeps the last committed snapshot in memory. A single queue
+ * holds the read and commit together across both CRUD and bulk imports.
  */
 export class DomainRegistry {
-  private readonly table: DomainTable;
+  private readonly store: CatalogStore;
   private readonly now: () => number;
+  private readonly previewKey = randomBytes(32);
+  private writes: Promise<unknown> = Promise.resolve();
 
-  constructor(table: DomainTable, now: () => number = Date.now) {
-    this.table = table;
+  constructor(store: CatalogStore, now: () => number = Date.now) {
+    this.store = store;
     this.now = now;
+  }
+
+  private enqueue<T>(write: () => Promise<T>): Promise<T> {
+    const result = this.writes.then(write);
+    this.writes = result.catch(() => undefined);
+    return result;
   }
 
   /** Every domain, ordered by display name then id. */
   list(): readonly DomainDefinition[] {
-    const out: DomainDefinition[] = [];
-    for (const [, record] of this.table.entries()) out.push(record);
-    return out.sort(compareDomains);
+    return [...this.store.read().values()].sort(compareDomains);
   }
 
   get(id: string): DomainDefinition | undefined {
-    return this.table.get(id);
+    return this.store.read().get(id);
   }
 
   has(id: string): boolean {
-    return this.table.get(id) !== undefined;
+    return this.store.read().has(id);
+  }
+
+  exportCatalog(): string {
+    return exportCatalog(this.store.read());
+  }
+
+  previewImport(document: string, mode: CatalogImportMode): CatalogPreview {
+    return previewCatalog(this.previewKey, this.store.read(), document, mode);
+  }
+
+  applyImport(
+    document: string,
+    mode: CatalogImportMode,
+    token: string,
+  ): Promise<number> {
+    return this.enqueue(async () => {
+      const { next, changed } = prepareCatalogWrite(
+        this.previewKey,
+        this.store.read(),
+        document,
+        mode,
+        token,
+        this.now(),
+      );
+      if (changed !== 0) await this.store.write(next);
+      return changed;
+    });
   }
 
   summaries(
@@ -72,26 +119,24 @@ export class DomainRegistry {
     return { definition, issues, message: "" };
   }
 
-  async create(input: unknown): Promise<DomainDefinition> {
+  async create(
+    input: unknown,
+    prepare?: PrepareDefinition,
+  ): Promise<DomainDefinition> {
     const parsed = parseDomainDefinition(input, this.now());
     assertValidDomain(parsed);
-    if (this.has(parsed.id)) {
-      throw new DomainExpertsError(
-        "DOMAIN_EXISTS",
-        `Domain "${parsed.id}" already exists.`,
-        {
-          refs: [parsed.id],
-        },
-      );
-    }
-    const now = this.now();
-    const record = normalizeDomainDefinition({
-      ...parsed,
-      createdAt: now,
-      updatedAt: now,
+    return this.enqueue(async () => {
+      if (this.has(parsed.id)) {
+        throw new DomainExpertsError(
+          "DOMAIN_EXISTS",
+          `Domain "${parsed.id}" already exists.`,
+          { refs: [parsed.id] },
+        );
+      }
+      const now = this.now();
+      const record = prepare?.(parsed, undefined) ?? parsed;
+      return this.put({ ...record, createdAt: now, updatedAt: now });
     });
-    await this.table.put(record.id, record);
-    return record;
   }
 
   /**
@@ -99,44 +144,56 @@ export class DomainRegistry {
    * itself editable — a rename would invalidate every delegation target and
    * memory namespace that references it.
    */
-  async update(input: unknown): Promise<DomainDefinition> {
+  async update(
+    input: unknown,
+    prepare?: PrepareDefinition,
+  ): Promise<DomainDefinition> {
     const parsed = parseDomainDefinition(input, this.now());
-    const existing = this.table.get(parsed.id);
-    if (existing === undefined) {
-      throw new DomainExpertsError(
-        "DOMAIN_NOT_FOUND",
-        `Domain "${parsed.id}" does not exist.`,
-        { refs: [parsed.id] },
-      );
-    }
-    assertValidDomain(parsed);
-    const record = normalizeDomainDefinition({
-      ...parsed,
-      createdAt: existing.createdAt,
-      updatedAt: this.now(),
+    return this.enqueue(async () => {
+      const existing = this.get(parsed.id);
+      if (existing === undefined) {
+        throw new DomainExpertsError(
+          "DOMAIN_NOT_FOUND",
+          `Domain "${parsed.id}" does not exist.`,
+          { refs: [parsed.id] },
+        );
+      }
+      assertValidDomain(parsed);
+      const record = prepare?.(parsed, existing) ?? parsed;
+      return this.put({
+        ...record,
+        createdAt: existing.createdAt,
+        updatedAt: this.now(),
+      });
     });
-    await this.table.put(record.id, record);
-    return record;
   }
 
-  async setEnabled(id: string, enabled: boolean): Promise<DomainDefinition> {
-    const existing = this.require(id);
-    if (existing.enabled === enabled) return existing;
-    const record = normalizeDomainDefinition({
-      ...existing,
-      enabled,
-      updatedAt: this.now(),
+  setEnabled(id: string, enabled: boolean): Promise<DomainDefinition> {
+    return this.enqueue(async () => {
+      const existing = this.require(id);
+      if (existing.enabled === enabled) return existing;
+      return this.put({ ...existing, enabled, updatedAt: this.now() });
     });
-    await this.table.put(record.id, record);
-    return record;
   }
 
-  async remove(id: string): Promise<boolean> {
-    return this.table.delete(id);
+  remove(id: string): Promise<boolean> {
+    return this.enqueue(async () => {
+      const next = new Map(this.store.read());
+      if (!next.delete(id)) return false;
+      await this.store.write(next);
+      return true;
+    });
+  }
+
+  private async put(record: DomainDefinition): Promise<DomainDefinition> {
+    const next = new Map(this.store.read());
+    next.set(record.id, record);
+    await this.store.write(next);
+    return record;
   }
 
   require(id: string): DomainDefinition {
-    const record = this.table.get(id);
+    const record = this.get(id);
     if (record === undefined) {
       throw new DomainExpertsError(
         "DOMAIN_NOT_FOUND",
@@ -163,7 +220,7 @@ export class DomainRegistry {
   }
 
   knownIds(): readonly string[] {
-    return [...this.table.keys()].sort();
+    return [...this.store.read().keys()].sort();
   }
 }
 

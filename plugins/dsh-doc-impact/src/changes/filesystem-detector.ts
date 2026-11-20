@@ -1,4 +1,5 @@
 import { glob } from "tinyglobby";
+import { assertSupportedGlob } from "../config/glob.js";
 import { isGlobPattern } from "../graph/selectors.js";
 import { hashFile } from "../utils/hashing.js";
 import type {
@@ -25,6 +26,7 @@ function enumerationPatterns(
 ): string[] {
   const patterns: string[] = [];
   for (const pattern of unionIncludePatterns(selectors)) {
+    assertSupportedGlob(pattern);
     patterns.push(pattern);
     if (!isGlobPattern(pattern)) patterns.push(`${pattern}/**`);
   }
@@ -41,6 +43,7 @@ async function enumerateTracked(
     patterns,
     cwd,
     dot: true,
+    extglob: false,
     onlyFiles: true,
     followSymbolicLinks: false,
     expandDirectories: false,

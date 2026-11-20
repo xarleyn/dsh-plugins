@@ -8,6 +8,7 @@ export const DEFAULT_MEMORY_PROVIDER = "builtin";
 
 /** File the `sqlite` memory provider uses when the deployment names none. */
 export const DEFAULT_MEMORY_DB_FILE = "domain-experts-memory.db";
+const EXECUTION_AUDIT_DB_FILE = "domain-experts-audit.db";
 
 /**
  * Deployment-level plugin configuration (design §23).
@@ -49,6 +50,8 @@ export interface Config {
   readonly recallLimit?: number;
   /** Execution audit entries kept in memory and mirrored to the log. */
   readonly auditLimit?: number;
+  /** Allow the Host operator to retain and query bounded execution metadata. */
+  readonly executionAuditEnabled?: boolean;
 }
 
 /**
@@ -106,6 +109,8 @@ export interface ResolvedConfig {
   readonly perUserMemory: boolean;
   readonly recallLimit: number;
   readonly auditLimit: number;
+  readonly executionAuditEnabled: boolean;
+  readonly executionAuditDbPath: string;
 }
 
 export const ConfigSchema: z<Config, LiveConfig> = z.object({
@@ -167,8 +172,13 @@ export const ConfigSchema: z<Config, LiveConfig> = z.object({
   auditLimit: z
     .natural()
     .default(200)
+    .description("Execution audit entries kept in the current process.")
+    .volatile(),
+  executionAuditEnabled: z
+    .boolean()
+    .default(false)
     .description(
-      "Execution audit entries kept in memory and mirrored to the log.",
+      "Retain execution metadata for the Host operator for up to 7 days and 10,000 runs.",
     )
     .volatile(),
 });
@@ -213,6 +223,8 @@ export function resolveConfig(entry: Config = {}): ResolvedConfig {
     perUserMemory: entry.perUserMemory ?? true,
     recallLimit,
     auditLimit: Math.max(1, auditLimit),
+    executionAuditEnabled: entry.executionAuditEnabled ?? false,
+    executionAuditDbPath: path.resolve(base, EXECUTION_AUDIT_DB_FILE),
   };
 }
 

@@ -9,6 +9,10 @@
 import type { ClientRemote } from "@deepseek-ai/dsh-api-gateway/client";
 import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
 import type {
+  CatalogApplyResult,
+  CatalogExportResult,
+  CatalogImportMode,
+  CatalogPreviewResult,
   AuditListResult,
   CatalogResult,
   DomainDeleteResult,
@@ -17,13 +21,26 @@ import type {
   DomainListResult,
   DomainWriteResult,
   DraftInspectionResult,
+  ExecutionAuditQuery,
+  ExecutionAuditResult,
   ExpertRunResult,
   MemoryClearResult,
   MemoryInspectResult,
   ResolvedScopeResult,
+  ScopeProviderFormEdit,
 } from "../types.js";
 
 export interface DomainExpertsRemote {
+  exportCatalog(): Promise<RemoteResult<CatalogExportResult>>;
+  previewCatalogImport(
+    document: string,
+    mode: CatalogImportMode,
+  ): Promise<RemoteResult<CatalogPreviewResult>>;
+  applyCatalogImport(
+    document: string,
+    mode: CatalogImportMode,
+    token: string,
+  ): Promise<RemoteResult<CatalogApplyResult>>;
   listDomains(): Promise<RemoteResult<DomainListResult>>;
   getDomain(domainId: string): Promise<RemoteResult<DomainGetResult>>;
   draftDomain(domainId: string): Promise<RemoteResult<DomainWriteResult>>;
@@ -35,6 +52,11 @@ export interface DomainExpertsRemote {
   ): Promise<RemoteResult<DomainWriteResult>>;
   updateDomain(
     definition: DomainDefinition,
+  ): Promise<RemoteResult<DomainWriteResult>>;
+  saveDomainFromEditor(
+    definition: DomainDefinition,
+    create: boolean,
+    providerEdits: readonly ScopeProviderFormEdit[],
   ): Promise<RemoteResult<DomainWriteResult>>;
   setDomainEnabled(
     domainId: string,
@@ -59,6 +81,9 @@ export interface DomainExpertsRemote {
     structuredOutput?: boolean,
   ): Promise<RemoteResult<ExpertRunResult>>;
   recentAudits(limit: number): Promise<RemoteResult<AuditListResult>>;
+  queryExecutionAudits(
+    query: ExecutionAuditQuery,
+  ): Promise<RemoteResult<ExecutionAuditResult>>;
 }
 
 /** The assembled Client Remote plus this plugin's own namespace. */

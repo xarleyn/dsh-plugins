@@ -11,6 +11,7 @@ import {
 } from "../shared/config.js";
 import { UIRepairCardEntry, type CardFace } from "./card.js";
 import { UIRepairRuntime, type ClientLogger } from "./runtime.js";
+import { bindRepairInventory } from "./repair/inventory.js";
 import { styles } from "./styles.js";
 import type { UIRepairConfig, UIRepairService } from "./types.js";
 
@@ -45,7 +46,8 @@ export function apply(ctx: Context, options: ClientOptions = {}): () => void {
   );
   let started = false;
   const syncConfig = () => {
-    const resolved = resolvePluginConfig(form.getSnapshot().value ?? {});
+    const snapshot = form.getSnapshot();
+    const resolved = resolvePluginConfig(snapshot.value ?? {});
     runtime.configure({
       enabled: resolved.enabled,
       mode: resolved.mode,
@@ -56,6 +58,7 @@ export function apply(ctx: Context, options: ClientOptions = {}): () => void {
       observeResize: resolved.scanAfterResize,
       ignore: resolved.ignore,
     });
+    runtime.setRecipes(snapshot.status === "ready" ? resolved.recipes : []);
     if (started && resolved.enabled) {
       void runtime.scan().catch(() => undefined);
     }
@@ -63,6 +66,9 @@ export function apply(ctx: Context, options: ClientOptions = {}): () => void {
   syncConfig();
   const unsubscribe = form.subscribe(syncConfig);
   const removeService = ctx.provide("uiRepair", runtime);
+  const removeInventory = bindRepairInventory(ctx, (versions) =>
+    runtime.setPluginVersions(versions),
+  );
   runtime.start();
   started = true;
   const face: CardFace = { settings: form, runtime };
@@ -84,6 +90,7 @@ export function apply(ctx: Context, options: ClientOptions = {}): () => void {
     removeCard();
     removeStyles();
     unsubscribe();
+    removeInventory();
     runtime.dispose();
     void removeService();
   };

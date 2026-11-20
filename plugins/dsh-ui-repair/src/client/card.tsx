@@ -17,6 +17,7 @@ import {
 } from "../shared/config.js";
 import type { UIRepairRuntime } from "./runtime.js";
 import type { RepairIssue } from "./types.js";
+import { RecipeControls } from "./RecipeControls.js";
 
 /**
  * The one-liner this row answers the seat's `summary` view with.
@@ -206,7 +207,7 @@ export function UIRepairCard({ settings, runtime }: CardProps) {
           <h3 className="uir-section-title">Policy</h3>
           <Toggle
             title="Enabled"
-            description="Disabling restores all temporary repairs and stops observation."
+            description="Disabling rolls back applied repairs and stops observation."
             checked={config.enabled}
             disabled={!writable}
             testId="repair-toggle-enabled"
@@ -315,7 +316,7 @@ export function UIRepairCard({ settings, runtime }: CardProps) {
             type="button"
             data-testid="repair-rollback"
             onClick={() => {
-              runtime.rollbackAll();
+              runtime.rollbackTemporary();
             }}
           >
             Roll back temporary repairs
@@ -419,6 +420,15 @@ export function UIRepairCard({ settings, runtime }: CardProps) {
           </>
         )}
       </section>
+
+      {settingsReady ? (
+        <RecipeControls
+          settings={settings}
+          runtime={runtime}
+          recipes={config.recipes}
+          writable={writable && snapshot.revision !== undefined}
+        />
+      ) : null}
 
       {settingsReady ? (
         <section className="uir-section">

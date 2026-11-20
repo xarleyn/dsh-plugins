@@ -70,8 +70,13 @@ exists; it does not infer ownership from one CSS class name.
 and already used in upstream DSH clients. The initial implementation uses one
 mutation observer with a bounded attribute filter and queues only affected
 roots on the next animation frame. Each root scan stops after a configurable
-element cap (300 by default). Resize-driven rescans remain a follow-up because
-they need a root subscription ledger to avoid broad observation.
+element cap (300 by default). Commit `98be602d` added the bounded root
+subscriptions proposed here. With `observeResize` enabled and a browser
+`ResizeObserver` available, the [runtime](../src/client/runtime.ts) watches up to
+80 connected roots, drops detached roots on refresh and queues the affected
+targets. The [lifecycle test](../tests/runtime-lifecycle.test.ts) drives
+observer notifications with a test double. Browser layout and frame timing
+require a real browser measurement.
 
 ## Non-public assumptions
 

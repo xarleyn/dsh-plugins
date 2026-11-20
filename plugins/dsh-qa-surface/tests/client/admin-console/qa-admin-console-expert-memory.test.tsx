@@ -63,7 +63,7 @@ function rig(scopes = SCOPES, records = RECORDS) {
   // Namespace-aware like the store: a page that answered every namespace with
   // the same rows would hide a picker that switched to nothing.
   const memoryRecords = vi.fn(async (_token: string, namespace: string) => {
-    const rows = namespace === "domain/payments" ? records : [];
+    const rows = records.filter((record) => record.namespace === namespace);
     return {
       ok: true as const,
       value: { records: rows, total: rows.length, offset: 0, limit: 25 },
@@ -106,6 +106,40 @@ function rig(scopes = SCOPES, records = RECORDS) {
 }
 
 describe("admin console expert memory", () => {
+  it("opens stored account memory when the common namespace is empty and respects an explicit empty selection", async () => {
+    const accountNamespace = "domain/payments/u/account-a";
+    const { api, memoryRecords } = rig(
+      [
+        { ...SCOPES[0]!, records: 0 },
+        { ...SCOPES[0]!, namespace: accountNamespace, records: 2 },
+      ],
+      RECORDS.map((record) => ({ ...record, namespace: accountNamespace })),
+    );
+    renderConsole(api, "/qa/admin/memory");
+    await screen.findAllByTestId("qa-admin-memory-row", {}, MOUNT_TIMEOUT);
+    const picker = screen.getByTestId("qa-admin-memory-expert");
+    expect((picker as HTMLSelectElement).value).toBe(accountNamespace);
+    expect(memoryRecords).toHaveBeenLastCalledWith(
+      TOKEN,
+      accountNamespace,
+      "",
+      25,
+      0,
+    );
+    fireEvent.change(picker, { target: { value: "domain/payments" } });
+    await waitFor(() => {
+      expect(memoryRecords).toHaveBeenLastCalledWith(
+        TOKEN,
+        "domain/payments",
+        "",
+        25,
+        0,
+      );
+      expect(screen.queryAllByTestId("qa-admin-memory-row")).toHaveLength(0);
+    }, MOUNT_TIMEOUT);
+    expect((picker as HTMLSelectElement).value).toBe("domain/payments");
+  });
+
   it("opens on the first expert and lists what it remembered", async () => {
     const { api, memoryRecords } = rig();
     renderConsole(api, "/qa/admin/memory");

@@ -87,8 +87,14 @@ bounded parent context; payload/output validation; `original`/`truncate`/
 `error` fallbacks; worker timeout; non-blocking concurrency bounds; recursion
 guards; structured telemetry and `stats()`; optional annotation marker.
 
-**Deferred (deliberately):** map/reduce chunking of oversized payloads
-(results above `payload.maxBytes` pass through); `delegate_microtask` manual
+**Oversized results.** Above `payload.maxBytes`, deliver the complete result
+and make zero worker calls. Across six oversized fixtures the original
+delivered all 36 citation/quote pairs. Ordered chunk summaries delivered
+10 or 15 depending on chunk size, and an additional reducer delivered 9 or 12.
+Keep passthrough under the existing 95% evidence-retention target.
+[Benchmark and decision](docs/benchmarks/oversized-offload.md)
+
+**Deferred (deliberately):** `delegate_microtask` manual
 delegation tool; Code Mode (`run_code`) nested-dispatch transformation;
 adaptive routing and dynamic thresholds; batching sibling reads; worker result
 caching/deduplication; multimodal workers; `reasoningEffort` knob (not
@@ -125,7 +131,7 @@ status tool.
 | Non-blocking concurrency bounds | Implemented |
 | Recursion guards (label + no-tools + session origin) | Implemented |
 | Structured telemetry + `stats()` | Implemented |
-| Map/reduce chunking | Planned |
+| Map/reduce chunking | Evaluated, oversized results pass through |
 | `delegate_microtask` manual tool | Planned |
 | Code Mode nested dispatch transformation | Planned |
-| Benchmark/eval harness | Planned |
+| Oversized-result benchmark | Implemented for source, search and log fixtures with a local inference endpoint |

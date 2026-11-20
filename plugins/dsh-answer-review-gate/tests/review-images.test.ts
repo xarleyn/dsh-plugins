@@ -44,7 +44,7 @@ describe("domain reviewer image input", () => {
     const testExpert = vi.fn();
     const backend = createDomainExpertBackend({ face: { testExpert }, config });
     await expect(backend.review(input)).rejects.toMatchObject({
-      reason: "expert-image-input-unavailable",
+      reason: "review-budget-unavailable",
     });
     expect(testExpert).not.toHaveBeenCalled();
   });
@@ -55,21 +55,29 @@ describe("domain reviewer image input", () => {
     const tasks: string[] = [];
     const face: DomainExpertsFace = {
       testExpert,
-      reviewExpert: vi.fn(async (domain, task, parent, suppliedImages) => {
-        expect(domain).toBe(config.domain);
-        expect(parent).toBe(input.sessionId);
-        expect(suppliedImages).toEqual(images);
-        tasks.push(task);
-        return {
-          ok: true,
-          code: "",
-          message: "",
-          result:
-            tasks.length === 1
-              ? { ...result, structured: false, diagnostic: "" }
-              : result,
-        };
-      }),
+      reviewExpertBounded: vi.fn(
+        async (domain, task, parent, suppliedImages, budget) => {
+          expect(domain).toBe(config.domain);
+          expect(parent).toBe(input.sessionId);
+          expect(suppliedImages).toEqual(images);
+          expect(budget).toEqual({
+            maxToolCalls: 0,
+            maxConsecutiveRefusals: 0,
+            timeoutMs: 0,
+            signal: input.signal,
+          });
+          tasks.push(task);
+          return {
+            ok: true,
+            code: "",
+            message: "",
+            result:
+              tasks.length === 1
+                ? { ...result, structured: false, diagnostic: "" }
+                : result,
+          };
+        },
+      ),
     };
     try {
       const candidateText = `${"Complete answer. ".repeat(1500)}Last screenshot finding.`;

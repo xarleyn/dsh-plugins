@@ -4,6 +4,7 @@ import {
   mkdtempSync,
   readFileSync,
   symlinkSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -108,6 +109,24 @@ describe("deployment shared skill promotion", () => {
     ).toBe(false);
   });
 
+  it("retries after an operator removes a colliding file", () => {
+    const { service, workspace } = fixture();
+    const shared = path.join(workspace, ".dsh", "skills");
+    const target = path.join(shared, "proposal");
+    mkdirSync(shared, { recursive: true });
+    writeFileSync(target, "Operator file.");
+
+    const scope = { shared: true } as const;
+    expect(service.list(scope).map(({ name }) => name)).toEqual([
+      "release-notes",
+      "tables",
+    ]);
+    expect(readFileSync(target, "utf8")).toBe("Operator file.");
+    expect(existsSync(path.join(shared, ".seeded-proposal"))).toBe(false);
+    unlinkSync(target);
+    expect(service.get(scope, "proposal").body).toBe("Original instructions.");
+  });
+
   it("retries a missing seed without hiding the remaining catalog", () => {
     const { options, root } = fixture();
     const rig = serviceFor({
@@ -126,6 +145,90 @@ describe("deployment shared skill promotion", () => {
       "missing",
       "tables",
     ]);
+  });
+
+  it.each([
+    ["missing", undefined],
+    ["malformed", "Operator notes without frontmatter."],
+    [
+      "oversized",
+      skillText(["name: proposal", "description: Large."], "X".repeat(300_000)),
+    ],
+  ] as const)("adopts a %s operator skill only after repair", (_, initial) => {
+    const { workspace, options, service } = fixture();
+    const scope = { shared: true } as const;
+    const shared = path.join(workspace, ".dsh", "skills");
+    const target = path.join(shared, "proposal");
+    const manifest = path.join(target, "SKILL.md");
+    const receipt = path.join(shared, ".seeded-proposal");
+    mkdirSync(target, { recursive: true });
+    if (initial !== undefined) writeFileSync(manifest, initial);
+    service.list(scope);
+    expect(existsSync(receipt)).toBe(false);
+    if (initial === undefined) expect(existsSync(manifest)).toBe(false);
+    else expect(readFileSync(manifest, "utf8")).toBe(initial);
+
+    writeFileSync(
+      manifest,
+      skillText(
+        ["name: proposal", "description: Repaired."],
+        "Operator content.",
+      ),
+    );
+    const restarted = serviceFor(options).service;
+    const doc = restarted.get(scope, "proposal");
+    expect(doc.body).toBe("Operator content.");
+    expect(existsSync(receipt)).toBe(true);
+    restarted.update(scope, doc.name, {
+      ...doc,
+      name: "renamed",
+      expectedRevision: doc.revision,
+    });
+    const afterRename = serviceFor(options).service;
+    expect(afterRename.has(scope, "proposal")).toBe(false);
+    expect(afterRename.get(scope, "renamed").body).toBe("Operator content.");
+  });
+
+  it("retries a linked directory after its removal without adopting or editing its destination", () => {
+    const { workspace, options, service } = fixture();
+    const scope = { shared: true } as const;
+    const shared = path.join(workspace, ".dsh", "skills");
+    const other = path.join(shared, "operator");
+    const target = path.join(shared, "proposal");
+    mkdirSync(other, { recursive: true });
+    const original = skillText([
+      "name: operator",
+      "description: Operator skill.",
+    ]);
+    writeFileSync(path.join(other, "SKILL.md"), original);
+    symlinkSync(other, target, "junction");
+    service.list(scope);
+    expect(existsSync(path.join(shared, ".seeded-proposal"))).toBe(false);
+    expect(readFileSync(path.join(other, "SKILL.md"), "utf8")).toBe(original);
+    unlinkSync(target);
+    expect(serviceFor(options).service.get(scope, "proposal").body).toBe(
+      "Original instructions.",
+    );
+  });
+
+  it("publishes a broken deployment skill only after its manifest is repaired", () => {
+    const { workspace, root, options, service } = fixture();
+    const scope = { shared: true } as const;
+    const shared = path.join(workspace, ".dsh", "skills");
+    const manifest = path.join(root, "proposal", "SKILL.md");
+    const original = readFileSync(manifest);
+    writeFileSync(manifest, "Invalid deployment instructions.");
+    expect(service.list(scope).map(({ name }) => name)).toEqual([
+      "release-notes",
+      "tables",
+    ]);
+    expect(existsSync(path.join(shared, "proposal"))).toBe(false);
+    expect(existsSync(path.join(shared, ".seeded-proposal"))).toBe(false);
+    writeFileSync(manifest, original);
+    expect(serviceFor(options).service.get(scope, "proposal").body).toBe(
+      "Original instructions.",
+    );
+    expect(existsSync(path.join(shared, ".seeded-proposal"))).toBe(true);
   });
 
   it("rejects linked resource trees without publishing a partial skill", () => {

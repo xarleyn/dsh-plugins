@@ -6,6 +6,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import QaSurface, { name, resolveConfig } from "../lib/index.js";
+import { TYPERT } from "@yadsh/dsh-qa-surface/typert";
+import remoteClient from "@yadsh/dsh-qa-surface/remote";
 import { verifyPluginCardContract } from "../../../scripts/verify-plugin-card-contract.mjs";
 
 const root = new URL("../", import.meta.url);
@@ -45,6 +47,7 @@ const required = [
   "scripts/repair-session-events.mjs",
   "scripts/attach-workspace-sessions.mjs",
   "cordis.patch.yml",
+  "deploy/qa-lan.patch.yml",
   "compatibility.json",
   "capability-policy.json",
   "README.md",
@@ -132,11 +135,28 @@ assert.match(patch, /id:\s*dsh-qa-surface/u);
 assert.match(patch, /name:\s*"@yadsh\/dsh-qa-surface"/u);
 
 const host = await readFile(new URL("lib/index.js", root), "utf8");
-// The workspace browser's Host half: the three fenced read methods the panel
-// calls, plus the in-process documents lookup the preview converts through.
+// A reader must be callable by the same wire name and arguments on both faces.
+for (const [method, args] of Object.entries({
+  readSourceFile: ["sourcePath", "selection"],
+  readSourceImage: ["sourcePath", "imagePath"],
+  readWorkspaceFile: ["path"],
+  readWorkspaceFileChunk: ["path", "offset", "version", "sha256Prefix"],
+  previewWorkspaceDocument: ["path", "selection"],
+})) {
+  const wire = `qaSurface/${method}`;
+  const id = `${manifest.name}#${wire}`;
+  const hostMethod = TYPERT.invocations.find((entry) => entry.id === id);
+  for (const descriptor of [hostMethod, remoteClient.methods[wire]]) {
+    assert.equal(descriptor?.id, id, `missing resource reader ${wire}`);
+    assert.deepEqual(
+      descriptor.parameters.map((param) => param.name),
+      ["token", "sessionId", ...args],
+      wire,
+    );
+  }
+  assert.equal(typeof QaSurface.prototype[method], "function", wire);
+}
 assert.match(host, /listWorkspaceFiles/u);
-assert.match(host, /readWorkspaceFile/u);
-assert.match(host, /previewWorkspaceDocument/u);
 assert.match(host, /"documents"/u);
 const admission = await readFile(
   new URL("lib/secure-session.js", root),

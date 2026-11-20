@@ -16,7 +16,7 @@ import {
 import type { DomainDefinition } from "../src/types.js";
 import {
   domainOf,
-  domainTableOf,
+  catalogOf,
   fixedClock,
   memoryRecordTableOf,
 } from "./helpers/fakes.js";
@@ -59,7 +59,7 @@ export interface Fixture {
 export function fixtureOf(definitions: readonly DomainDefinition[]): Fixture {
   const clock = fixedClock();
   const domains = new DomainRegistry(
-    domainTableOf(
+    catalogOf(
       definitions.map((definition) => [definition.id, definition] as const),
     ),
     clock,

@@ -1,4 +1,5 @@
 import type { Volatile } from "@deepseek-ai/cordis";
+import type { RepairRecipe } from "./recipes.js";
 
 /**
  * Settings namespace of the browser card. In `0.1.7` the Host derives the
@@ -53,6 +54,7 @@ export interface UIRepairPluginConfig {
   readonly scanAfterMutation?: boolean;
   readonly scanAfterResize?: boolean;
   readonly ignore?: readonly UIRepairIgnoreRule[];
+  readonly recipes?: readonly RepairRecipe[];
 }
 
 /**
@@ -69,6 +71,7 @@ export interface UIRepairVolatileConfig {
   readonly scanAfterMutation: Volatile<boolean>;
   readonly scanAfterResize: Volatile<boolean>;
   readonly ignore: Volatile<readonly UIRepairIgnoreRule[]>;
+  readonly recipes: Volatile<readonly RepairRecipe[]>;
 }
 
 export interface ResolvedUIRepairPluginConfig {
@@ -80,6 +83,7 @@ export interface ResolvedUIRepairPluginConfig {
   readonly scanAfterMutation: boolean;
   readonly scanAfterResize: boolean;
   readonly ignore: readonly UIRepairIgnoreRule[];
+  readonly recipes: readonly RepairRecipe[];
 }
 
 export const DEFAULT_PLUGIN_CONFIG: ResolvedUIRepairPluginConfig =
@@ -92,6 +96,7 @@ export const DEFAULT_PLUGIN_CONFIG: ResolvedUIRepairPluginConfig =
     scanAfterMutation: true,
     scanAfterResize: true,
     ignore: Object.freeze([]),
+    recipes: Object.freeze([]),
   });
 
 function normalizedConfidence(
@@ -137,6 +142,7 @@ export function resolveVolatileConfig(
     scanAfterMutation: config.scanAfterMutation.get(),
     scanAfterResize: config.scanAfterResize.get(),
     ignore: config.ignore.get(),
+    recipes: config.recipes.get(),
   });
 }
 
@@ -166,5 +172,6 @@ export function resolvePluginConfig(
     scanAfterResize:
       config.scanAfterResize ?? DEFAULT_PLUGIN_CONFIG.scanAfterResize,
     ignore: normalizedIgnore(config.ignore),
+    recipes: config.recipes ?? [],
   };
 }

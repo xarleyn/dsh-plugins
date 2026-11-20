@@ -38,7 +38,7 @@ import {
 } from "./host/resolver.js";
 import { summarizeDomain } from "./host/schema.js";
 import {
-  domainsTableOf,
+  catalogStoreOf,
   memoryTableOf,
   type DomainExpertsStorage,
 } from "./host/storage.js";
@@ -232,7 +232,7 @@ export class CatalogStores {
       const storage = await this.options.openUnit();
       const handles: StorageHandles = {
         storage,
-        domains: new DomainRegistry(domainsTableOf(storage)),
+        domains: new DomainRegistry(catalogStoreOf(storage)),
         memory: memoryTableOf(storage),
       };
       this.importMemory(handles);

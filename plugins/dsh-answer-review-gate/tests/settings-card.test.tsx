@@ -12,7 +12,7 @@ import type { AnswerReviewGateConfig } from "../src/config.js";
 import { ReviewSettingsCard, ReviewSettingsEntry } from "../src/client/card.js";
 
 afterEach(cleanup);
-function fixture(writable = true) {
+function fixture(writable = true, enforceAllowedTools = false) {
   const state = {
     status: "ready",
     writable,
@@ -21,7 +21,7 @@ function fixture(writable = true) {
       reviewTimeoutMs: 300000,
       maxConsecutiveRefusalsPerRound: 5,
       maxReviewRounds: 3,
-      reviewer: { roundTimeoutMs: 600000 },
+      reviewer: { roundTimeoutMs: 600000, enforceAllowedTools },
       failMode: "warn",
     },
   };
@@ -34,6 +34,20 @@ function fixture(writable = true) {
   return { settingsForm, mutate };
 }
 describe("review settings card", () => {
+  it.each([
+    [false, /allow-list is advisory/],
+    [true, /requires the tool allow-list/],
+  ] as const)(
+    "shows the configured tool boundary when enforcement is %s",
+    (enforced, description) => {
+      render(
+        <ReviewSettingsCard
+          settingsForm={fixture(true, enforced).settingsForm}
+        />,
+      );
+      expect(screen.getByText(description)).toBeTruthy();
+    },
+  );
   it("shows seconds and commits milliseconds through the profile form", async () => {
     const f = fixture();
     render(<ReviewSettingsCard settingsForm={f.settingsForm} />);

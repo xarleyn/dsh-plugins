@@ -133,6 +133,38 @@ it("deleting the active chat falls back to a draft without creating a session", 
   controller.dispose();
 });
 
+it("clears a deleted account chat even when explicit session reset is disabled", async () => {
+  const world = harness();
+  const controller = new QaSessionController({
+    ...world,
+    config: resolveConfig(),
+    accounts: {
+      token: () => "fixture-account-token",
+      ownedIds: () => ["created-1"],
+      messageAuthorOf: () => undefined,
+      onSessionCreated: () => {},
+      onAuthRequired: () => {},
+    },
+  });
+  try {
+    await controller.ensureSession();
+    expect(await controller.send("QA fixture prompt")).toBe(true);
+    expect(controller.getSnapshot().sessionId).toBe("created-1");
+    await controller.deleteChat("created-1");
+    expect(controller.getSnapshot()).toMatchObject({
+      phase: "idle",
+      sessionId: null,
+      messages: [],
+    });
+    expect(world.stored.has("dsh-qa-surface.session:v1:/qa:session")).toBe(
+      false,
+    );
+    expect(world.create).toHaveBeenCalledOnce();
+  } finally {
+    controller.dispose();
+  }
+});
+
 describe("attestation races", () => {
   it("does not relay a prompt into a chat switched to mid-attestation", async () => {
     const world = harness(["saved", "chat-b"]);

@@ -40,6 +40,7 @@ export type {
 export { LlamaCppBackend } from "./backends/llama-cpp/backend.js";
 export { SingleSlotCoordinator } from "./coordinator/coordinator.js";
 export { SnapshotRepository } from "./snapshots/repository.js";
+export type { RetentionReport } from "./snapshots/retention.js";
 export { snapshotFilename } from "./snapshots/naming.js";
 
 declare module "@deepseek-ai/cordis" {

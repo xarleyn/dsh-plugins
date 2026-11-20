@@ -1,8 +1,40 @@
-import { describe, expect, it } from "vitest";
-import { createHarness, run } from "../fixtures/harness.js";
+import { describe, expect, it, vi } from "vitest";
+import { buildIdentity, createHarness, run } from "../fixtures/harness.js";
+import { snapshotGenerations } from "../../src/snapshots/naming.js";
 import { KvRestoreFailedError } from "../../src/errors.js";
 
 describe("single-slot coordinator: backend failures and degradation (§32-§33)", () => {
+  it("keeps the committed filename across failed writes and failed manifest publication", async () => {
+    const h = await createHarness({ checkpoint: { idleMs: 0 } });
+    try {
+      const session = "session-a";
+      const identity = buildIdentity(h, session);
+      const [first, second] = snapshotGenerations(identity);
+      await run(h, session);
+      await h.coordinator.saveNow(session);
+      const committed = await h.repository.load(identity);
+      expect(committed?.snapshotFilename).toBe(first);
+      await run(h, session);
+      h.backend.failNextSave();
+      expect((await h.coordinator.saveNow(session)).kind).toBe("failed");
+      expect(await h.repository.load(identity)).toEqual(committed);
+      vi.spyOn(h.repository, "put").mockRejectedValueOnce(
+        new Error("disk full"),
+      );
+      expect((await h.coordinator.saveNow(session)).kind).toBe("failed");
+      expect(h.backend.hasSnapshot(second)).toBe(true);
+      expect(await h.repository.load(identity)).toEqual(committed);
+      expect((await h.coordinator.saveNow(session)).kind).toBe("saved");
+      expect((await h.repository.load(identity))?.snapshotFilename).toBe(
+        second,
+      );
+      await run(h, session);
+      await h.coordinator.saveNow(session);
+      expect((await h.repository.load(identity))?.snapshotFilename).toBe(first);
+    } finally {
+      await h.cleanup();
+    }
+  });
   it("backend unavailable: ordinary inference continues (§32, §75)", async () => {
     const harness = await createHarness();
     try {

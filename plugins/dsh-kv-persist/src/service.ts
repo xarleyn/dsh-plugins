@@ -254,6 +254,10 @@ export class KvPersistService extends Service {
     return this.coordinator.flushOwned("manual");
   }
 
+  collectRetention(mode: "dry-run" | "enforce" = "dry-run") {
+    return this.coordinator.collectRetention(mode);
+  }
+
   /** Managed-provider filter (SPEC §37): only explicit providers are coordinated. */
   handles(provider: string): boolean {
     return this.config.enabled && isManagedProvider(this.config, provider);

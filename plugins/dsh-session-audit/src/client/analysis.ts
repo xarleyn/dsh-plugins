@@ -8,9 +8,9 @@
  */
 import {
   isKnownAnalysis,
-  parseAuditAnalysis,
+  validateAuditAnalysis,
   type AuditAnalysis,
-  type AuditAnalysisV1,
+  type KnownAuditAnalysis,
 } from "@yadsh/dsh-audit-core";
 
 /** A decoded analysis plus the raw document behind it. */
@@ -40,12 +40,12 @@ export function parseAnalysis(analysisJson: string): ParsedAnalysis {
 
   let raw: unknown;
   try {
-    raw = JSON.parse(analysisJson);
+    raw = JSON.parse(analysisJson.replace(/^\uFEFF/u, ""));
   } catch {
     raw = analysisJson;
   }
 
-  const parsed = parseAuditAnalysis(analysisJson);
+  const parsed = validateAuditAnalysis(raw);
   if (!parsed.ok) {
     return {
       analysis: { kind: "unknown", schemaVersion: null },
@@ -61,6 +61,8 @@ export function parseAnalysis(analysisJson: string): ParsedAnalysis {
 }
 
 /** The typed analysis, when the schema is understood. */
-export function knownAnalysis(parsed: ParsedAnalysis): AuditAnalysisV1 | null {
+export function knownAnalysis(
+  parsed: ParsedAnalysis,
+): KnownAuditAnalysis | null {
   return isKnownAnalysis(parsed.analysis) ? parsed.analysis : null;
 }

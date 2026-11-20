@@ -38,6 +38,11 @@ import {
 } from "./catalog.js";
 import { AuditRing } from "./host/audit.js";
 import {
+  ExecutionAuditArchive,
+  auditQueryRefused,
+} from "./host/audit-archive.js";
+import { DomainExpertsError } from "./host/errors.js";
+import {
   RunTracker,
   runExpert,
   type ExecutionDependencies,
@@ -62,6 +67,7 @@ import type { ToolDependencies } from "./host/tools/shared.js";
 import { WorkerRegistry } from "./host/workers/registry.js";
 import {
   accepted,
+  catalogRefused,
   clearDomainMemory,
   domainDeleteRefusal,
   domainDraft,
@@ -79,6 +85,10 @@ import {
 } from "./validate.js";
 import type {
   AuditListResult,
+  CatalogApplyResult,
+  CatalogExportResult,
+  CatalogImportMode,
+  CatalogPreviewResult,
   CatalogResult,
   DomainDefinition,
   DomainDeleteResult,
@@ -87,10 +97,13 @@ import type {
   DomainListResult,
   DomainWriteResult,
   DraftInspectionResult,
+  ExecutionAuditQuery,
+  ExecutionAuditResult,
   ExpertRunResult,
   MemoryClearResult,
   MemoryInspectResult,
   ResolvedScopeResult,
+  ScopeProviderFormEdit,
 } from "./types.js";
 
 export const name = "domain-experts";
@@ -117,6 +130,7 @@ declare module "@deepseek-ai/cordis" {
  * live configuration it answers to and the Remote contract the client calls.
  */
 export class DomainExpertsService extends TypertRemoteService {
+  readonly supportsReviewToolPolicy: boolean = true;
   static inject = inject;
   static Config = ConfigSchema;
 
@@ -126,6 +140,7 @@ export class DomainExpertsService extends TypertRemoteService {
   private readonly memoryProviders = new MemoryProviderRegistry();
   private readonly workers = new WorkerRegistry();
   private readonly audits: AuditRing;
+  private readonly executionAudit: ExecutionAuditArchive;
   private readonly tracker = new RunTracker();
   private readonly tools: Map<string, ToolDefinition>;
   private toolDisposers: (() => void)[] = [];
@@ -158,6 +173,11 @@ export class DomainExpertsService extends TypertRemoteService {
     });
     const resolved = this.config();
     this.audits = new AuditRing(resolved.auditLimit);
+    this.executionAudit = new ExecutionAuditArchive(
+      resolved.executionAuditDbPath,
+      resolved.executionAuditEnabled,
+      this.logger,
+    );
 
     // Built-in providers arrive with the plugin; a third party adds its own
     // through the public registration methods below. The memory provider is
@@ -192,25 +212,28 @@ export class DomainExpertsService extends TypertRemoteService {
 
     /*
      * There is no settings section to install any more: a field is editable live
-     * exactly when its schema node carries `.volatile()`, which all ten do, and
+     * exactly when its schema node carries `.volatile()`, and
      * the namespace is the profile entry id. The Host therefore serves the form
      * this plugin used to install, and `settings.configure({ auto: false })` is
      * deliberately not called: the browser half here is the domain catalog, not
-     * a card over these ten fields, so the generated page is their only editor.
+     * a card over these fields, so the generated page is their only editor.
      *
      * A committed write moves the values inside the references this plugin was
-     * handed and no fiber is remounted, so `enabled` — the one knob with an
-     * effect beyond the next read — is re-applied here. Every other knob is read
-     * through `config()`, i.e. from a fresh snapshot, so it follows the document
-     * on its own.
+     * handed and no fiber is remounted. Apply toggles that change service state
+     * here; per-operation settings follow the document through `config()`.
      */
     ctx.effect(
-      () => ctx.on("loader/volatile-update", () => this.applyEnabled()),
+      () =>
+        ctx.on("loader/volatile-update", () => {
+          this.applyEnabled();
+          this.executionAudit.setEnabled(this.config().executionAuditEnabled);
+        }),
       "domain-experts.volatile-config",
     );
 
     ctx.effect(
       () => () => {
+        this.executionAudit.close();
         void this.stores.close();
       },
       "domain-experts.storage",
@@ -332,6 +355,7 @@ export class DomainExpertsService extends TypertRemoteService {
       parallelLimit: (callerSessionId, callerDomain) =>
         this.parallelLimit(callerSessionId, callerDomain),
       audits: this.audits,
+      executionAudit: this.executionAudit,
       logger: this.logger,
       now: Date.now,
       perUserMemory: this.principals.perUserMemory(),
@@ -404,6 +428,78 @@ export class DomainExpertsService extends TypertRemoteService {
 
   // -------------------------------------------------------- remote contract
 
+  private requireHostOperator(
+    code: "CATALOG_ACCESS_DENIED" | "DOMAIN_ACCESS_DENIED",
+    message: string,
+  ): void {
+    // Gateway binds the Host-attested principal to each invocation. Calls
+    // without a Remote invocation come from trusted in-process Host code.
+    const invocation = this.ctx.invocation;
+    if (
+      invocation !== undefined &&
+      invocation.peer.principal.kind !== "owner"
+    ) {
+      throw new DomainExpertsError(code, message);
+    }
+  }
+
+  private async operatorCatalog() {
+    this.requireHostOperator(
+      "CATALOG_ACCESS_DENIED",
+      "Only the Host operator can transfer a domain catalog.",
+    );
+    return (await this.stores.opened()).domains;
+  }
+
+  private requireDomainEditor(): void {
+    this.requireHostOperator(
+      "DOMAIN_ACCESS_DENIED",
+      "Only the Host operator can change domain settings.",
+    );
+  }
+
+  @Remote("exportCatalog")
+  async exportCatalog(): Promise<CatalogExportResult> {
+    return guarded(
+      async () => {
+        const catalog = await this.operatorCatalog();
+        return accepted({ document: catalog.exportCatalog() });
+      },
+      (error) => catalogRefused(error, { document: "" }),
+    );
+  }
+
+  @Remote("previewCatalogImport")
+  async previewCatalogImport(
+    document: string,
+    mode: CatalogImportMode,
+  ): Promise<CatalogPreviewResult> {
+    return guarded<CatalogPreviewResult>(
+      async () => {
+        const catalog = await this.operatorCatalog();
+        return accepted({ preview: catalog.previewImport(document, mode) });
+      },
+      (error) => catalogRefused(error, { preview: null }),
+    );
+  }
+
+  @Remote("applyCatalogImport")
+  async applyCatalogImport(
+    document: string,
+    mode: CatalogImportMode,
+    token: string,
+  ): Promise<CatalogApplyResult> {
+    return guarded(
+      async () => {
+        const catalog = await this.operatorCatalog();
+        return accepted({
+          changed: await catalog.applyImport(document, mode, token),
+        });
+      },
+      (error) => catalogRefused(error, { changed: 0 }),
+    );
+  }
+
   @Remote("listDomains")
   async listDomains(): Promise<DomainListResult> {
     return guarded(async () => {
@@ -444,16 +540,48 @@ export class DomainExpertsService extends TypertRemoteService {
   @Remote("createDomain")
   async createDomain(definition: DomainDefinition): Promise<DomainWriteResult> {
     return guarded(async () => {
+      this.requireDomainEditor();
       const handles = await this.stores.opened();
-      return accepted({ domain: await handles.domains.create(definition) });
+      return accepted({
+        domain: await handles.domains.create(definition, (draft, existing) =>
+          this.scopeProviders.validateChanges(draft, existing),
+        ),
+      });
     }, domainWriteRefusal);
   }
 
   @Remote("updateDomain")
   async updateDomain(definition: DomainDefinition): Promise<DomainWriteResult> {
     return guarded(async () => {
+      this.requireDomainEditor();
       const handles = await this.stores.opened();
-      return accepted({ domain: await handles.domains.update(definition) });
+      return accepted({
+        domain: await handles.domains.update(definition, (draft, existing) =>
+          this.scopeProviders.validateChanges(draft, existing),
+        ),
+      });
+    }, domainWriteRefusal);
+  }
+
+  @Remote("saveDomainFromEditor")
+  async saveDomainFromEditor(
+    definition: DomainDefinition,
+    create: boolean,
+    providerEdits: readonly ScopeProviderFormEdit[],
+  ): Promise<DomainWriteResult> {
+    return guarded(async () => {
+      this.requireDomainEditor();
+      const { domains } = await this.stores.opened();
+      const prepare = (
+        draft: DomainDefinition,
+        existing: DomainDefinition | undefined,
+      ) =>
+        this.scopeProviders.prepareEditorDraft(draft, existing, providerEdits);
+      return accepted({
+        domain: create
+          ? await domains.create(definition, prepare)
+          : await domains.update(definition, prepare),
+      });
     }, domainWriteRefusal);
   }
 
@@ -463,6 +591,7 @@ export class DomainExpertsService extends TypertRemoteService {
     enabled: boolean,
   ): Promise<DomainWriteResult> {
     return guarded(async () => {
+      this.requireDomainEditor();
       const handles = await this.stores.opened();
       return accepted({
         domain: await handles.domains.setEnabled(domainId.trim(), enabled),
@@ -473,6 +602,7 @@ export class DomainExpertsService extends TypertRemoteService {
   @Remote("deleteDomain")
   async deleteDomain(domainId: string): Promise<DomainDeleteResult> {
     return guarded(async () => {
+      this.requireDomainEditor();
       const handles = await this.stores.opened();
       return accepted({
         deleted: await handles.domains.remove(domainId.trim()),
@@ -599,6 +729,20 @@ export class DomainExpertsService extends TypertRemoteService {
   @Remote("recentAudits")
   recentAudits(limit: number): AuditListResult {
     return accepted({ entries: this.audits.recent(limit > 0 ? limit : 50) });
+  }
+
+  @Remote("queryExecutionAudits")
+  queryExecutionAudits(query: ExecutionAuditQuery): ExecutionAuditResult {
+    try {
+      this.requireHostOperator(
+        "DOMAIN_ACCESS_DENIED",
+        "Only the Host operator can read the execution archive.",
+      );
+    } catch (error) {
+      if (!(error instanceof DomainExpertsError)) throw error;
+      return auditQueryRefused(error.code, error.message);
+    }
+    return this.executionAudit.query(query);
   }
 }
 

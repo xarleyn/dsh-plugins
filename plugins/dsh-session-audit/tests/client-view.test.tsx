@@ -6,7 +6,13 @@
  * that appears before the conversation strip declares its seat, is a silent
  * no-op in a real DSH session.
  */
-import { render, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
 import { AuditPage } from "../src/client/AuditPage.js";
@@ -99,7 +105,10 @@ function remoteOf(
     ),
     audits: vi.fn(
       async () =>
-        ({ ok: true, value: [summary] }) as RemoteResult<AuditSummaryValue[]>,
+        ({
+          ok: true,
+          value: summary.available ? [summary] : [],
+        }) as RemoteResult<AuditSummaryValue[]>,
     ),
     unattached: vi.fn(
       async () =>
@@ -108,6 +117,10 @@ function remoteOf(
         >,
     ),
     audit: vi.fn(
+      async () =>
+        ({ ok: true, value: audit }) as RemoteResult<SessionAuditValue>,
+    ),
+    auditById: vi.fn(
       async () =>
         ({ ok: true, value: audit }) as RemoteResult<SessionAuditValue>,
     ),
@@ -293,7 +306,36 @@ describe("AuditPage", () => {
     expect(document.querySelector(".dsh-audit-md__table")).not.toBeNull();
   });
 
-  it("offers the three views of the SPEC §38 layout", async () => {
+  it("shows provenance belonging to the selected v2 audit", async () => {
+    const value = summaryValue({ schemaVersion: 2, model: "demo/session" });
+    const api = createAuditApi(
+      remoteOf(
+        value,
+        auditValue({
+          summary: value,
+          analysisJson: JSON.stringify({
+            schemaVersion: 2,
+            trajectory: { sessionId: SESSION, model: "demo/session" },
+            audit: {
+              producer: { name: "Demo report builder", version: "2.0.0" },
+            },
+            auditor: { type: "llm", model: "demo/auditor" },
+          }),
+        }),
+      ),
+    );
+    const view = render(<AuditPage sessionId={SESSION} api={api} />);
+    const provenance = within(await view.findByTestId("audit-provenance"));
+    await provenance.findByText("demo/auditor");
+    expect(
+      provenance.getByText("Session model").nextElementSibling?.textContent,
+    ).toBe("demo/session");
+    expect(
+      provenance.getByText("Report producer").nextElementSibling?.textContent,
+    ).toBe("Demo report builder");
+  });
+
+  it("offers comparison and explains when there is no baseline", async () => {
     const api = createAuditApi(remoteOf());
     const { findByRole, getAllByRole } = render(
       <AuditPage sessionId={SESSION} api={api} />,
@@ -301,17 +343,161 @@ describe("AuditPage", () => {
     await findByRole("heading", { name: "Trajectory Review" });
 
     const tabs = getAllByRole("tab").map((tab) => tab.textContent);
-    expect(tabs).toEqual(["Report", "Findings", "JSON"]);
+    expect(tabs).toEqual(["Report", "Findings", "JSON", "Compare"]);
+    fireEvent.click(await findByRole("tab", { name: "Compare" }));
+    expect((await findByRole("tabpanel")).textContent).toContain(
+      "A second audit is needed for comparison.",
+    );
   });
 
   it("reports a failed load rather than showing an empty audit", async () => {
     const failing = remoteOf();
-    failing.audit = () => failed("read-failed");
+    failing.auditById = () => failed("read-failed");
     const api = createAuditApi(failing);
     const { findByText } = render(<AuditPage sessionId={SESSION} api={api} />);
 
     // The summary still resolved, so the view says the documents failed
     // rather than claiming there is no audit.
     expect(await findByText(/read-failed/u)).toBeDefined();
+  });
+
+  it("keeps an explicit selection on add and update, and returns to current on deletion", async () => {
+    const current = summaryValue({ auditId: "current", revision: "a" });
+    let older = summaryValue({ auditId: "older", revision: "b" });
+    const newest = summaryValue({ auditId: "newest", revision: "d" });
+    let entries = [current, older];
+    let report = "# Previous";
+    const remote = remoteOf();
+    remote.audits = async () => ({ ok: true, value: entries });
+    const details = vi.fn(async (_sessionId: string, auditId: string) => {
+      const summary = entries.find((entry) => entry.auditId === auditId)!;
+      return {
+        ok: true as const,
+        value: auditValue({
+          summary,
+          report: auditId === "older" ? report : `# ${auditId}`,
+        }),
+      };
+    });
+    remote.auditById = details;
+    const view = render(
+      <AuditPage sessionId={SESSION} api={createAuditApi(remote)} />,
+    );
+    await view.findByRole("heading", { name: "current" });
+    expect(details).toHaveBeenCalledTimes(1);
+    const select = view.getByRole("combobox", {
+      name: "Audit version",
+    }) as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: "older" } });
+    await view.findByRole("heading", { name: "Previous" });
+    older = { ...older, revision: "c" };
+    report = "# Previous updated";
+    entries = [newest, current, older];
+    fireEvent.click(view.getByRole("button", { name: "Refresh audits" }));
+    await view.findByRole("heading", { name: "Previous updated" });
+    expect(select.value).toBe("older");
+    fireEvent.click(view.getByRole("tab", { name: "Compare" }));
+    fireEvent.change(view.getByRole("combobox", { name: "Baseline audit" }), {
+      target: { value: "current" },
+    });
+    expect(
+      (await view.findByRole("region", { name: "Report changes" })).textContent,
+    ).toContain("Previous updated");
+    entries = [newest, older];
+    fireEvent.click(view.getByRole("button", { name: "Refresh audits" }));
+    await waitFor(() =>
+      expect(
+        (
+          view.getByRole("combobox", {
+            name: "Baseline audit",
+          }) as HTMLSelectElement
+        ).value,
+      ).toBe(""),
+    );
+    entries = [newest, current];
+    fireEvent.click(view.getByRole("button", { name: "Refresh audits" }));
+    await waitFor(() => expect(select.value).toBe(""));
+    fireEvent.click(view.getByRole("tab", { name: "Report" }));
+    await view.findByRole("heading", { name: "newest" });
+  });
+
+  it("ignores a detail response that arrives after the reader changed versions", async () => {
+    const current = summaryValue({ auditId: "current" });
+    const older = summaryValue({ auditId: "older" });
+    let resolveCurrent!: (result: RemoteResult<SessionAuditValue>) => void;
+    const remote = remoteOf();
+    remote.audits = async () => ({ ok: true, value: [current, older] });
+    remote.auditById = async (_id, auditId) =>
+      auditId === "current"
+        ? new Promise((resolve) => {
+            resolveCurrent = resolve;
+          })
+        : {
+            ok: true,
+            value: auditValue({ summary: older, report: "# Previous" }),
+          };
+    const view = render(
+      <AuditPage sessionId={SESSION} api={createAuditApi(remote)} />,
+    );
+    fireEvent.change(
+      await view.findByRole("combobox", { name: "Audit version" }),
+      { target: { value: "older" } },
+    );
+    await view.findByRole("heading", { name: "Previous" });
+    await act(async () =>
+      resolveCurrent({
+        ok: true,
+        value: auditValue({ summary: current, report: "# Current late" }),
+      }),
+    );
+    expect(view.queryByRole("heading", { name: "Current late" })).toBeNull();
+  });
+
+  it("renders a bounded text preview of large reports", async () => {
+    const audit = auditValue({
+      report: "<script>alert(1)</script>\n" + "long report\n".repeat(50_000),
+    });
+    const view = render(
+      <AuditPage
+        sessionId={SESSION}
+        api={createAuditApi(remoteOf(audit.summary, audit))}
+      />,
+    );
+    await view.findByRole("button", { name: "Download full report" });
+    const panel = view.getByRole("tabpanel");
+    expect(panel.querySelector("script")).toBeNull();
+    expect(panel.querySelector("pre")?.textContent).toHaveLength(4_000);
+  });
+
+  it("keeps the report comparison when a baseline has a future analysis schema", async () => {
+    const current = summaryValue({ auditId: "current" });
+    const future = summaryValue({ auditId: "future", schemaVersion: 7 });
+    const remote = remoteOf();
+    remote.audits = async () => ({ ok: true, value: [current, future] });
+    remote.auditById = async (_sessionId, auditId) => ({
+      ok: true,
+      value:
+        auditId === "current"
+          ? auditValue({ summary: current, report: "Current line" })
+          : auditValue({
+              summary: future,
+              analysisJson: JSON.stringify({ schemaVersion: 7 }),
+              report: "Future line",
+            }),
+    });
+    const view = render(
+      <AuditPage sessionId={SESSION} api={createAuditApi(remote)} />,
+    );
+    fireEvent.click(await view.findByRole("tab", { name: "Compare" }));
+    fireEvent.change(
+      await view.findByRole("combobox", { name: "Baseline audit" }),
+      { target: { value: "future" } },
+    );
+    await view.findByText(
+      "Structured findings are unavailable for one or both audits.",
+    );
+    expect(
+      (await view.findByRole("region", { name: "Report changes" })).textContent,
+    ).toContain("Future line");
   });
 });

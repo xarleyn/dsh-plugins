@@ -68,6 +68,7 @@ export interface ExecutionDependencies {
   /** The caller's configured cap, including defaults for a top-level chat. */
   parallelLimit?(callerSessionId: string, callerDomain: string | null): number;
   readonly audits: AuditRing;
+  readonly executionAudit?: { record(entry: ExpertAuditEntry): void };
   readonly logger: LogSink;
   readonly now: () => number;
   /**
@@ -303,6 +304,15 @@ async function executeExpert(
     );
   }
   const startActivation = async (activationSpec: SubagentActivationSpec) => {
+    if (
+      input.budget?.allowedTools &&
+      dependencies.startActivation === undefined
+    )
+      throw unsupportedCapability(
+        provider.name,
+        "tool policy",
+        "this reviewer requires a scoped local activation",
+      );
     const activation =
       dependencies.startActivation === undefined
         ? await dependencies.subagents.startActivation(activationSpec)
@@ -599,7 +609,7 @@ function recordAudit(
     degraded: detail.degradations,
   };
   dependencies.audits.record(entry);
-  // Mirrored to the plugin log with the same fields and no task text.
+  // Log a diagnostic projection, without task text or per-run archive IDs.
   dependencies.logger.info("domain-expert/run", {
     domain: entry.domainId,
     callerDomain: entry.callerDomain,
@@ -623,4 +633,5 @@ function recordAudit(
       codes: entry.degraded.join(","),
     });
   }
+  dependencies.executionAudit?.record(entry);
 }

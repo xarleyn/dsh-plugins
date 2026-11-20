@@ -155,16 +155,38 @@ export class LlamaCppClient {
   ): Promise<LlamaCppSaveResponse> {
     const { status, body } = await this.#request(
       `/slots/${slotId}?action=save`,
-      { method: "POST", body: JSON.stringify({ filepath: snapshotFilename }) },
+      {
+        method: "POST",
+        body: JSON.stringify({
+          filename: snapshotFilename,
+          filepath: snapshotFilename,
+        }),
+      },
       timeoutMs,
     );
     const payload = parseJsonBody(body);
-    if (status !== 200 || !isRecord(payload) || payload.success !== true) {
+    const bytes = isRecord(payload) ? optionalCount(payload.n_written) : null;
+    if (
+      status !== 200 ||
+      !isRecord(payload) ||
+      (payload.id_slot !== undefined && payload.id_slot !== slotId) ||
+      (payload.filename !== undefined &&
+        payload.filename !== snapshotFilename) ||
+      !(
+        payload.success === true ||
+        (payload.success === undefined &&
+          payload.id_slot === slotId &&
+          payload.filename === snapshotFilename &&
+          optionalCount(payload.n_saved) !== null &&
+          bytes !== null &&
+          bytes > 0)
+      )
+    ) {
       throw new KvSaveFailedError(
         `save of slot ${slotId} failed (HTTP ${status}): ${body.slice(0, 200)}`,
       );
     }
-    return { success: true };
+    return { success: true, bytes };
   }
 
   /** POST /slots/{id}?action=restore — load a snapshot back into the slot. */
@@ -175,7 +197,13 @@ export class LlamaCppClient {
   ): Promise<LlamaCppRestoreResponse> {
     const { status, body } = await this.#request(
       `/slots/${slotId}?action=restore`,
-      { method: "POST", body: JSON.stringify({ filepath: snapshotFilename }) },
+      {
+        method: "POST",
+        body: JSON.stringify({
+          filename: snapshotFilename,
+          filepath: snapshotFilename,
+        }),
+      },
       timeoutMs,
     );
     const payload = parseJsonBody(body);
@@ -184,9 +212,13 @@ export class LlamaCppClient {
         `restore of slot ${slotId} failed (HTTP ${status}): ${body.slice(0, 200)}`,
       );
     }
-    if (payload.success !== undefined && payload.success !== true) {
+    if (
+      (payload.success !== undefined && payload.success !== true) ||
+      (payload.id_slot !== undefined && payload.id_slot !== slotId) ||
+      (payload.filename !== undefined && payload.filename !== snapshotFilename)
+    ) {
       throw new KvRestoreFailedError(
-        `restore of slot ${slotId} reported success=false`,
+        `restore of slot ${slotId} returned a failed or mismatched acknowledgement`,
       );
     }
     const rawCount = payload.n_restored ?? payload.nRestored;
