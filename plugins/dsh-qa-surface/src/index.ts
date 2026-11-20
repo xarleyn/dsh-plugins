@@ -129,6 +129,7 @@ import type { QaPresetScopeLease } from "./access/capability-catalog.js";
 import { createQaSlashRemotes } from "./slash/remotes.js";
 import type { QaSlashRemotes } from "./slash/remotes.js";
 import { QaPromptNotes } from "./prompt-notes.js";
+import { installQaToolLoop } from "./tool-loop.js";
 import {
   QaRequestScheduler,
   qaRequestFamilyBusy,
@@ -876,6 +877,11 @@ export class QaSurface extends TypertRemoteService {
       () => this.getConfig().tools.fileWritePolicy,
     );
     ctx.effect(() => disposeFileWriteGate, "dsh-qa-surface.file-write-gate");
+    const disposeToolLoop = installQaToolLoop(
+      ctx,
+      (agent) => ownership.rootOf(String(agent.session.id)) !== undefined,
+    );
+    ctx.effect(() => disposeToolLoop, "dsh-qa-surface.tool-loop");
     // A turn the Host ended with a provider failure is written to the plugin's
     // log with its code and the provider the request was routed to. The chat row
     // names the code only, and the durable journal that holds the rest is a zstd

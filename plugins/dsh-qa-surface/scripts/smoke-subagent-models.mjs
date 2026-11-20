@@ -20,7 +20,10 @@ export async function runSubagentModelsPass(options) {
   } = options;
   const requests = [];
   const failures = [];
+  const loopPrompt = "Run the synthetic repeated catalog check.";
+  const loopAnswer = "The catalog check stopped with the available evidence.";
   let phase = 0;
+  let loopSteps = 0;
   let childCompleted = false;
   let discovered;
   let blocked;
@@ -48,7 +51,31 @@ export async function runSubagentModelsPass(options) {
         const toolResults = body.messages.filter(
           (message) => message.role === "tool",
         );
-        if (phase === 0) {
+        const repeatCatalog = body.messages.some(
+          (message) =>
+            message.role === "user" &&
+            JSON.stringify(message.content).includes(loopPrompt),
+        );
+        if (repeatCatalog) {
+          loopSteps += 1;
+          if (loopSteps < 5) {
+            tool = { name: "qa_list_subagent_models", arguments: {} };
+          } else {
+            assert.equal(loopSteps, 5, "only one closing model request");
+            assert.equal(toolResults.length, 4);
+            for (const result of toolResults.slice(0, 2)) {
+              assert.ok(JSON.parse(result.content).models.length > 0);
+            }
+            for (const result of toolResults.slice(2)) {
+              assert.match(result.content, /returned the same result twice/u);
+            }
+            assert.match(
+              JSON.stringify(body.messages),
+              /Finish this turn now/u,
+            );
+            text = loopAnswer;
+          }
+        } else if (phase === 0) {
           const names = body.tools.map((entry) => entry.function.name);
           assert.ok(names.includes("qa_list_subagent_models"));
           assert.ok(names.includes("qa_subagent"));
@@ -100,7 +127,7 @@ export async function runSubagentModelsPass(options) {
               tool_calls: [
                 {
                   index: 0,
-                  id: `call-${phase}`,
+                  id: `call-${requests.length}`,
                   type: "function",
                   function: {
                     name: tool.name,
@@ -282,6 +309,24 @@ export async function runSubagentModelsPass(options) {
     }
     console.log(
       "packed QA subagent models: regular-account grants, filtered discovery, rejected model, native child on selected route and unchanged parent selection passed",
+    );
+
+    const repeat = await fetch(`${origin}/qa/api/ask`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${service.token}`,
+      },
+      body: JSON.stringify({ message: loopPrompt }),
+      signal: globalThis.AbortSignal.timeout(45000),
+    });
+    const repeated = await repeat.text();
+    assert.equal(failures.length, 0, failures[0]?.message);
+    assert.equal(repeat.status, 200, repeated);
+    assert.ok(repeated.includes(loopAnswer), repeated);
+    assert.equal(loopSteps, 5);
+    console.log(
+      "packed QA tool loop: two catalog results, two blocked repeats and one closing answer",
     );
   } catch (error) {
     hostLog.push(...log);

@@ -1425,6 +1425,19 @@ are checked again after route resolution, before a child is created. The parent
 chat's model is unchanged. A missing spawn backend refuses the call; a Host
 without subagents can still load the QA surface.
 
+After two consecutive identical results from the model catalog, QA asks the
+assistant to reuse the result or change approach. It denies the repeated call
+before execution. If another step retries that call, QA offers one closing
+request. During that request, the Host denies tool execution. A model selection
+refusal from `qa_subagent` allows one catalog refresh per turn.
+
+QA also reserves one closing request after 64 model attempts or 64,000 reported
+output tokens in an agent's turn. Token usage is checked between requests.
+Streaming attempts have a three-minute deadline, reduced to 30 seconds for
+the closing request. Tool and approval wait time falls outside these streaming
+deadlines. If the guard interrupts the turn, the transcript states the reason
+and keeps results already recorded.
+
 Run the packed integration check with
 `DSH_QA_SMOKE_VERSION=0.2.2-rc.3 pnpm --filter @yadsh/dsh-qa-surface run smoke:packed --subagent-models`.
 It uses a disposable Host and a scripted local LLM endpoint to verify model

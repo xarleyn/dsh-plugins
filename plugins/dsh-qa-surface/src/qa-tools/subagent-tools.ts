@@ -52,7 +52,7 @@ export function createQaListSubagentModelsTool(
   return defineTool({
     name: "qa_list_subagent_models",
     description:
-      "List the current user's available subagent models and allowed reasoning efforts. Use the returned provider/model ids with qa_subagent. The chat's own model is unchanged. Read this list again after a model refusal; permissions and availability can change.",
+      "List the current user's available subagent models and allowed reasoning efforts. Use the returned provider/model ids with qa_subagent. If qa_subagent rejects the selected model as unavailable or disallowed, refresh this catalog once. If there are no available models, use other permitted tools or answer with what you already know.",
     parameters: {},
     output: {
       schema: { type: "string" },
