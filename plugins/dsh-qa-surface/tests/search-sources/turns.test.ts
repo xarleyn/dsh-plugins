@@ -24,7 +24,12 @@ function setup() {
     session: "chat",
     actor: "owner",
     role: "reader",
-    binding: { skill: "demo", label: "Demo", directory: "demo" },
+    binding: {
+      skill: "demo",
+      label: "Demo",
+      directory: "demo",
+      linkBase: "https://archive.example.test/documents/",
+    },
     verify: vi.fn(),
   };
   const session = { id: "chat", header: { origin: "root" } };
@@ -83,7 +88,6 @@ describe("message-scoped source access", () => {
     async (modifiedAt) => {
       const h = setup();
       const path = "folder/report draft.txt";
-      h.grant.binding.linkBase = "https://archive.example.test/documents/";
       await h.submit("picked");
       await h.step(h.msg("picked"));
       const perform = vi.fn().mockResolvedValue({
