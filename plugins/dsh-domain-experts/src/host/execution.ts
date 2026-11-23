@@ -186,6 +186,14 @@ async function executeExpert(
       { refs: [definition.id] },
     );
   }
+  const callerPath = pathOf(dependencies, callerSessionId, input.callerDomain);
+  if (callerPath.includes(definition.id)) {
+    throw new DomainExpertsError(
+      "DELEGATION_DENIED",
+      `Domain "${definition.id}" is already in this delegation chain. Use the evidence already available in the chain instead of starting another expert in that domain.`,
+      { refs: [definition.id] },
+    );
+  }
 
   const provider = dependencies.subagents.getProvider(
     dependencies.subagentProvider,
@@ -342,10 +350,7 @@ async function executeExpert(
     throw relabelCapabilityFailure(error, dependencies.subagentProvider);
   }
 
-  const path = [
-    ...pathOf(dependencies, callerSessionId, input.callerDomain),
-    definition.id,
-  ];
+  const path = [...callerPath, definition.id];
   const childSessionId = String(activation.childId);
   dependencies.tracker.register({
     domainId: definition.id,

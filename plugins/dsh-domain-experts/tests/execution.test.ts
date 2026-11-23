@@ -580,6 +580,30 @@ describe("execution: results and bookkeeping", () => {
     );
   });
 
+  it("refuses to return to an ancestor domain without starting a child", async () => {
+    const harness = harnessOf();
+    harness.tracker.register({
+      domainId: "inventory",
+      childSessionId: "session-1",
+      callerSessionId: "payments-expert",
+      callerDomain: "payments",
+      path: ["payments", "inventory"],
+      depth: 2,
+      background: false,
+      maxParallel: 3,
+      memoryOwner: DEPLOYMENT_MEMORY_OWNER,
+    });
+
+    await expect(
+      run(harness, PAYMENTS, { callerDomain: "inventory", depth: 2 }),
+    ).rejects.toMatchObject({ code: "DELEGATION_DENIED" });
+    expect(harness.tracker.countForCaller("session-1")).toBe(0);
+    expect(harness.audits.recent()).toHaveLength(0);
+    expect((await run(harness, PAYMENTS, { id: "root-session" })).status).toBe(
+      "completed",
+    );
+  });
+
   it("maps a stop reason onto the result status", async () => {
     const harness = harnessOf(PAYMENTS, { stopReason: "max-tokens" });
     const result = await run(harness);
@@ -762,17 +786,22 @@ describe("execution: whose memory a run gets", () => {
   it("inherits the account through a delegated run whose session nobody attested", async () => {
     const harness = harnessOf(PAYMENTS, {}, { perUser: true });
     harness.tracker.register({
-      domainId: "payments",
+      domainId: "inventory",
       childSessionId: "session-1",
       callerSessionId: "root-session",
       callerDomain: null,
-      path: ["payments"],
+      path: ["inventory"],
       depth: 1,
       background: false,
       maxParallel: 3,
       memoryOwner: { mode: "per-user", userId: "user-a" },
     });
-    await run(harness, PAYMENTS, { background: true, id: "session-1" });
+    await run(harness, PAYMENTS, {
+      background: true,
+      id: "session-1",
+      callerDomain: "inventory",
+      depth: 1,
+    });
     const child = harness.tracker.find("child-session");
     expect(child?.memoryOwner).toEqual({ mode: "per-user", userId: "user-a" });
   });
