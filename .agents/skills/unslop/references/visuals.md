@@ -47,7 +47,7 @@ Besides whole scenes, generate single objects to place into the interface, like 
 - Place it overlapping the edge of a card or window, a little rotated, with a soft shadow in the ramp's darkest color, so it sits in the same space as the UI.
 - Background removal deletes dark areas that are close to the background color, like a switched off black screen. Ask for the screen in a contrasting flat color, or rebuild the alpha from the outer edge of the cutout.
 - To show real UI on a generated device, generate it straight on with no perspective, measure the screen rectangle, lay HTML over it and rotate both together. The text stays sharp and real.
-- Everything inside one visual tells the same story. If the list shows invoice INV-0142 for a client, the phone shows the same client, number and amount.
+- Everything inside one visual tells the same story. If the list shows invoice no. 142 for a client, the phone shows the same client, number and amount.
 
 ## Generate it
 
