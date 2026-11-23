@@ -252,6 +252,36 @@ describe("JevCompactionService pipeline", () => {
     }
   });
 
+  it("continues the agent step when automatic scoring exceeds its total budget", async () => {
+    vi.useFakeTimers();
+    const session = buildFixtureSession("svc-scoring-deadline");
+    const nodes = [...session.surface.nodes];
+    let scoringSignal: AbortSignal | undefined;
+    const backend: SystemOneBackend = {
+      score: async (_state, _questions, signal) => {
+        scoringSignal = signal;
+        return new Promise<never>(() => {});
+      },
+    };
+    const { service } = buildService({}, backend);
+    try {
+      const report = service.runAuto(
+        fakeAgent(session),
+        5,
+        new AbortController().signal,
+      );
+      await vi.advanceTimersByTimeAsync(29_999);
+      expect(scoringSignal?.aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect((await report).skipped).toBe("jev-failed");
+      expect(scoringSignal?.aborted).toBe(true);
+      expect(session.surface.nodes).toEqual(nodes);
+    } finally {
+      service.dispose();
+      vi.useRealTimers();
+    }
+  });
+
   it("dry-run never mutates the session", async () => {
     const session = buildFixtureSession("svc-dry");
     const nodesBefore = [...session.surface.nodes];

@@ -13,6 +13,10 @@ import { Service } from "@deepseek-ai/cordis";
 import type { Context } from "@deepseek-ai/cordis";
 import type { Session } from "@deepseek-ai/dsh-session";
 import {
+  createRequestDeadline,
+  withinDeadline,
+} from "@yadsh/dsh-plugin-kit/http";
+import {
   JevCompactionConfigSchema,
   plainJevCompactionConfig,
   resolveJevCompactionConfig,
@@ -67,6 +71,10 @@ import { installJevCompactionSettings } from "./settings/install.js";
 import { ResultShapingSubsystem } from "./result-shaping/index.js";
 
 export type { JevSkipReason } from "./observability/session-events.js";
+
+// Automatic scoring holds the agent's next step, so all batches share one
+// deadline in addition to the transport's individual request timeouts.
+const AUTO_SCORING_TIMEOUT_MS = 30_000;
 
 declare module "@deepseek-ai/cordis" {
   interface Context {
@@ -716,11 +724,21 @@ export class JevCompactionService extends Service {
     );
     let jevRequests = 0;
     const scores = new Map<string, CandidateScores>();
+    const deadline =
+      mode === "auto"
+        ? createRequestDeadline({ timeoutMs: AUTO_SCORING_TIMEOUT_MS, signal })
+        : undefined;
+    const stopScoring = new AbortController();
+    const scoringSignal = AbortSignal.any([
+      deadline?.signal ?? signal,
+      stopScoring.signal,
+    ]);
     try {
-      const batchResults = await mapWithConcurrency(
+      const scoring = mapWithConcurrency(
         batches,
         this.config.jev.maxConcurrency,
         async (batch) => {
+          scoringSignal.throwIfAborted();
           const questions: JevQuestion[] = questionsFor(batch);
           jevRequests += 1;
           jevLogger.debug(JEV_EVENTS.request, {
@@ -731,11 +749,13 @@ export class JevCompactionService extends Service {
           const answers = await this.backend.score(
             fitted.state,
             questions,
-            signal,
+            scoringSignal,
           );
           return { batch, answers };
         },
       );
+      const batchResults = await withinDeadline(scoring, scoringSignal);
+      scoringSignal.throwIfAborted();
       for (const { batch, answers } of batchResults) {
         for (const candidate of batch) {
           const needContents = answers.get(`needContents_${candidate.callId}`);
@@ -750,6 +770,10 @@ export class JevCompactionService extends Service {
       const message = error instanceof Error ? error.message : String(error);
       if (signal.aborted) return skip("busy");
       return { ...skip("jev-failed"), error: message };
+    } finally {
+      // Fail-open also stops sibling workers from issuing more requests.
+      stopScoring.abort();
+      deadline?.dispose();
     }
 
     // Policy + rendering (SPEC §13, §14).
