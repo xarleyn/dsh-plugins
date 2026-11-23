@@ -1,6 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
 import type { Context } from "@deepseek-ai/cordis";
 import type { Agent } from "@deepseek-ai/dsh-agent";
+import type { PluginLogger } from "@yadsh/dsh-plugin-log";
+import type { ArchiveGateway } from "../../src/search-sources/gateway.js";
+import { sourceTool } from "../../src/search-sources/tool.js";
 import {
   SourceTurns,
   type SourceGrant,
@@ -75,6 +78,48 @@ function setup() {
 }
 
 describe("message-scoped source access", () => {
+  it.each([undefined, "2026-01-02T03:04:05.000Z"])(
+    "returns a verified link with modification time %s when provided",
+    async (modifiedAt) => {
+      const h = setup();
+      const path = "folder/report draft.txt";
+      h.grant.binding.linkBase = "https://archive.example.test/documents/";
+      await h.submit("picked");
+      await h.step(h.msg("picked"));
+      const perform = vi.fn().mockResolvedValue({
+        path,
+        ...(modifiedAt === undefined ? {} : { modifiedAt }),
+      });
+      try {
+        const tool = sourceTool(
+          h.turns,
+          { perform } as unknown as ArchiveGateway,
+          { info: vi.fn() } as unknown as PluginLogger,
+        );
+        const answer = await tool.execute({ action: "link", path }, {
+          agent: h.agent,
+          signal: new AbortController().signal,
+        } as Parameters<typeof tool.execute>[1]);
+        expect(perform).toHaveBeenCalledWith(
+          expect.objectContaining({ action: "link", path }),
+          h.grant.verify,
+          expect.any(AbortSignal),
+        );
+        expect(JSON.parse(answer as string)).toEqual({
+          name: "report draft.txt",
+          path,
+          kind: "file",
+          source: "Demo",
+          ...(modifiedAt === undefined ? {} : { modifiedAt }),
+          address:
+            "https://archive.example.test/documents/folder/report%20draft.txt",
+        });
+      } finally {
+        h.turns.dispose();
+      }
+    },
+  );
+
   it("checks the live grant before reporting the reader to selfcheck", async () => {
     const h = setup();
     expect(await h.turns.available(h.agent)).toBe(false);

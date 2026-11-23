@@ -141,7 +141,8 @@ export async function readArchive(
     }
     const stat = await handle.stat();
     if (!stat.isFile()) throw new Error("A regular file is required.");
-    if (op.action === "link") return { path: op.path };
+    if (op.action === "link")
+      return { path: op.path, modifiedAt: stat.mtime.toISOString() };
     const format = extname(op.path).slice(1).toLowerCase();
     if (format === "doc" || format === "docx" || format === "pdf") {
       return await documentReader.read(handle, stat, format, op.offset, signal);

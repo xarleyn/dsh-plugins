@@ -99,6 +99,16 @@ export function sourceTool(
         if (op === "link") {
           const base = grant.binding.linkBase;
           answer = {
+            name: parts.at(-1),
+            path,
+            kind: "file",
+            source: grant.binding.label,
+            ...(result &&
+            typeof result === "object" &&
+            "modifiedAt" in result &&
+            typeof result.modifiedAt === "string"
+              ? { modifiedAt: result.modifiedAt }
+              : {}),
             address: base
               ? base.replace(/\/+$/u, "") +
                 "/" +

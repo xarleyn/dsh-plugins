@@ -7,6 +7,7 @@ import {
   readFile,
   readdir,
   rm,
+  stat,
   symlink,
   writeFile,
 } from "node:fs/promises";
@@ -257,6 +258,9 @@ test(
       assert.equal(last.nextOffset, null);
       assert.deepEqual(await run("link", "one/report.txt"), {
         path: "one/report.txt",
+        modifiedAt: (
+          await stat(join(root, "docs", "one", "report.txt"))
+        ).mtime.toISOString(),
       });
       await assert.rejects(run("link", "one/missing.txt"));
       await assert.rejects(run("list", "alias"));
