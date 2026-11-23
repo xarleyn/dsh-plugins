@@ -25,6 +25,7 @@ import type {
   QaAccountNotificationsInput,
   QaAccountProfileInput,
   QaAccountStartersInput,
+  QaAnswerReview,
   QaApprovalDecision,
   QaArtifactView,
   QaAttachmentDraft,
@@ -80,6 +81,7 @@ import { QaHeader, QaSubagentBanner } from "./components/QaHeader.js";
 import { QaThemeSwitcher } from "./components/QaThemeSwitcher.js";
 import { useQaThemePreference } from "./theme-preference.js";
 import { QaMessage } from "./components/QaMessage.js";
+import { QaAnswerReviewDialog } from "./components/QaAnswerReviewDialog.js";
 import { buildChatRows, QaSidebar } from "./components/QaSidebar.js";
 import {
   QaAgentsDrawer,
@@ -727,6 +729,13 @@ export function QaSurface(props: QaSurfaceProps) {
     controller?.subscribe ?? noopSubscribe,
     controller?.getSnapshot ?? (() => QA_SESSION_IDLE_STATE),
     controller?.getSnapshot ?? (() => QA_SESSION_IDLE_STATE),
+  );
+  // The dialog keeps the selected verdict even if a correction replaces its
+  // answer row while the reader is looking at it.
+  const [openReview, setOpenReview] = useState<QaAnswerReview | null>(null);
+  useEffect(
+    () => setOpenReview(null),
+    [state.chatKey, state.viewingSubagent?.id],
   );
   const previewExit = previewing ? (
     <QaAdminPreviewExit
@@ -1795,6 +1804,12 @@ export function QaSurface(props: QaSurfaceProps) {
           ? {}
           : { onEnableDesktop: turnNotices.onEnableDesktop })}
       />
+      {openReview && (
+        <QaAnswerReviewDialog
+          review={openReview}
+          onClose={() => setOpenReview(null)}
+        />
+      )}
       {settingsDialog === undefined ? (
         <QaModal
           open={settingsOpen}
@@ -2137,6 +2152,7 @@ export function QaSurface(props: QaSurfaceProps) {
                                 ? rail.openSources
                                 : undefined
                             }
+                            onOpenReview={setOpenReview}
                             onSourceDetail={
                               config.sources.enabled
                                 ? rail.openSourceDetail

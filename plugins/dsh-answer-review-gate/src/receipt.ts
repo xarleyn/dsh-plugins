@@ -1,5 +1,6 @@
 import { createUserMessage } from "@deepseek-ai/dsh-llm";
 import type { DocumentSubject } from "./document-evidence.js";
+import type { ReviewIssue, ReviewVerdict } from "./types.js";
 
 export type ReviewStatus =
   | "reviewing"
@@ -10,8 +11,18 @@ export type ReviewStatus =
   | "cancelled"
   | "waived";
 
-/** Metadata about one immutable answer version, never a copy of its content. */
+export interface ReviewReceiptDetails {
+  readonly summary: string;
+  readonly issues: readonly Pick<
+    ReviewIssue,
+    "severity" | "claim" | "problem" | "requiredFix"
+  >[];
+  readonly omittedIssues: number;
+}
+
+/** Metadata and the displayable verdict about one immutable answer version. */
 export interface ReviewReceipt {
+  readonly details?: ReviewReceiptDetails;
   readonly documents?: readonly DocumentSubject[];
   readonly version: 1;
   readonly candidateSeq: number;
@@ -20,6 +31,32 @@ export interface ReviewReceipt {
   readonly round: number;
   readonly status: ReviewStatus;
   readonly at: number;
+}
+
+const MAX_RECEIPT_ISSUES = 16;
+const MAX_RECEIPT_TEXT = 2_000;
+
+function receiptText(text: string): string {
+  const trimmed = text.trim();
+  return trimmed.length <= MAX_RECEIPT_TEXT
+    ? trimmed
+    : `${trimmed.slice(0, MAX_RECEIPT_TEXT).trimEnd()}…`;
+}
+
+/** Keep the verdict separate from model context and bounded for chat history. */
+export function reviewReceiptDetails(
+  verdict: ReviewVerdict,
+): ReviewReceiptDetails {
+  return {
+    summary: receiptText(verdict.summary),
+    issues: verdict.issues.slice(0, MAX_RECEIPT_ISSUES).map((issue) => ({
+      severity: issue.severity,
+      claim: receiptText(issue.claim),
+      problem: receiptText(issue.problem),
+      requiredFix: receiptText(issue.requiredFix),
+    })),
+    omittedIssues: Math.max(0, verdict.issues.length - MAX_RECEIPT_ISSUES),
+  };
 }
 
 export const REVIEW_STATUS_SOURCE = "answer-review-status";

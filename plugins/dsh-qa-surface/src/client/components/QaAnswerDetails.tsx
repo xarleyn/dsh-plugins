@@ -1,4 +1,9 @@
-import type { QaMessage, QaSource, QaTurnSources } from "../../types.js";
+import type {
+  QaAnswerReview,
+  QaMessage,
+  QaSource,
+  QaTurnSources,
+} from "../../types.js";
 import { QaAnswerReviewStatus } from "./QaAnswerReviewStatus.js";
 
 export type QaOpenAnswerSources = (
@@ -7,13 +12,15 @@ export type QaOpenAnswerSources = (
   incompleteOrigins: QaTurnSources["incompleteOrigins"],
 ) => void;
 
-/** Sources are an action; review is a status. They share one wrapping line. */
+/** Actions and review status share one wrapping line under the answer. */
 export function QaAnswerDetails({
   message,
   onOpenSources,
+  onOpenReview,
 }: {
   readonly message: Extract<QaMessage, { role: "assistant" }>;
   readonly onOpenSources?: QaOpenAnswerSources | undefined;
+  readonly onOpenReview?: ((review: QaAnswerReview) => void) | undefined;
 }) {
   const sources = message.sources;
   const showSources = onOpenSources && sources && sources.length > 0;
@@ -23,7 +30,7 @@ export function QaAnswerDetails({
       {showSources && (
         <button
           type="button"
-          className="dsh-qa-message__sources"
+          className="dsh-qa-message__detail-action"
           data-testid="qa-message-sources"
           onClick={() =>
             onOpenSources(
@@ -36,7 +43,9 @@ export function QaAnswerDetails({
           Источники ({sources.length})
         </button>
       )}
-      {message.review && <QaAnswerReviewStatus review={message.review} />}
+      {message.review && (
+        <QaAnswerReviewStatus review={message.review} onOpen={onOpenReview} />
+      )}
     </div>
   );
 }

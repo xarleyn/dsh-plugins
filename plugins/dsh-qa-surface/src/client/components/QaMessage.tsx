@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef, useState } from "react";
 import type {
   QaArtifactView,
+  QaAnswerReview,
   QaCommandActivity,
   QaFileView,
   QaMessage as QaMessageModel,
@@ -113,6 +114,7 @@ export interface QaMessageProps {
   readonly resolveImage?: (attachmentId: string) => Promise<string>;
   /** Open the drawer at the exact canonical snapshot shown in this footer. */
   readonly onOpenSources?: QaOpenAnswerSources;
+  readonly onOpenReview?: (review: QaAnswerReview) => void;
   /** Open one path-backed source's detail (an inline footnote click). */
   readonly onSourceDetail?: (source: QaSource) => void;
   /**
@@ -171,6 +173,7 @@ export function sameMessage(a: QaMessageModel, b: QaMessageModel): boolean {
       a.review?.candidateHash === b.review?.candidateHash &&
       a.review?.status === b.review?.status &&
       a.review?.at === b.review?.at &&
+      a.review?.details === b.review?.details &&
       sameSources(a.sources, b.sources) &&
       sameArtifacts(a.artifacts, b.artifacts) &&
       (a.stats === undefined) === (b.stats === undefined) &&
@@ -409,6 +412,7 @@ export const QaMessage = memo(
     onFork,
     resolveImage,
     onOpenSources,
+    onOpenReview,
     onSourceDetail,
     onArtifactOpen,
     onAttachmentOpen,
@@ -710,7 +714,11 @@ export const QaMessage = memo(
           </span>
         ) : null}
         {message.role === "assistant" ? (
-          <QaAnswerDetails message={message} onOpenSources={onOpenSources} />
+          <QaAnswerDetails
+            message={message}
+            onOpenSources={onOpenSources}
+            onOpenReview={onOpenReview}
+          />
         ) : null}
         {showActions ? (
           <div
@@ -843,6 +851,7 @@ export const QaMessage = memo(
     prev.onFork === next.onFork &&
     prev.resolveImage === next.resolveImage &&
     prev.onOpenSources === next.onOpenSources &&
+    prev.onOpenReview === next.onOpenReview &&
     prev.onSourceDetail === next.onSourceDetail &&
     prev.onArtifactOpen === next.onArtifactOpen &&
     prev.onAttachmentOpen === next.onAttachmentOpen &&

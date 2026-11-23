@@ -3,7 +3,11 @@ import type {
   ConversationNodeDefinition,
   ConversationSnapshot,
 } from "@deepseek-ai/dsh-client-ui-conversation/client";
-import type { QaAnswerReview } from "../types/answer-review.js";
+import type {
+  QaAnswerReview,
+  QaAnswerReviewDetails,
+  QaAnswerReviewIssue,
+} from "../types/answer-review.js";
 import type { QaComposerActivity, QaMessage } from "../types.js";
 
 export const QA_REVIEW_NODE = "qa-answer-review";
@@ -62,6 +66,30 @@ const statuses = new Set([
 const sequence = (value: unknown): value is number =>
   typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 
+function isReviewIssue(issue: unknown): issue is QaAnswerReviewIssue {
+  if (issue === null || typeof issue !== "object") return false;
+  const { severity, claim, problem, requiredFix } =
+    issue as Partial<QaAnswerReviewIssue>;
+  return (
+    (severity === "critical" || severity === "major" || severity === "minor") &&
+    typeof claim === "string" &&
+    typeof problem === "string" &&
+    typeof requiredFix === "string"
+  );
+}
+
+function isReviewDetails(details: unknown): details is QaAnswerReviewDetails {
+  if (details === null || typeof details !== "object") return false;
+  const { summary, issues, omittedIssues } =
+    details as Partial<QaAnswerReviewDetails>;
+  return (
+    typeof summary === "string" &&
+    Array.isArray(issues) &&
+    issues.every(isReviewIssue) &&
+    sequence(omittedIssues)
+  );
+}
+
 /** Read only the gate's producer metadata; answer prose never supplies a verdict. */
 export function readAnswerReview(
   event: SessionEventLike,
@@ -115,7 +143,15 @@ export function parseAnswerReview(receipt: unknown): QaAnswerReview | null {
       ))
   )
     return null;
-  return value as QaAnswerReview;
+  const review = value as QaAnswerReview;
+  if (
+    review.details === undefined ||
+    ((review.status === "pass" || review.status === "revise") &&
+      isReviewDetails(review.details))
+  )
+    return review;
+  const { details: _invalid, ...statusOnly } = review;
+  return statusOnly;
 }
 
 function requireReview(event: SessionEventLike): QaAnswerReview {

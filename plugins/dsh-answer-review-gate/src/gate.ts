@@ -55,7 +55,12 @@ import type {
 } from "./types.js";
 import { ReviewerFailure } from "./types.js";
 import type { ReviewAudit } from "./audit.js";
-import type { ReviewReceipt, ReviewStatus } from "./receipt.js";
+import {
+  reviewReceiptDetails,
+  type ReviewReceipt,
+  type ReviewReceiptDetails,
+  type ReviewStatus,
+} from "./receipt.js";
 
 /** Minimal structural view of the reviewed agent. */
 export interface GateAgent {
@@ -127,8 +132,8 @@ interface GateSessionState {
   answerShapeSteered: boolean;
   /** A review of this session is awaited; no second reviewer may start. */
   reviewing: boolean;
-  /** Hash of the candidate a review PASS applies to. */
-  lastPassedHash?: string;
+  /** A PASS and its details can be reused for an identical candidate. */
+  lastPass?: { hash: string; details: ReviewReceiptDetails } | undefined;
 }
 
 export interface AnswerReviewGateDeps {
@@ -328,7 +333,8 @@ export class AnswerReviewGate {
       );
       return "answer-shape";
     }
-    let alreadyPassed = state.lastPassedHash === hash;
+    const lastPass = state.lastPass;
+    let alreadyPassed = lastPass?.hash === hash;
     if (alreadyPassed && (targets.length || state.verifiedDocument)) {
       alreadyPassed = false;
       if (state.verifiedDocument?.targets === JSON.stringify(targets)) {
@@ -337,7 +343,7 @@ export class AnswerReviewGate {
           await state.verifiedDocument.check(signal);
           alreadyPassed = true;
         } catch {
-          state.lastPassedHash = undefined;
+          state.lastPass = undefined;
           state.verifiedDocument = undefined;
           state.documentSubjects = undefined;
         } finally {
@@ -346,7 +352,7 @@ export class AnswerReviewGate {
       }
     }
     if (alreadyPassed) {
-      this.publishReceipt(agent, state, hash, "pass");
+      this.publishReceipt(agent, state, hash, "pass", lastPass?.details);
       this.deps.logger.info("gate.candidate-already-passed", {
         sessionId,
         turn,
@@ -452,7 +458,7 @@ export class AnswerReviewGate {
     try {
       state.documentSubjects = undefined;
       state.verifiedDocument = undefined;
-      state.lastPassedHash = undefined;
+      state.lastPass = undefined;
       const review = async () => {
         const evidence = targets.length
           ? await prepareDocumentEvidence({
@@ -605,9 +611,10 @@ export class AnswerReviewGate {
     }
     state.round += 1;
     const durationMs = this.deps.now() - startedAt;
+    const details = reviewReceiptDetails(verdict);
     if (verdict.verdict === "pass") {
-      this.publishReceipt(agent, state, hash, "pass");
-      state.lastPassedHash = hash;
+      this.publishReceipt(agent, state, hash, "pass", details);
+      state.lastPass = { hash, details };
       // The pass settles every finding the previous rounds raised: a changed
       // candidate reviewed later in this turn starts from a clean slate.
       state.history = [];
@@ -631,7 +638,7 @@ export class AnswerReviewGate {
       });
       return "pass";
     }
-    this.publishReceipt(agent, state, hash, "revise");
+    this.publishReceipt(agent, state, hash, "revise", details);
     this.record(config, {
       time: startedAt,
       sessionId,
@@ -784,6 +791,7 @@ export class AnswerReviewGate {
     state: GateSessionState,
     hash: string,
     status: ReviewStatus,
+    details?: ReviewReceiptDetails,
   ): void {
     if (state.candidateSeq === undefined) return;
     const key = `${state.candidateSeq}:${hash}:${status}`;
@@ -794,6 +802,7 @@ export class AnswerReviewGate {
       candidateSeq: state.candidateSeq,
       candidateHash: hash,
       requestSeq: state.userTurn,
+      ...(details === undefined ? {} : { details }),
       ...((status === "pass" || status === "revise") &&
       state.documentSubjects?.length
         ? { documents: state.documentSubjects }
@@ -836,7 +845,7 @@ export class AnswerReviewGate {
       existing.round = 0;
       existing.failureSteered = false;
       existing.answerShapeSteered = false;
-      existing.lastPassedHash = undefined;
+      existing.lastPass = undefined;
       existing.documentSubjects = undefined;
       existing.verifiedDocument = undefined;
       existing.history = [];

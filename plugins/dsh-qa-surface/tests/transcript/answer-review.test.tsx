@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import type { SessionEventLike } from "@deepseek-ai/dsh-api-session-controller/client";
 import type { ChatSnapshot } from "@deepseek-ai/dsh-client-ui-chat/client";
 import type {
@@ -16,6 +16,7 @@ import {
   QA_REVIEW_NODE,
 } from "../../src/client/answer-review.js";
 import { QaAnswerReviewStatus } from "../../src/client/components/QaAnswerReviewStatus.js";
+import { QaAnswerReviewDialog } from "../../src/client/components/QaAnswerReviewDialog.js";
 import { sameMessage } from "../../src/client/components/QaMessage.js";
 import { projectTranscript } from "../../src/client/QaTranscriptAdapter.js";
 import { legacy, snapshot } from "../helpers/conversation-fakes.js";
@@ -29,6 +30,11 @@ const review: QaAnswerReview = {
   round: 1,
   status: "pass",
   at: 100,
+};
+const details = {
+  summary: "Проверены обе записи журнала.",
+  issues: [],
+  omittedIssues: 0,
 };
 const event = (
   receipt: unknown = review,
@@ -110,6 +116,21 @@ describe("current answer review", () => {
     ).toBeNull();
   });
 
+  it("reads a saved verdict and preserves its status when optional details are malformed", () => {
+    expect(readAnswerReview(event({ ...review, details }))).toEqual({
+      ...review,
+      details,
+    });
+    expect(
+      readAnswerReview(
+        event({ ...review, details: { ...details, issues: [null] } }),
+      ),
+    ).toEqual(review);
+    expect(
+      readAnswerReview(event({ ...review, status: "failure", details })),
+    ).toEqual({ ...review, status: "failure" });
+  });
+
   it("replaces the status for the same request and anchors the latest answer instead of the old failure", () => {
     const first = event({ ...review, status: "failure" });
     const last = event(
@@ -152,7 +173,10 @@ describe("current answer review", () => {
       legacy: slice,
       nodes: {
         values: () => [
-          { kind: QA_REVIEW_NODE, data: { ...review, candidateSeq: 8 } },
+          {
+            kind: QA_REVIEW_NODE,
+            data: { ...review, candidateSeq: 8, details },
+          },
         ],
       },
     } as unknown as ChatSnapshot;
@@ -167,6 +191,10 @@ describe("current answer review", () => {
       (m) => m.role === "assistant",
     );
     expect(messages.map((m) => m.review?.status)).toEqual([undefined, "pass"]);
+    expect(messages.map((m) => m.review?.details)).toEqual([
+      undefined,
+      details,
+    ]);
     expect(projectTranscript(state)).toEqual(projectTranscript(state));
   });
 
@@ -189,6 +217,9 @@ describe("current answer review", () => {
       }),
     ).toBe(false);
     expect(sameMessage(message, { ...message, review: undefined })).toBe(false);
+    expect(
+      sameMessage(message, { ...message, review: { ...review, details } }),
+    ).toBe(false);
   });
 
   it("shows the recovered PASS as current and keeps failures and waivers distinct", () => {
@@ -221,5 +252,34 @@ describe("current answer review", () => {
         "Ответ проверен",
       );
     }
+  });
+
+  it("opens completed statuses as buttons and explains when old findings were not saved", () => {
+    const onOpen = () => {};
+    const view = render(
+      <QaAnswerReviewStatus review={review} onOpen={onOpen} />,
+    );
+    expect(
+      screen
+        .getByRole("button", { name: "Ответ проверен" })
+        .getAttribute("aria-haspopup"),
+    ).toBe("dialog");
+    const olderReview = { ...review, status: "revise" } as const;
+    view.rerender(
+      <QaAnswerReviewStatus review={olderReview} onOpen={onOpen} />,
+    );
+    expect(
+      screen.getByRole("button", { name: "Нужны исправления" }),
+    ).toBeDefined();
+    view.rerender(
+      <QaAnswerReviewDialog review={olderReview} onClose={onOpen} />,
+    );
+    const dialog = screen.getByRole("dialog", {
+      name: "Заключение рецензента",
+    });
+    expect(
+      within(dialog).getByText("Для этой проверки сохранился только вердикт."),
+    ).toBeDefined();
+    expect(within(dialog).queryByRole("list")).toBeNull();
   });
 });

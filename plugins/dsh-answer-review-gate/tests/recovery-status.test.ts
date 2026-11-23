@@ -69,6 +69,12 @@ function harness(
     },
     steer: vi.fn(),
   } as unknown as GateAgent;
+  const append = (event: (typeof events)[number]) => {
+    events.push(event);
+    const seq = events.length - 1;
+    nodes.push(seq);
+    return seq;
+  };
   const reviewExpertBounded = vi.fn(async () => ({
     ok: true,
     code: "",
@@ -86,9 +92,7 @@ function harness(
     steerMessage: steer,
     publishStatus: (_agent, receipt) => {
       receipts.push(receipt);
-      const notice = reviewStatusNotice(receipt);
-      events.push({ type: "user/message", data: notice });
-      nodes.push(events.length - 1);
+      append({ type: "user/message", data: reviewStatusNotice(receipt) });
     },
   });
   return {
@@ -97,6 +101,11 @@ function harness(
     reviewExpertBounded,
     steer,
     receipts,
+    answer: (text: string) =>
+      append({
+        type: "assistant/message",
+        data: { message: { content: [{ type: "text", text }] } },
+      }),
     run: () => gate.handleTurnStopping(agent, 1, signal),
   };
 }
@@ -126,6 +135,61 @@ describe("capture recovery and durable review status", () => {
     });
     expect(await h.run()).toBeNull();
     expect(h.reviewExpertBounded).toHaveBeenCalledTimes(2);
+    const candidateSeq = h.answer("File locks serialize journal writes.");
+    expect(await h.run()).toBeNull();
+    expect(h.reviewExpertBounded).toHaveBeenCalledTimes(2);
+    expect(h.receipts.at(-1)).toMatchObject({
+      candidateSeq,
+      status: "pass",
+      details: { summary: "Verified", issues: [], omittedIssues: 0 },
+    });
+  });
+
+  it("records bounded findings only on the version returned for correction", async () => {
+    const summary = "The answer overstates the scope of the lock.";
+    const h = harness([
+      {
+        ...expertPass,
+        summary,
+        followUps: Array.from({ length: 19 }, () => "Specify the lock scope."),
+        findings: [
+          {
+            claim: "Global lock",
+            evidence: ["Evidence ".repeat(500)],
+            confidence: "high",
+          },
+        ],
+      },
+      expertPass,
+    ]);
+    expect(await h.run()).toBe("revise");
+    const [reviewing, revise] = h.receipts;
+    expect(reviewing?.details).toBeUndefined();
+    expect(revise).toMatchObject({
+      candidateSeq: 1,
+      status: "revise",
+      details: { summary, omittedIssues: 4 },
+    });
+    expect(revise?.details?.issues).toHaveLength(16);
+    expect(revise?.details?.issues[0]).toMatchObject({
+      severity: "major",
+      claim: "Global lock",
+      problem: expect.stringMatching(/^Reviewer objection.+…$/u),
+    });
+    expect(revise?.details?.issues[1]?.requiredFix).toBe(
+      "Specify the lock scope.",
+    );
+    const notice = reviewStatusNotice(revise!);
+    expect(notice.source).toMatchObject({ receipt: revise });
+    expect(JSON.stringify(notice.content)).not.toContain(summary);
+
+    const candidateSeq = h.answer("The lock scope is a single journal.");
+    expect(await h.run()).toBe("pass");
+    expect(h.receipts.at(-1)).toMatchObject({
+      candidateSeq,
+      status: "pass",
+      details: { summary: "Verified", issues: [], omittedIssues: 0 },
+    });
   });
 
   it("bounds repeated missing captures and emits one failure warning", async () => {

@@ -727,9 +727,24 @@ span.dsh-qa-message__image[data-state="loading"]{animation:dsh-qa-spin 1.2s line
 .dsh-qa-message--assistant .dsh-qa-message__content{width:100%;padding:2px 0}
 .dsh-qa-message__details{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;max-width:100%;margin-top:8px}
 .dsh-qa-message__details .dsh-qa-review{margin:0;padding:0;border:0;background:transparent}
-.dsh-qa-message__sources{appearance:none;padding:2px 8px;border:1px solid var(--dsw-alias-border-l2);border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;line-height:18px;cursor:pointer}
-.dsh-qa-message__sources:hover{border-color:var(--dsw-alias-label-dimmed);color:var(--dsw-alias-label-primary)}
-.dsh-qa-message__sources:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsh-qa-accent));outline-offset:1px}
+.dsh-qa-message__detail-action{appearance:none;display:inline-flex;align-items:center;gap:4px;min-width:0;max-width:100%;padding:2px 8px;border:1px solid var(--dsw-alias-border-l2);border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;line-height:18px;text-align:left;overflow-wrap:anywhere;cursor:pointer}
+.dsh-qa-message__detail-action:hover{border-color:var(--dsw-alias-label-dimmed);background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.dsh-qa-message__detail-action:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsh-qa-accent));outline-offset:1px}
+.dsh-qa-message__detail-action[data-status=pass] .dsh-qa-review-icon,.dsh-qa-review-details__verdict[data-status=pass] .dsh-qa-review-icon{color:var(--dsw-alias-state-success-primary)}
+.dsh-qa-message__detail-action[data-status=revise] .dsh-qa-review-icon,.dsh-qa-review-details__verdict[data-status=revise] .dsh-qa-review-icon{color:var(--dsh-qa-warning-hover)}
+.dsh-qa-review-details{display:grid;gap:16px;padding-top:8px;color:var(--dsw-alias-label-secondary);font-size:14px;line-height:20px;overflow-wrap:anywhere}
+.dsh-qa-review-details p{margin:0;white-space:pre-wrap}
+.dsh-qa-review-details__result,.dsh-qa-review-details__issue{display:grid;gap:8px}
+.dsh-qa-review-details__verdict{display:flex;align-items:center;gap:8px;color:var(--dsw-alias-label-primary);font-size:16px;font-weight:600;line-height:24px}
+.dsh-qa-review-details__verdict .dsh-qa-review-icon{width:18px;height:18px}
+.dsh-qa-review-details__issues h3{margin:0 0 8px;color:var(--dsw-alias-label-primary);font-size:14px;line-height:20px}
+.dsh-qa-review-details ul{display:grid;gap:8px;margin:0;padding:0;list-style:none}
+.dsh-qa-review-details__issue{padding:12px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-3)}
+.dsh-qa-review-details strong{color:var(--dsw-alias-label-primary);white-space:pre-wrap}
+.dsh-qa-review-details__severity,.dsh-qa-review-details__fix strong{font-size:12px;line-height:16px;font-weight:600}
+.dsh-qa-review-details__severity[data-severity=critical]{color:var(--dsw-alias-state-error-primary)}
+.dsh-qa-review-details__issues ul+p,.dsh-qa-review-details__documents[open] ul{margin-top:8px}
+.dsh-qa-review-details__documents summary{cursor:pointer;color:var(--dsw-alias-label-primary)}
 .dsh-qa-message--system .dsh-qa-message__content{padding:7px 11px;border-radius:9px;background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary);font-size:13px;line-height:20px}
 .dsh-qa-message[data-status="info"] .dsh-qa-message__content{color:var(--dsh-qa-info)}
 .dsh-qa-message[data-status="error"] .dsh-qa-message__content{color:var(--dsh-qa-error)}
