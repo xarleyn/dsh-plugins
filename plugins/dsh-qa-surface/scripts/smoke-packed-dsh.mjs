@@ -292,6 +292,18 @@ async function runBrowserPass({
     if (qaUrl.pathname !== "/qa" || qaUrl.search !== "") {
       throw new Error(`QA navigation was not restored: ${qaUrl.href}`);
     }
+    await page.waitForFunction(async () => {
+      const manifest = globalThis.document.querySelector(
+        'link[rel="manifest"]',
+      );
+      const worker =
+        await globalThis.navigator.serviceWorker.getRegistration("/qa");
+      return (
+        new URL(manifest?.href ?? globalThis.location.href).pathname ===
+          "/qa/_pwa/manifest.webmanifest" &&
+        worker?.active?.scriptURL.endsWith("/qa/_pwa/service-worker.js")
+      );
+    });
     const viewport = await page
       .locator("main.dsh-qa-surface")
       .evaluate((node) => {
@@ -1076,6 +1088,17 @@ try {
     throw new Error(
       `/qa did not return the normal DSH SPA document: status=${qaDocument.status} content-type=${qaDocument.headers.get("content-type")} body=${JSON.stringify(qaHtml.slice(0, 300))}`,
     );
+  }
+  const pwaManifest = await fetch(`${origin}/qa/_pwa/manifest.webmanifest`);
+  if (
+    !pwaManifest.ok ||
+    !pwaManifest.headers
+      .get("content-type")
+      ?.includes("application/manifest+json") ||
+    (await pwaManifest.json()).start_url !== "/qa" ||
+    !qaHtml.includes('src="/qa/_pwa/bootstrap.js"')
+  ) {
+    throw new Error("The packed QA app did not advertise its own launch entry");
   }
   const graph = bootGraph(qaHtml);
   const packageName = "@yadsh/dsh-qa-surface";

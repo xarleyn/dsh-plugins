@@ -487,7 +487,7 @@ describe("wiring: the config reaches the host", () => {
 
   it("registers the route the entry names and drops it on unload", async () => {
     const { routes, dispose } = await world({ route: { path: "/ask" } });
-    expect(routes.map((route) => route.path)).toEqual(["/ask"]);
+    expect(routes.map((route) => route.path)).toEqual(["/ask", "/ask/_pwa"]);
     await dispose();
     expect(routes).toEqual([]);
   });
@@ -506,7 +506,7 @@ describe("wiring: the config reaches the host", () => {
       QA_SURFACE_SETTINGS_NAMESPACE,
       1,
     );
-    expect(routes.map((route) => route.path)).toEqual(["/qa"]);
+    expect(routes.map((route) => route.path)).toEqual(["/qa", "/qa/_pwa"]);
     await dispose();
     expect(routes).toEqual([]);
   });
@@ -525,6 +525,7 @@ describe("wiring: the config reaches the host", () => {
         placement: "head",
         text: expect.stringContaining("/qa"),
       },
+      { kind: "script-src", placement: "head", src: "/qa/_pwa/bootstrap.js" },
     ]);
     await dispose();
   });
@@ -539,7 +540,9 @@ describe("wiring: the config reaches the host", () => {
       table,
       new Peer(ctx, { principal: { kind: "owner" } }),
     );
-    expect(table).toEqual([]);
+    expect(table).toEqual([
+      { kind: "script-src", placement: "head", src: "/qa/_pwa/bootstrap.js" },
+    ]);
     await dispose();
   });
 
