@@ -106,6 +106,7 @@ import { registerTurnFailureLog } from "./turn-failure-log.js";
 import { entryRedirectRow } from "./entry-redirect.js";
 import { qaKioskDeployment } from "./ui-mode.js";
 import { registerQaNavigationRoute } from "./host-route.js";
+import { qaPwaAppPath, qaPwaBootstrapRow, registerQaPwaRoute } from "./pwa.js";
 import { QaOidcService, oidcRefusal } from "./oidc/service.js";
 import { registerQaOidcRoute } from "./oidc/http.js";
 import { makeLaunchTokenSource } from "./launch-token.js";
@@ -385,6 +386,8 @@ export class QaSurface extends TypertRemoteService {
   private webServer:
     Parameters<typeof registerQaNavigationRoute>[0] | undefined;
   private disposeRoute: (() => void) | undefined;
+  private pwaPath: string | undefined;
+  private disposePwaRoute: (() => void) | undefined;
   private readonly oidc = new QaOidcService({
     config: () => this.getConfig(),
     accounts: () => this.accountRemotes.resolve(this.getConfig()),
@@ -1017,12 +1020,15 @@ export class QaSurface extends TypertRemoteService {
     // kiosk composition: there the index itself is served under /qa, so the
     // script would meet its own target on every load and reload the page in
     // a loop, and the server policy already routes the site root into /qa.
-    if (!qaKioskDeployment()) {
-      ctx.on("webserver/index-inject", (table) => {
+    ctx.on("webserver/index-inject", (table) => {
+      if (!qaKioskDeployment()) {
         const row = entryRedirectRow(this.getConfig());
         if (row !== undefined) table.push(row);
-      });
-    }
+      }
+      if (this.pwaPath !== undefined) {
+        table.push(qaPwaBootstrapRow(this.pwaPath));
+      }
+    });
     // The settings namespace is this profile entry itself, and every Config
     // field is volatile: there is no section left to install. The browser half
     // registers the card that edits this entry, so the Host's generated page is
@@ -1041,6 +1047,7 @@ export class QaSurface extends TypertRemoteService {
           if (String(namespace) !== QA_SURFACE_SETTINGS_NAMESPACE) return;
           const config = this.getConfig();
           this.refreshRoute();
+          this.refreshPwaRoute();
           this.refreshIntegrationRoutes();
           this.refreshOidcRoute();
           this.warnDocumentsMoved();
@@ -1056,6 +1063,7 @@ export class QaSurface extends TypertRemoteService {
     ctx.inject(["webServer"], (webContext) => {
       this.webServer = webContext.webServer;
       this.refreshRoute();
+      this.refreshPwaRoute();
       this.refreshIntegrationRoutes();
       this.refreshOidcRoute();
       webContext.effect(
@@ -1063,6 +1071,9 @@ export class QaSurface extends TypertRemoteService {
           this.disposeRoute?.();
           this.disposeRoute = undefined;
           this.routeKey = undefined;
+          this.disposePwaRoute?.();
+          this.disposePwaRoute = undefined;
+          this.pwaPath = undefined;
           this.disposeIntegrationRoutes?.();
           this.disposeOidcRoute?.();
           this.disposeOidcRoute = undefined;
@@ -3410,6 +3421,27 @@ export class QaSurface extends TypertRemoteService {
       launchToken: this.launchToken,
     });
     this.routeKey = key;
+  }
+
+  private refreshPwaRoute(): void {
+    const path = qaPwaAppPath(this.getConfig());
+    if (path === this.pwaPath) return;
+    this.disposePwaRoute?.();
+    this.disposePwaRoute = undefined;
+    this.pwaPath = undefined;
+    if (path === undefined || this.webServer === undefined) return;
+    try {
+      this.disposePwaRoute = registerQaPwaRoute(
+        this.webServer,
+        path,
+        () => this.getConfig().branding.title,
+      );
+      this.pwaPath = path;
+    } catch (error) {
+      this.logger.warn("pwa.route-unavailable", {
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   /**

@@ -287,6 +287,25 @@ short-lived query marker. The browser restores the requested `/qa` URL with
 `history.replaceState` before mounting the overlay. No second server, duplicate
 HTML document, permissive route, or unauthenticated config endpoint is added.
 
+### Install the web app
+
+Open the QA route over trusted HTTPS. In Chrome and Edge, use the browser's
+install control or **Установить приложение** when QA offers it. In Safari on
+iPhone or iPad, choose **Share → Add to Home Screen** and enable **Open as Web
+App** if shown. In Safari on a Mac, choose **File → Add to Dock**. The installed
+app opens the normal QA sign-in or chat surface in its own window.
+
+The plugin serves the manifest, icons, bootstrap and service worker under
+`<qa-route>/_pwa/`. Its manifest uses the configured QA title and route. In
+kiosk mode it uses the Harness QA base path. A reverse proxy should serve these
+URLs on the same origin as the page and preserve the service worker's
+`Service-Worker-Allowed` header. Installability requires a trusted certificate
+on network origins. Browsers also treat localhost as a secure context.
+
+The service worker forwards requests for the app's launch page to the network.
+When a connection fails it shows a retry page. QA needs access to the stand
+for sign-in, chats, files and tools. The worker creates no browser caches.
+
 ## Configure
 
 Configuration is registered under the Host settings namespace `qa-surface`.

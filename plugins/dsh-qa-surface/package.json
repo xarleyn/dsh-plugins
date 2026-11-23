@@ -77,6 +77,8 @@
     "lib/**/*.js",
     "lib/**/*.js.map",
     "lib/**/*.d.ts",
+    "pwa/*.js",
+    "pwa/*.png",
     "scripts/repair-session-events.mjs",
     "scripts/attach-workspace-sessions.mjs",
     "locale/*.json",
@@ -90,7 +92,7 @@
   "scripts": {
     "clean": "node -e \"require('node:fs').rmSync('lib', { recursive: true, force: true })\"",
     "build": "pnpm run clean && node scripts/generate-typert.mjs && tsc -p tsconfig.build.json && tsdown",
-    "lint": "eslint src tests scripts tsdown.config.ts",
+    "lint": "eslint src tests scripts pwa tsdown.config.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",

@@ -23,6 +23,12 @@ const required = [
   "lib/enforcement/skill-policy.js",
   "lib/enforcement/tool-grants.js",
   "lib/host-route.js",
+  "lib/pwa.js",
+  "pwa/bootstrap.js",
+  "pwa/service-worker.js",
+  "pwa/icon-192.png",
+  "pwa/icon-512.png",
+  "pwa/apple-touch-icon.png",
   "lib/navigation-marker.js",
   "lib/client.js",
   "lib/client.js.map",
@@ -69,6 +75,9 @@ const manifest = JSON.parse(
   await readFile(new URL("package.json", root), "utf8"),
 );
 assert.equal(manifest.name, "@yadsh/dsh-qa-surface");
+assert(
+  manifest.files.includes("pwa/*.js") && manifest.files.includes("pwa/*.png"),
+);
 assert.equal(manifest.bin["qa-accounts"], "./lib/cli.js");
 assert.equal(
   manifest.bin["qa-repair-sessions"],
