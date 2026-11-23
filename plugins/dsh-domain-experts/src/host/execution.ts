@@ -1,4 +1,5 @@
 import type { Agent } from "@deepseek-ai/dsh-agent";
+import type { ToolRunContext } from "@deepseek-ai/dsh-tools";
 import type {
   SubagentActivation,
   SubagentActivationSpec,
@@ -28,7 +29,11 @@ import {
   type MemoryOwner,
   type ResolverDependencies,
 } from "./resolver.js";
-import type { QaModelPolicyPair } from "./qa-principal.js";
+import {
+  expertAgentOptions,
+  type ExpertModelApproval,
+  type ExpertModelOverride,
+} from "./model.js";
 import { parseExpertAnswer, textOfBlocks } from "./result.js";
 import { EXPERT_REVIEW_OUTPUT_SCHEMA } from "./review-output.js";
 import { expertLabelOf } from "./caller.js";
@@ -85,14 +90,9 @@ export interface ExecutionDependencies {
    * such a chat, and the plugin never accepts an account from the model.
    */
   principalOf(sessionId: string): string | undefined;
-  /**
-   * The provider and model the deployment's QA policy fixes for one chat.
-   *
-   * Optional like the surface behind it: a deployment with no QA surface, or
-   * one whose roles name no pair, answers nothing here, and a domain that
-   * inherits its model keeps inheriting the caller's.
-   */
-  modelPolicyOf?(sessionId: string): QaModelPolicyPair | undefined;
+  approveModelSwitch?(
+    request: ExpertModelApproval,
+  ): Promise<ExpertModelApproval["to"] | undefined>;
   /** Host lifecycle adapter applying a configured filter before first prompt. */
   startActivation?(
     spec: SubagentActivationSpec,
@@ -112,6 +112,8 @@ export interface ExpertRunInput {
   readonly parent: Agent;
   readonly definition: DomainDefinition;
   readonly request: DomainExpertRequest;
+  readonly modelOverride?: ExpertModelOverride;
+  readonly callId?: ToolRunContext["callId"];
   readonly signal: AbortSignal;
   readonly callerDomain: string | null;
 }
@@ -119,12 +121,11 @@ export interface ExpertRunInput {
 /**
  * Capabilities this plugin requires from the selected provider.
  *
- * The depth cap is the one start-time option every expert needs the runtime to
- * enforce. The Host composes the child's preset; the lifecycle adapter applies
- * its configured tool restriction on that child's scoped registry.
+ * Each expert needs the depth cap and the exact approved or inherited model.
  */
 const REQUIRED_CAPABILITIES: readonly (keyof SubagentCapabilities)[] = [
   "depthLimit",
+  "agentOptions",
 ];
 
 /**
@@ -186,6 +187,39 @@ async function executeExpert(
     );
   }
 
+  const provider = dependencies.subagents.getProvider(
+    dependencies.subagentProvider,
+  );
+  if (provider === undefined) {
+    throw new DomainExpertsError(
+      "SUBAGENT_PROVIDER_MISSING",
+      `Subagent provider "${dependencies.subagentProvider}" is not registered; configure the plugin with a provider that supports a delegation depth cap.`,
+      { refs: [dependencies.subagentProvider] },
+    );
+  }
+  for (const capability of REQUIRED_CAPABILITIES) {
+    if (provider.capabilities[capability]) continue;
+    throw unsupportedCapability(
+      provider.name,
+      capability,
+      "the runtime must enforce the expert's depth cap and model selection",
+    );
+  }
+  if (
+    input.structuredOutput === true &&
+    (input.request.background || provider.capabilities.outputSchema !== true)
+  )
+    throw unsupportedCapability(
+      provider.name,
+      "outputSchema",
+      "a structured review needs one-shot native result capture",
+    );
+  // Resolve consent before passing the task to memory providers or the child.
+  const agentOptions = await expertAgentOptions(
+    input,
+    dependencies.approveModelSwitch,
+  );
+  input.signal.throwIfAborted();
   const memoryOwner = memoryOwnerOf(
     dependencies.perUserMemory,
     dependencies.tracker.find(callerSessionId)?.memoryOwner,
@@ -203,56 +237,7 @@ async function executeExpert(
     },
     input.request,
   );
-  // Resolution's own picture, plus what this start learned about the
-  // deployment. The audit entry is written from this array, so a policy the
-  // runtime cannot apply is recorded rather than silently missing from the run.
   const degradations = [...profile.degradations];
-
-  const provider = dependencies.subagents.getProvider(
-    dependencies.subagentProvider,
-  );
-  if (provider === undefined) {
-    throw new DomainExpertsError(
-      "SUBAGENT_PROVIDER_MISSING",
-      `Subagent provider "${dependencies.subagentProvider}" is not registered; configure the plugin with a provider that supports a delegation depth cap.`,
-      { refs: [dependencies.subagentProvider] },
-    );
-  }
-  for (const capability of REQUIRED_CAPABILITIES) {
-    if (provider.capabilities[capability]) continue;
-    throw unsupportedCapability(
-      provider.name,
-      capability,
-      "an expert needs the runtime to enforce its recursion budget",
-    );
-  }
-  if (
-    input.structuredOutput === true &&
-    (input.request.background || provider.capabilities.outputSchema !== true)
-  )
-    throw unsupportedCapability(
-      provider.name,
-      "outputSchema",
-      "a structured review needs one-shot native result capture",
-    );
-  // A domain that inherits its model still takes the pair the chat's policy
-  // fixed, so the delegation follows the role the chat runs under rather than
-  // the model its visitor left in the picker.
-  const modelPolicy = definition.model.inherit
-    ? dependencies.modelPolicyOf?.(callerSessionId)
-    : undefined;
-  if (
-    (!definition.model.inherit || modelPolicy !== undefined) &&
-    provider.capabilities.agentOptions !== true
-  ) {
-    throw unsupportedCapability(
-      provider.name,
-      "agentOptions",
-      definition.model.inherit
-        ? `domain "${definition.id}" runs on the model the chat's policy pins`
-        : `domain "${definition.id}" pins its own model`,
-    );
-  }
 
   const spec: SubagentActivationSpec = {
     provider: dependencies.subagentProvider,
@@ -270,7 +255,7 @@ async function executeExpert(
     ],
     parent: input.parent,
     maxDepth: definition.delegation.maxDepth,
-    ...agentOptionsOf(definition, modelPolicy),
+    agentOptions,
     ...(input.structuredOutput === true
       ? { outputSchema: EXPERT_REVIEW_OUTPUT_SCHEMA }
       : {}),
@@ -304,6 +289,7 @@ async function executeExpert(
     );
   }
   const startActivation = async (activationSpec: SubagentActivationSpec) => {
+    input.signal.throwIfAborted();
     if (
       input.budget?.allowedTools &&
       dependencies.startActivation === undefined
@@ -548,40 +534,6 @@ function relabelCapabilityFailure(error: unknown, provider: string): unknown {
     );
   }
   return error;
-}
-
-/** Child options as the runtime declares them. */
-type AgentOptionsFace = NonNullable<SubagentStartRequest["agentOptions"]>;
-type ReasoningEffortFace = NonNullable<AgentOptionsFace["reasoningEffort"]>;
-
-function agentOptionsOf(
-  definition: DomainDefinition,
-  policy?: QaModelPolicyPair | undefined,
-): Pick<SubagentStartRequest, "agentOptions"> {
-  const { model } = definition;
-  if (model.inherit) {
-    if (policy === undefined) return {};
-    return {
-      agentOptions: {
-        provider: policy.provider,
-        model: policy.model,
-        ...(policy.reasoningEffort === undefined
-          ? {}
-          : {
-              reasoningEffort: policy.reasoningEffort as ReasoningEffortFace,
-            }),
-      },
-    };
-  }
-  const agentOptions: AgentOptionsFace = {
-    ...(model.provider === "" ? {} : { provider: model.provider }),
-    ...(model.model === "" ? {} : { model: model.model }),
-    ...(model.reasoningEffort === ""
-      ? {}
-      : { reasoningEffort: model.reasoningEffort as ReasoningEffortFace }),
-    ...(model.maxTokens > 0 ? { maxTokens: model.maxTokens } : {}),
-  };
-  return { agentOptions };
 }
 
 function recordAudit(

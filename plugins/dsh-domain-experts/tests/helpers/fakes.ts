@@ -144,6 +144,7 @@ export function agentOf(options: {
 }): Agent {
   return {
     id: options.id,
+    options: { provider: "local", model: "chat" },
     session: {
       header: {
         version: 1,

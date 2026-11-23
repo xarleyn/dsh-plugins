@@ -1,6 +1,7 @@
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import { isForegroundReviewAgent } from "@yadsh/dsh-plugin-kit/review-foreground";
 import { DomainExpertsError } from "../errors.js";
+import type { ExpertModelOverride } from "../model.js";
 import {
   EXPERT_MODE_VALUES,
   callerSessionIdOf,
@@ -47,7 +48,7 @@ export function createDomainExpertTool(dependencies: ToolDependencies) {
   return defineTool({
     name: "domain_expert",
     description:
-      "Ask the expert for one domain to investigate, answer or review something inside its own domain. Pass the domain id from domain_experts_list, state the task, and include any context the expert cannot discover itself. When you are an expert and the work belongs to another domain, call this same tool for that domain instead of guessing.",
+      "Ask the expert for one domain to investigate, answer or review something inside its own domain. Pass the domain id from domain_experts_list, state the task, and include any context the expert cannot discover itself. The expert runs on your current model by default. Request a different model only when needed. The user must approve that launch before the expert receives any data. If the user declines, continue on the current model. When you are an expert and the work belongs to another domain, call this same tool for that domain.",
     parameters: {
       domain: {
         type: "string",
@@ -77,7 +78,20 @@ export function createDomainExpertTool(dependencies: ToolDependencies) {
       background: {
         type: "boolean",
         description:
-          "Start a durable background child and return immediately with its session id instead of waiting for the answer.",
+          "Start a durable background child and return its session id. Any required approval happens before the child starts.",
+      },
+      provider: {
+        type: "string",
+        description: "Exact provider ID for a model change. Requires model.",
+      },
+      model: {
+        type: "string",
+        description: "Exact model ID for a model change. Requires provider.",
+      },
+      use_domain_model: {
+        type: "boolean",
+        description:
+          "Request this domain's saved alternative model. Omit provider and model when using this option.",
       },
     },
     output: {
@@ -226,6 +240,7 @@ export function createDomainExpertTool(dependencies: ToolDependencies) {
           );
         }
 
+        const modelOverride = modelOverrideOf(args);
         const result = await dependencies.run({
           parent: agent,
           definition,
@@ -234,7 +249,9 @@ export function createDomainExpertTool(dependencies: ToolDependencies) {
             ...(isForegroundReviewAgent(agent) ? { background: false } : {}),
           },
           signal: exec.signal,
+          callId: exec.callId,
           callerDomain,
+          ...(modelOverride === undefined ? {} : { modelOverride }),
         });
         return {
           domain: result.domainId,
@@ -271,6 +288,24 @@ export function createDomainExpertTool(dependencies: ToolDependencies) {
       rawInput: args.task,
     }),
   });
+}
+
+function modelOverrideOf(args: {
+  readonly provider?: string;
+  readonly model?: string;
+  readonly use_domain_model?: boolean;
+}): ExpertModelOverride | undefined {
+  const { provider, model } = args;
+  if (provider === undefined && model === undefined) {
+    return args.use_domain_model === true ? "configured" : undefined;
+  }
+  if (!provider?.trim() || !model?.trim() || args.use_domain_model === true) {
+    throw new DomainExpertsError(
+      "TASK_REJECTED",
+      "To request another model, provide both provider and model or use use_domain_model on its own.",
+    );
+  }
+  return { provider: provider.trim(), model: model.trim() };
 }
 
 function formatFinding(finding: {

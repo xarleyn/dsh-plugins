@@ -122,9 +122,9 @@ export async function runAnswerModesPass(options) {
     await writeFile(
       join(storage, "domain_experts.json"),
       JSON.stringify({
-        unit: { name: "domain_experts", version: 1 },
-        global: {},
-        tables: { domains: { [definition.id]: definition }, memory: {} },
+        unit: { name: "domain_experts", version: 2 },
+        global: { domains: [definition] },
+        tables: { domains: {}, memory: {} },
       }) + "\n",
     );
   }
@@ -135,6 +135,7 @@ export async function runAnswerModesPass(options) {
   const closedReviews = new Set();
   const localToolChecks = new Map();
   const inspectedModels = new Set();
+  const expertLaunches = new Map();
   let workerReadStarted = false;
   let ragQueries = 0;
   const server = createServer(async (request, response) => {
@@ -168,15 +169,21 @@ export async function runAnswerModesPass(options) {
       const serialized = JSON.stringify(body.messages);
       const scenarios = [
         ...serialized.matchAll(
-          /MODE_(ALLOW|DENY|SKIP|AFTER|DEEP|EVIDENCE|CANCEL|TIMEOUT|CURRENT|GUIDE)_DEMO/gu,
+          /MODE_(ALLOW|DENY|SKIP|AFTER|DEEP|EVIDENCE|CANCEL|TIMEOUT|CURRENT|GUIDE|EXPERT_LOCAL|EXPERT_DENY|EXPERT_ALLOW)_DEMO/gu,
         ),
       ];
       const scenario = scenarios.at(-1)?.[1];
       const phase = phases.get(scenario) ?? 0;
       let text = "Demo research";
       let tool;
+      const reviewer = body.tools?.some(
+        (entry) => entry.function.name === "structured_output",
+      );
+      if (reviewer) {
+        assert.equal(body.model, expertReview ? "mode-demo" : "review-demo");
+      }
       if (
-        (body.model === "review-demo" && scenario === "TIMEOUT") ||
+        (reviewer && scenario === "TIMEOUT") ||
         (body.model === "worker-demo" && scenario === "CANCEL")
       ) {
         assert.ok(!waitingReviews.has(scenario), "Review was started twice");
@@ -186,15 +193,20 @@ export async function runAnswerModesPass(options) {
         waitingReviews.add(scenario);
         return;
       }
-      if (scenario === "CURRENT" && !inspectedModels.has(body.model)) {
-        inspectedModels.add(body.model);
+      const actor = reviewer
+        ? "reviewer"
+        : body.model === "worker-demo"
+          ? "worker"
+          : "parent";
+      if (scenario === "CURRENT" && !inspectedModels.has(actor)) {
+        inspectedModels.add(actor);
         const inventory = (body.tools ?? [])
           .map((entry) => entry.function.name)
           .sort();
         console.log(
-          `packed review inventory (${body.model}): ${inventory.join(", ")}`,
+          `packed review inventory (${actor}, ${body.model}): ${inventory.join(", ")}`,
         );
-        if (body.model === "mode-demo") assert.ok(inventory.includes("write"));
+        if (actor === "parent") assert.ok(inventory.includes("write"));
         else {
           assert.ok(inventory.includes("qa_subagent"));
           assert.ok(
@@ -204,7 +216,7 @@ export async function runAnswerModesPass(options) {
           );
         }
       }
-      if (localToolChecks.get(body.model) === "pending") {
+      if (localToolChecks.get(actor) === "pending") {
         const last = body.messages
           .filter((message) => message.role === "tool")
           .at(-1);
@@ -212,12 +224,65 @@ export async function runAnswerModesPass(options) {
           last?.content ?? "",
           /outside the reviewer's configured tool policy/u,
         );
-        localToolChecks.set(body.model, "denied");
+        localToolChecks.set(actor, "denied");
       }
-      if (
+      const expertTask =
+        !reviewer &&
+        scenario?.startsWith("EXPERT_") &&
+        body.messages.some(
+          (message) =>
+            message.role === "user" &&
+            JSON.stringify(message.content).includes(
+              "Investigate the following and report the root cause with evidence.",
+            ),
+        );
+      if (expertTask) {
+        assert.notEqual(
+          scenario,
+          "EXPERT_DENY",
+          "The rejected expert received its task",
+        );
+        assert.equal(
+          body.model,
+          scenario === "EXPERT_LOCAL" ? "mode-demo" : "worker-demo",
+        );
+        assert.ok(!expertLaunches.has(scenario), "The expert started twice");
+        expertLaunches.set(scenario, body.model);
+        text = "Synthetic expert completed.";
+      } else if (
+        !reviewer &&
+        scenario?.startsWith("EXPERT_") &&
+        body.tools?.some((entry) => entry.function.name === "domain_expert")
+      ) {
+        if (phase === 0) {
+          tool = {
+            name: "domain_expert",
+            arguments: {
+              domain: "demo-answer-reviewer",
+              task: `MODE_${scenario}_DEMO`,
+              ...(scenario === "EXPERT_LOCAL"
+                ? {}
+                : { provider: "qa-modes-demo", model: "worker-demo" }),
+            },
+          };
+        } else {
+          const last = body.messages
+            .filter((message) => message.role === "tool")
+            .at(-1);
+          assert.match(
+            last?.content ?? "",
+            scenario === "EXPERT_DENY"
+              ? /EXPERT_MODEL_NOT_APPROVED/u
+              : /Synthetic expert completed/u,
+          );
+          completed.add(scenario);
+          text = "Expert model check completed.";
+        }
+        phases.set(scenario, phase + 1);
+      } else if (
         scenario === "CURRENT" &&
-        body.model !== "mode-demo" &&
-        !localToolChecks.has(body.model) &&
+        actor !== "parent" &&
+        !localToolChecks.has(actor) &&
         body.tools?.some((entry) => entry.function.name === "file_delete")
       ) {
         // The QA catalog can advertise this agent-local tool after the mask.
@@ -226,7 +291,7 @@ export async function runAnswerModesPass(options) {
           name: "file_delete",
           arguments: { path: "review-probe-never-created.txt" },
         };
-        localToolChecks.set(body.model, "pending");
+        localToolChecks.set(actor, "pending");
       } else if (body.model === "worker-demo") {
         assert.equal(scenario, "CURRENT");
         if (!workerReadStarted) {
@@ -239,7 +304,7 @@ export async function runAnswerModesPass(options) {
           assert.match(last?.content ?? "", /worker-demo/u);
           text = "The delegated catalog check found worker-demo.";
         }
-      } else if (body.model === "review-demo") {
+      } else if (reviewer) {
         const key = `review-${scenario}`;
         const reviewPhase = phases.get(key) ?? 0;
         if (reviewPhase === 0) {
@@ -369,7 +434,7 @@ export async function runAnswerModesPass(options) {
             serialized.includes(
               scenario === "DEEP"
                 ? "Deep Thinking:"
-                : "For this request RAG Priority overrides",
+                : "RAG Priority overrides earlier source guidance",
             ),
             `Expected ${scenario} mode note; received synthetic prompt: ${serialized}`,
           );
@@ -497,9 +562,10 @@ export async function runAnswerModesPass(options) {
       workspaceId: ${workspaceId}
       agentPreset: standard
       provider: qa-modes-demo
-      model: mode-demo
+      model: ${expertReview && !guideEvidenceDirectory ? "review-demo" : "mode-demo"}
     interaction:
       questions: interactive
+      approvals: interactive
     ${guideEvidenceDirectory ? "slashCommands: { commands: { mode: allow-list, allow: [no-review] } }" : ""}
     tools:
       dynamicActivation: false
@@ -597,7 +663,12 @@ export async function runAnswerModesPass(options) {
       id: general.id,
       input: {
         ...general,
-        allowedModels: [{ provider: "qa-modes-demo", model: "worker-demo" }],
+        allowedModels: [
+          { provider: "qa-modes-demo", model: "worker-demo" },
+          ...(expertReview
+            ? [{ provider: "qa-modes-demo", model: "mode-demo" }]
+            : []),
+        ],
         capabilities: {
           ...general.capabilities,
           skills: ["demo-glossary"],
@@ -610,6 +681,7 @@ export async function runAnswerModesPass(options) {
               "write",
               "skill",
               "dsh_lightrag_query",
+              ...(expertReview ? ["domain_expert"] : []),
               ...(guideEvidenceDirectory ? ["docs_read"] : []),
             ],
           },
@@ -633,6 +705,12 @@ export async function runAnswerModesPass(options) {
       subroleId: null,
       adminPreview: false,
     });
+    if (expertReview && !guideEvidenceDirectory) {
+      await remote("chatSelectModel", {
+        token: user.token,
+        request: { sessionId, provider: "qa-modes-demo", model: "mode-demo" },
+      });
+    }
     // Anonymous or unrelated callers cannot prepare another user's request.
     await assert.rejects(
       remote("prepareAnswerModes", {
@@ -739,6 +817,63 @@ export async function runAnswerModesPass(options) {
       /"status":"pass"/u,
       "The Host must publish a successful review receipt",
     );
+    if (expertReview) {
+      for (const scenario of ["EXPERT_LOCAL", "EXPERT_DENY", "EXPERT_ALLOW"]) {
+        const requestId = randomUUID();
+        await remote("chatPrompt", {
+          token: user.token,
+          request: {
+            sessionId,
+            requestId,
+            mode: "queue",
+            content: [{ type: "text", text: `MODE_${scenario}_DEMO` }],
+          },
+        });
+        if (scenario !== "EXPERT_LOCAL") {
+          const pending = await waitFor(async () => {
+            if (failures.length) throw failures[0];
+            return (
+              await remote("pendingApprovals", { token: user.token, sessionId })
+            )[0];
+          }, `expert model approval ${scenario}`);
+          assert.equal(pending.kind, "expert-model-switch");
+          assert.match(pending.reason, /mode-demo.*worker-demo/u);
+          assert.ok(
+            !expertLaunches.has(scenario),
+            "The expert received its task before approval",
+          );
+          assert.equal(
+            await remote("answerApproval", {
+              token: user.token,
+              sessionId,
+              requestId: pending.id,
+              decision:
+                scenario === "EXPERT_ALLOW" ? "allowed-once" : "rejected",
+            }),
+            true,
+          );
+        }
+        await waitFor(async () => {
+          if (failures.length) throw failures[0];
+          return (
+            completed.has(scenario) &&
+            (await remote("chatList", { token: user.token })).items.find(
+              (item) => item.sessionId === sessionId,
+            )?.running === false
+          );
+        }, `expert model completion ${scenario}`);
+      }
+      assert.deepEqual(
+        [...expertLaunches],
+        [
+          ["EXPERT_LOCAL", "mode-demo"],
+          ["EXPERT_ALLOW", "worker-demo"],
+        ],
+      );
+      console.log(
+        "packed domain experts: inherited the caller's model, withheld the task before approval, and sent it only for the approved launch",
+      );
+    }
     for (const scenario of ["CANCEL", "TIMEOUT", "CURRENT"]) {
       await remote("chatPrompt", {
         token: user.token,

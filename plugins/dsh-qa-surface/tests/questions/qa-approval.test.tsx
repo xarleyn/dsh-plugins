@@ -65,6 +65,33 @@ describe("QA approval card", () => {
     });
   });
 
+  it("uses Разрешаю for a single expert model switch", async () => {
+    const onAnswer = vi.fn(async () => {});
+    render(
+      <QaApproval
+        approvals={[
+          {
+            ...REQUEST,
+            toolName: "domain_expert",
+            kind: "expert-model-switch",
+          },
+        ]}
+        onAnswer={onAnswer}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Разрешаю" }));
+    expect(onAnswer).toHaveBeenCalledExactlyOnceWith(
+      "request-1",
+      "allowed-once",
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("qa-approval-allow")).toHaveProperty(
+        "disabled",
+        false,
+      ),
+    );
+  });
+
   it("marks a request that came from a delegated child", () => {
     const { container } = render(
       <QaApproval

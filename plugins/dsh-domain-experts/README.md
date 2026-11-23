@@ -82,9 +82,9 @@ Host plugins can run a structured image review through
 `ctx.domainExperts.reviewExpert(domainId, task, parentSessionId, images)`.
 It forwards already admitted durable image blocks to the expert child, where
 the Host applies the selected model's image capabilities and limits. This entry
-is in-process only; the browser test API does not accept attachment refs. Image
-reviews require the exact live parent session and do not fall back to another
-chat when that session is unavailable.
+is in-process only; the browser test API does not accept attachment refs.
+Reviews require the exact live parent session so the expert inherits the model
+and workspace of the chat being reviewed.
 
 The tab lists every domain with its scope counts and degradations. `Edit` — or
 the card itself — opens one in the same pane: identity and status, persona,
@@ -137,6 +137,14 @@ The plugin registers three agent-facing tools.
 `domain_delegate` is accepted as a tool-policy alias for `domain_expert` so a
 configuration written against the design vocabulary is not reported as
 degraded.
+
+An expert uses the calling agent's current provider and model, including in
+background runs and reviews. The primary agent can request a different model
+with both `provider` and `model`, or use `use_domain_model: true` to request the
+alternative saved in the domain settings. Each model change needs explicit
+approval before the child starts. In QA with interactive approvals enabled,
+the chat owner sees the current and requested models and can approve the launch
+once. The requested model must be available and permitted by the chat's role.
 
 ## Configuration
 

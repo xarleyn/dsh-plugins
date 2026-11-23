@@ -4,7 +4,11 @@ import type { Context } from "@deepseek-ai/cordis";
 import type { PreToolDecision } from "@deepseek-ai/dsh-tools";
 import type { PluginLogger } from "@yadsh/dsh-plugin-log";
 import type { QaSessionOwnership } from "./session-ownership.js";
-import type { QaApprovalDecision, QaPendingApproval } from "./types.js";
+import type {
+  QaApprovalDecision,
+  QaModelPair,
+  QaPendingApproval,
+} from "./types.js";
 
 /**
  * The slice of the `tools/pre-execute` execution record this gate reads. The
@@ -16,6 +20,15 @@ export interface QaApprovalExecution {
   readonly name: string;
   readonly agent?: Agent;
   readonly signal?: AbortSignal;
+}
+
+/** Host-only request with no task, history or attachments. */
+export interface QaExpertModelApproval {
+  readonly agent: Agent;
+  readonly domainId: string;
+  readonly from: QaModelPair;
+  readonly to: QaModelPair;
+  readonly signal: AbortSignal;
 }
 
 /** How one parked request ended. */
@@ -104,6 +117,38 @@ export class QaApprovalGate {
       .map((entry) => entry.view)
       .filter((view) => view.sessionId === sessionId)
       .sort((left, right) => left.createdAt - right.createdAt);
+  }
+
+  /** Ask for one expert launch. Foreign sessions use their own approval surface. */
+  async confirmExpertModelSwitch(
+    request: QaExpertModelApproval,
+    assertAllowed: (sessionId: string) => Promise<void>,
+  ): Promise<boolean | undefined> {
+    const { agent, domainId, from, to, signal } = request;
+    const execution = { name: "domain_expert", agent, signal };
+    const owner = this.ownerOf(execution);
+    if (owner === undefined) return undefined;
+    if (owner.delegated) return false;
+
+    const available = () =>
+      this.interactive() &&
+      !signal.aborted &&
+      this.ownership.rootOf(owner.ownerSessionId) === owner.sessionId;
+    if (!available()) return false;
+    await assertAllowed(owner.sessionId);
+    if (!available()) return false;
+
+    const reason = `Эксперт «${domainId}» запрашивает переход с «${from.provider}» / «${from.model}» на «${to.provider}» / «${to.model}». Если разрешите, выбранный провайдер получит задачу и контекст эксперта.`;
+    const outcome = await this.request(
+      owner,
+      execution,
+      reason,
+      "expert-model-switch",
+    );
+    if (outcome !== "allowed-once" || !available()) return false;
+    // A model grant may change while the card is open.
+    await assertAllowed(owner.sessionId);
+    return available();
   }
 
   /** Apply the operator's answer; an unknown or foreign id is refused. */
@@ -195,6 +240,7 @@ export class QaApprovalGate {
     owner: { sessionId: string; ownerSessionId: string; delegated: boolean },
     execution: QaApprovalExecution,
     reason: string | undefined,
+    kind?: QaPendingApproval["kind"],
   ): Promise<QaApprovalOutcome> {
     const signal = execution.signal;
     if (signal?.aborted === true) return Promise.resolve("cancelled");
@@ -214,6 +260,7 @@ export class QaApprovalGate {
           id,
           sessionId: owner.sessionId,
           toolName: execution.name,
+          ...(kind === undefined ? {} : { kind }),
           reason: reason ?? null,
           createdAt: Date.now(),
           delegated: owner.delegated,

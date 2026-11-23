@@ -599,15 +599,18 @@ export function DomainEditor(props: EditorProps) {
       {tab === "Model" ? (
         <Section
           title="Model"
-          note="Inheriting the caller's route is almost always right. Pin a route only when the domain needs a different model."
+          note="Experts use the caller's current model by default. An assistant can request the saved alternative with the chat owner's approval."
           testId="domain-experts-editor-model"
         >
           <Toggle
-            checked={draft.model.inherit}
-            label="Inherit from the caller"
+            checked={!draft.model.inherit}
+            label="Offer an alternative model"
             testId="domain-experts-editor-model-inherit"
-            onChange={(inherit) => {
-              onChange({ ...draft, model: { ...draft.model, inherit } });
+            onChange={(offer) => {
+              onChange({
+                ...draft,
+                model: { ...draft.model, inherit: !offer },
+              });
             }}
           />
           {draft.model.inherit ? null : (
@@ -640,7 +643,7 @@ export function DomainEditor(props: EditorProps) {
                 <TextInput
                   label="Reasoning effort"
                   value={draft.model.reasoningEffort}
-                  hint="Provider-specific identifier; leave empty to inherit."
+                  hint="Leave empty to use this model's default effort."
                   testId="domain-experts-editor-reasoning-effort"
                   onChange={(reasoningEffort) => {
                     onChange({

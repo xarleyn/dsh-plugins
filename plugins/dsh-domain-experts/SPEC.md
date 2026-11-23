@@ -42,8 +42,10 @@ Each numbered item is a verifiable guarantee, phrased as behaviour.
    in the session tree, inherits the caller's workspace, and its recursion
    budget is the one the runtime enforces.
 10. The plugin never re-implements agent execution: it composes a
-    `SubagentStartRequest` (`persona`, `toolFilter`, `maxDepth`, optional
-    `agentOptions`) and calls `ctx.subagents.start`.
+    `SubagentActivationSpec` with the caller's live provider and model in
+    `agentOptions` and calls `ctx.subagents.startActivation`. Changing either
+    requires an explicit override and a one-time user approval before the
+    plugin resolves the expert's memory or starts the child.
 11. A provider that cannot supply a required capability is refused **before** a
     run starts, with `UNSUPPORTED_SUBAGENT_CAPABILITY`. The plugin never
     silently drops a policy because the provider could not apply it.

@@ -453,19 +453,15 @@ export function agentsFaceOf(registry: Context["agents"]): AgentsFace {
 }
 
 /**
- * Pick the parent for a test run: the addressed session when it has a live
- * agent, otherwise the most recent top-level live agent. A test run is a
- * real subagent, so it appears in the session tree like any other.
+ * Pick the requested live parent. The management UI can leave the selection
+ * empty to use the most recent top-level live agent.
  */
 export function testParentOf(
   agents: AgentsFace,
   parentSessionId: string,
 ): Agent | undefined {
   const requested = parentSessionId.trim();
-  if (requested !== "") {
-    const found = agents.get(requested as AgentId);
-    if (found !== undefined) return found;
-  }
+  if (requested !== "") return agents.get(requested as AgentId);
   let newest: Agent | undefined;
   for (const agent of agents.list()) {
     if (agent.session.header.origin === "subagent") continue;

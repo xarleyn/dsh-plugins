@@ -77,7 +77,9 @@ export const QaApproval = memo(function QaApproval(props: QaApprovalProps) {
               disabled={answering === approval.id}
               onClick={() => answer(approval.id, "allowed-once")}
             >
-              Разрешить один раз
+              {approval.kind === "expert-model-switch"
+                ? "Разрешаю"
+                : "Разрешить один раз"}
             </button>
           </div>
         </section>

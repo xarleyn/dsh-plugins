@@ -116,7 +116,7 @@ export interface DomainDelegationConfig {
 }
 
 export interface DomainModelConfig {
-  /** When true the child inherits the caller's provider, model and effort. */
+  /** When true the domain offers no configured alternative to the caller's model. */
   readonly inherit: boolean;
   readonly provider: string;
   readonly model: string;
@@ -412,6 +412,8 @@ export type DomainErrorCode =
   | "DELEGATION_DENIED"
   | "DELEGATION_DEPTH_EXCEEDED"
   | "PARALLELISM_EXCEEDED"
+  | "EXPERT_MODEL_UNRESOLVED"
+  | "EXPERT_MODEL_NOT_APPROVED"
   | "EXPERT_NOT_CALLER"
   | "TASK_REJECTED"
   | "STORAGE_UNAVAILABLE";

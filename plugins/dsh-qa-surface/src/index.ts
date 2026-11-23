@@ -83,7 +83,7 @@ import {
   QaPersonalSkillsHost,
 } from "./personal-skills/index.js";
 import type { QaPersonalSkillRemotes } from "./personal-skills/index.js";
-import { QaApprovalGate } from "./approvals.js";
+import { QaApprovalGate, type QaExpertModelApproval } from "./approvals.js";
 import { QaAttestationError } from "./attestation.js";
 import { QaFileDeleteGate } from "./qa-tools/file-delete-gate.js";
 import { installQaFileWriteGate } from "./qa-tools/file-write-gate.js";
@@ -115,7 +115,11 @@ import { createQaIntegrationRunner } from "./integration/host-runner.js";
 import { QaIntegrationService } from "./integration/service.js";
 import { QaPolicyAdmission } from "./secure-session.js";
 import { QaAccessService } from "./access/service.js";
-import { userModelOptions, selectUserModel } from "./access/model-choices.js";
+import {
+  assertUserModelSelection,
+  userModelOptions,
+  selectUserModel,
+} from "./access/model-choices.js";
 import type { QaModelOptions } from "./types.js";
 import { userInvocableSkillNames } from "./access/model.js";
 import { parseSlashDraftTarget } from "./slash/draft-target.js";
@@ -1177,6 +1181,19 @@ export class QaSurface extends TypertRemoteService {
    */
   modelPolicyForSession(sessionId: string): QaModelPair | undefined {
     return this.access.modelPolicyFor(sessionId).pair;
+  }
+
+  /** In-process only. The browser can answer a pending request, never create one. */
+  confirmExpertModelSwitch(
+    request: QaExpertModelApproval,
+  ): Promise<boolean | undefined> {
+    return this.approvals.confirmExpertModelSwitch(request, (sessionId) =>
+      assertUserModelSelection(
+        this.ctx,
+        () => this.access.modelPolicyFor(sessionId),
+        request.to,
+      ),
+    );
   }
 
   /** Shared source catalogue consumed by preset-mounted Git tools at call time. */

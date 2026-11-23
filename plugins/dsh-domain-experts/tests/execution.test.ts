@@ -1,7 +1,7 @@
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createPluginLogger } from "@yadsh/dsh-plugin-log";
 import {
   assertObjectJsonSchema,
@@ -12,8 +12,10 @@ import {
   RunTracker,
   runExpert,
   type ExecutionDependencies,
+  type ExpertRunInput,
 } from "../src/host/execution.js";
 import { AuditRing } from "../src/host/audit.js";
+import type { ExpertModelApproval } from "../src/host/model.js";
 import { ExecutionAuditArchive } from "../src/host/audit-archive.js";
 import { DomainRegistry } from "../src/host/registry.js";
 import { DEPLOYMENT_MEMORY_OWNER } from "../src/host/resolver.js";
@@ -66,18 +68,10 @@ interface Harness {
 function harnessOf(
   definition: DomainDefinition = PAYMENTS,
   options: Parameters<typeof fakeSubagents>[0] = {},
-  memory: {
+  settings: {
     readonly perUser?: boolean;
     readonly principals?: Record<string, string>;
-    /** The model policy of one chat, as the QA surface answers it. */
-    readonly modelPolicy?: Record<
-      string,
-      {
-        readonly provider: string;
-        readonly model: string;
-        readonly reasoningEffort?: string;
-      }
-    >;
+    readonly approveModelSwitch?: ExecutionDependencies["approveModelSwitch"];
   } = {},
 ): Harness {
   const clock = fixedClock();
@@ -115,9 +109,11 @@ function harnessOf(
       audits,
       logger: recordingLogger(log),
       now: () => 9_000,
-      perUserMemory: memory.perUser ?? false,
-      principalOf: (sessionId) => memory.principals?.[sessionId],
-      modelPolicyOf: (sessionId) => memory.modelPolicy?.[sessionId],
+      perUserMemory: settings.perUser ?? false,
+      principalOf: (sessionId) => settings.principals?.[sessionId],
+      ...(settings.approveModelSwitch === undefined
+        ? {}
+        : { approveModelSwitch: settings.approveModelSwitch }),
     },
   };
 }
@@ -132,22 +128,30 @@ async function run(
     readonly id?: string;
     readonly structuredOutput?: boolean;
     readonly mode?: ExpertMode;
+    readonly parent?: ExpertRunInput["parent"];
+    readonly modelOverride?: ExpertRunInput["modelOverride"];
+    readonly signal?: AbortSignal;
   } = {},
 ) {
   return await runExpert(harness.dependencies, {
-    parent: agentOf({
-      id: options.id ?? "session-1",
-      cwd: "/repo",
-      ...(options.depth === undefined ? {} : { depth: options.depth }),
-    }),
+    parent:
+      options.parent ??
+      agentOf({
+        id: options.id ?? "session-1",
+        cwd: "/repo",
+        ...(options.depth === undefined ? {} : { depth: options.depth }),
+      }),
     definition,
     request: {
       ...REQUEST,
       mode: options.mode ?? REQUEST.mode,
       background: options.background ?? false,
     },
-    signal: new AbortController().signal,
+    signal: options.signal ?? new AbortController().signal,
     callerDomain: options.callerDomain ?? null,
+    ...(options.modelOverride === undefined
+      ? {}
+      : { modelOverride: options.modelOverride }),
     ...(options.structuredOutput ? { structuredOutput: true } : {}),
   });
 }
@@ -373,75 +377,140 @@ describe("execution: composition handed to the runtime", () => {
     expect(spec.delivery).toBe("caller");
   });
 
-  it("does not send model options when the domain inherits", async () => {
+  it("pins the caller's current provider and model with no override", async () => {
     const harness = harnessOf();
-    await run(harness);
-    expect(harness.subagents.started[0]?.agentOptions).toBeUndefined();
-  });
-
-  // A domain that inherits its model used to inherit the model the visitor left
-  // in the picker. The deployment's policy is the operator's answer, so an
-  // expert delegated from a chat whose role names a pair runs on that pair.
-  it("sends the pair the chat's model policy pins when the domain inherits", async () => {
-    const harness = harnessOf(
-      PAYMENTS,
-      {},
-      {
-        modelPolicy: {
-          "session-1": {
-            provider: "local",
-            model: "small",
-            reasoningEffort: "low",
-          },
-        },
-      },
-    );
     await run(harness);
     expect(harness.subagents.started[0]?.agentOptions).toEqual({
       provider: "local",
-      model: "small",
-      reasoningEffort: "low",
+      model: "chat",
     });
   });
 
-  it("refuses a policy-pinned model on a provider without agent options", async () => {
-    const harness = harnessOf(
-      PAYMENTS,
-      {
-        capabilities: {
-          agentOptions: false,
-          agentPreset: true,
-          outputSchema: true,
-          depthLimit: true,
-        },
+  const alternative = { provider: "remote-demo", model: "chat" };
+  const configured = domainOf("payments", {
+    ...PAYMENTS,
+    model: {
+      ...alternative,
+      inherit: false,
+      reasoningEffort: "high",
+      maxTokens: 4096,
+    },
+  });
+
+  it("inherits the actual request route even with a different creation model and a saved domain alternative", async () => {
+    const approve = vi.fn();
+    const harness = harnessOf(configured, {}, { approveModelSwitch: approve });
+    const parent = Object.assign(agentOf({ id: "session-1" }), {
+      options: alternative,
+      model: { current: () => alternative },
+    });
+    const active = {
+      provider: "local",
+      model: "small",
+      reasoningEffort: "low",
+    };
+    Object.assign(parent.session, {
+      requestHeader: () => ({ config: active }),
+    });
+    await run(harness, configured, { parent });
+    expect(harness.subagents.started[0]?.agentOptions).toEqual(active);
+    expect(approve).not.toHaveBeenCalled();
+  });
+
+  it("inherits a new selection when the parent is idle", async () => {
+    const harness = harnessOf();
+    const selected = { provider: "local", model: "selected" };
+    const parent = Object.assign(agentOf({ id: "session-1" }), {
+      status: "idle" as const,
+      model: { current: () => selected },
+    });
+    Object.assign(parent.session, {
+      requestHeader: () => ({ config: alternative }),
+    });
+    await run(harness, PAYMENTS, { parent });
+    expect(harness.subagents.started[0]?.agentOptions).toEqual(selected);
+  });
+
+  it("refuses a provider that cannot enforce the caller's model", async () => {
+    const harness = harnessOf(PAYMENTS, {
+      capabilities: {
+        agentOptions: false,
+        agentPreset: true,
+        outputSchema: true,
+        depthLimit: true,
       },
-      { modelPolicy: { "session-1": { provider: "local", model: "small" } } },
-    );
+    });
     await expect(run(harness)).rejects.toMatchObject({
       code: "UNSUPPORTED_SUBAGENT_CAPABILITY",
     });
     expect(harness.subagents.started).toEqual([]);
   });
 
-  it("sends model options when the domain pins a route", async () => {
-    const pinned = domainOf("payments", {
-      ...PAYMENTS,
-      model: {
-        inherit: false,
-        provider: "deepseek",
-        model: "chat",
-        reasoningEffort: "high",
-        maxTokens: 4096,
-      },
+  it("waits before starting a background child on a configured alternative", async () => {
+    let allow = () => {};
+    const decision = new Promise<void>((resolve) => {
+      allow = resolve;
     });
-    const harness = harnessOf(pinned);
-    await run(harness, pinned);
-    expect(harness.subagents.started[0]?.agentOptions).toEqual({
-      provider: "deepseek",
-      model: "chat",
+    const approve = vi.fn(async ({ to }: ExpertModelApproval) => {
+      await decision;
+      return to;
+    });
+    const harness = harnessOf(configured, {}, { approveModelSwitch: approve });
+    const pending = run(harness, configured, {
+      modelOverride: "configured",
+      background: true,
+    });
+    await vi.waitFor(() => expect(approve).toHaveBeenCalledOnce());
+    expect(harness.subagents.started).toEqual([]);
+    const model = {
+      ...alternative,
       reasoningEffort: "high",
       maxTokens: 4096,
+    };
+    expect(approve).toHaveBeenCalledWith(
+      expect.objectContaining({ to: model }),
+    );
+    allow();
+    await expect(pending).resolves.toMatchObject({ status: "delegated" });
+    expect(harness.subagents.started[0]?.agentOptions).toEqual(model);
+  });
+
+  it("refuses an unapproved model without starting a child or retaining its permit", async () => {
+    const harness = harnessOf();
+    await expect(
+      run(harness, PAYMENTS, { modelOverride: alternative }),
+    ).rejects.toMatchObject({
+      code: "EXPERT_MODEL_NOT_APPROVED",
     });
+    expect(harness.subagents.started).toEqual([]);
+    expect(harness.tracker.countForCaller("session-1")).toBe(0);
+  });
+
+  it("starts nothing when the turn is cancelled during model confirmation", async () => {
+    const controller = new AbortController();
+    const approve: NonNullable<
+      ExecutionDependencies["approveModelSwitch"]
+    > = async ({ to }) => {
+      controller.abort();
+      return to;
+    };
+    const harness = harnessOf(PAYMENTS, {}, { approveModelSwitch: approve });
+    await expect(
+      run(harness, PAYMENTS, {
+        modelOverride: alternative,
+        signal: controller.signal,
+      }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(harness.subagents.started).toEqual([]);
+  });
+
+  it("refuses to start if the caller's model is unknown", async () => {
+    const harness = harnessOf();
+    const parent = Object.assign(agentOf({ id: "session-1" }), { options: {} });
+    await expect(run(harness, PAYMENTS, { parent })).rejects.toMatchObject({
+      code: "EXPERT_MODEL_UNRESOLVED",
+    });
+    expect(harness.subagents.started).toEqual([]);
   });
 });
 
@@ -572,30 +641,6 @@ describe("execution: refusals", () => {
       code: "UNSUPPORTED_SUBAGENT_CAPABILITY",
     });
     expect(harness.subagents.started).toEqual([]);
-  });
-
-  it("refuses a pinned model on a provider without agent options", async () => {
-    const pinned = domainOf("payments", {
-      ...PAYMENTS,
-      model: {
-        inherit: false,
-        provider: "deepseek",
-        model: "chat",
-        reasoningEffort: "",
-        maxTokens: 0,
-      },
-    });
-    const harness = harnessOf(pinned, {
-      capabilities: {
-        agentOptions: false,
-        agentPreset: true,
-        outputSchema: true,
-        depthLimit: true,
-      },
-    });
-    await expect(run(harness, pinned)).rejects.toMatchObject({
-      code: "UNSUPPORTED_SUBAGENT_CAPABILITY",
-    });
   });
 
   it("refuses a run beyond the domain's depth cap", async () => {

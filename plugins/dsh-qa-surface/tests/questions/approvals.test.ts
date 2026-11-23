@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { Agent } from "@deepseek-ai/dsh-agent";
 import {
   QA_APPROVAL_PARK_TIMEOUT_MS,
   QaApprovalGate,
@@ -109,6 +110,67 @@ describe("QA approval gate", () => {
       kind: "deny",
       reason: 'the QA user rejected tool "read"',
     });
+    gate.dispose();
+  });
+
+  it.each(["allowed-once", "rejected"] as const)(
+    "uses the chat approval for an expert model switch (%s)",
+    async (answer) => {
+      const { gate } = gateFor({ interactive: true, attested: ["s1", "s2"] });
+      const assertAllowed = vi.fn(async (_sessionId: string) => {});
+      const pending = gate.confirmExpertModelSwitch(
+        {
+          agent: sessionAgent("s1") as unknown as Agent,
+          domainId: "payments",
+          from: { provider: "local", model: "small" },
+          to: { provider: "remote-demo", model: "large" },
+          signal: new AbortController().signal,
+        },
+        assertAllowed,
+      );
+      await Promise.resolve();
+      const [request] = gate.list("s1");
+      expect(request).toMatchObject({
+        kind: "expert-model-switch",
+        toolName: "domain_expert",
+        reason: expect.stringContaining("«remote-demo» / «large»"),
+      });
+      expect(gate.answer("s2", request!.id, "allowed-once")).toBe(false);
+      expect(assertAllowed).toHaveBeenCalledExactlyOnceWith("s1");
+      expect(gate.answer("s1", request!.id, answer)).toBe(true);
+      await expect(pending).resolves.toBe(answer === "allowed-once");
+      expect(gate.answer("s1", request!.id, "allowed-once")).toBe(false);
+      expect(assertAllowed).toHaveBeenCalledTimes(
+        answer === "allowed-once" ? 2 : 1,
+      );
+      gate.dispose();
+    },
+  );
+
+  it("checks the model grant again after approval", async () => {
+    const { gate } = gateFor({ interactive: true, attested: ["s1"] });
+    const assertAllowed = vi
+      .fn<() => Promise<void>>()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(
+        new Error("The chat no longer permits this model."),
+      );
+    const pending = gate.confirmExpertModelSwitch(
+      {
+        agent: sessionAgent("s1") as unknown as Agent,
+        domainId: "payments",
+        from: { provider: "local", model: "small" },
+        to: { provider: "remote-demo", model: "large" },
+        signal: new AbortController().signal,
+      },
+      assertAllowed,
+    );
+    await Promise.resolve();
+    gate.answer("s1", gate.list("s1")[0]!.id, "allowed-once");
+    await expect(pending).rejects.toThrow(
+      "The chat no longer permits this model.",
+    );
+    expect(gate.list("s1")).toEqual([]);
     gate.dispose();
   });
 

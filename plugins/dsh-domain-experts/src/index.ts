@@ -49,6 +49,7 @@ import {
   type ExpertRunInput,
 } from "./host/execution.js";
 import { createMemoryAdmin, type MemoryAdmin } from "./host/memory/admin.js";
+import { approveExpertModelSwitch } from "./host/model.js";
 import { createBuiltinMemoryProvider } from "./host/memory/builtin.js";
 import {
   MemoryProviderRegistry,
@@ -360,7 +361,8 @@ export class DomainExpertsService extends TypertRemoteService {
       now: Date.now,
       perUserMemory: this.principals.perUserMemory(),
       principalOf: (sessionId) => this.principals.principalOf(sessionId),
-      modelPolicyOf: (sessionId) => this.principals.modelPolicyOf(sessionId),
+      approveModelSwitch: (request) =>
+        approveExpertModelSwitch(this.ctx, request),
       startActivation: (spec, filter, budget) =>
         startRestrictedExpert(
           this.ctx,

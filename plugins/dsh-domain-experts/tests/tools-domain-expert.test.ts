@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { DEPLOYMENT_MEMORY_OWNER } from "../src/host/resolver.js";
 import { createDomainExpertTool } from "../src/host/tools/domain-expert.js";
 import { domainOf } from "./helpers/fakes.js";
@@ -53,6 +53,49 @@ describe("tools: domain_expert", () => {
     await call(tool, { domain: "inventory", task: "stock rules" }, AGENT);
     expect(harness.runs[0]?.callerDomain).toBe("payments");
   });
+
+  it.each([
+    [
+      { provider: "remote-demo", model: "large" },
+      { provider: "remote-demo", model: "large" },
+    ],
+    [{ use_domain_model: true }, "configured"],
+  ])(
+    "passes an explicit model override to the server executor",
+    async (args, expected) => {
+      const harness = harnessOf();
+      const run = vi.fn(harness.dependencies.run);
+      const tool = createDomainExpertTool({ ...harness.dependencies, run });
+      await call(
+        tool,
+        { domain: "payments", task: "Explain the workflow.", ...args },
+        AGENT,
+      );
+      expect(run).toHaveBeenCalledWith(
+        expect.objectContaining({ modelOverride: expected, callId: "call-1" }),
+      );
+    },
+  );
+
+  it.each([
+    { provider: "remote-demo" },
+    { model: "large" },
+    { provider: "remote-demo", model: "large", use_domain_model: true },
+  ])(
+    "refuses an incomplete or ambiguous override before running the expert",
+    async (args) => {
+      const harness = harnessOf();
+      const tool = createDomainExpertTool(harness.dependencies);
+      await expect(
+        call(
+          tool,
+          { domain: "payments", task: "Explain the workflow.", ...args },
+          AGENT,
+        ),
+      ).rejects.toThrow("[TASK_REJECTED]");
+      expect(harness.runs).toEqual([]);
+    },
+  );
 
   it("refuses a delegation the caller's policy forbids", async () => {
     const harness = harnessOf();

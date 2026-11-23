@@ -301,6 +301,7 @@ export interface QaPendingApproval {
   /** The chat the request belongs to: a delegated child asks under its root. */
   readonly sessionId: string;
   readonly toolName: string;
+  readonly kind?: "expert-model-switch";
   /** The reason the composed gate gave for asking, when it gave one. */
   readonly reason: string | null;
   readonly createdAt: number;

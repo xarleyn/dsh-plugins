@@ -69,7 +69,7 @@ describe("host-only reviewer images", () => {
           definition.id,
           "Review the screenshot.",
           live ? "session-images" : "missing-session",
-          images,
+          live ? images : [],
         );
         if (!live) {
           expect(outcome.ok).toBe(false);
@@ -93,6 +93,7 @@ describe("host-only reviewer images", () => {
         });
         expect(request.outputSchema).toBeDefined();
         expect(request.parent).toBe(parent);
+        expect(request.agentOptions).toEqual(parent.options);
         expect(subagents.disposed).toHaveLength(1);
       } finally {
         await service["stores"].close();
