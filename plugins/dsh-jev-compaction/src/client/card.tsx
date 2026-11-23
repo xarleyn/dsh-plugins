@@ -135,7 +135,7 @@ export function JevCompactionCard({
    * second keystroke that landed while the first write was still in flight.
    */
   const write = useCallback(
-    (path: string[], value: unknown) => {
+    (path: string[], value: string | number | boolean | string[]) => {
       settingsForm.mutate([{ op: "set", path, value }]).catch(fail);
     },
     [settingsForm, fail],
@@ -150,7 +150,7 @@ export function JevCompactionCard({
 
   const overrides = overriddenKeys(settings.user);
   const resetAll = useCallback(() => {
-    const ops = overrides.map((key) => ({ op: "unset", path: [key] }));
+    const ops = overrides.map((key) => ({ op: "unset" as const, path: [key] }));
     settingsForm.mutate(ops).catch(fail);
   }, [overrides, settingsForm, fail]);
 
@@ -160,7 +160,7 @@ export function JevCompactionCard({
   );
 
   const commitScalar = useCallback(
-    (path: string[], value: unknown) => {
+    (path: string[], value: string | number | boolean | null | undefined) => {
       if (value === null || value === undefined || value === "") clear(path);
       else write(path, value);
     },
