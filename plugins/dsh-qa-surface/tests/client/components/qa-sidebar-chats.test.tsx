@@ -173,6 +173,40 @@ describe("QA sidebar", () => {
     expect(onSwitch).toHaveBeenCalledWith("s-1");
   });
 
+  it("copies the session ID of a background chat without opening it", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
+    try {
+      const onSwitch = vi.fn();
+      render(
+        <QaSidebar
+          rows={buildChatRows(["s-2", "s-1"], byId, "s-2", undefined, 90_000)}
+          title="DeepSeek QA"
+          logoUrl={null}
+          stateKey="qa-copy-session-id"
+          showNewChat={false}
+          busy={false}
+          onSwitch={onSwitch}
+          onNewChat={vi.fn()}
+        />,
+      );
+      const trigger = screen.getByRole("button", {
+        name: "Действия чата «How do I reset the cache?»",
+      });
+      fireEvent.click(trigger);
+      fireEvent.click(
+        screen.getByRole("button", { name: "Скопировать ID сессии" }),
+      );
+      expect(await screen.findByText("ID сессии скопирован")).toBeTruthy();
+      expect(writeText).toHaveBeenCalledExactlyOnceWith("s-1");
+      expect(onSwitch).not.toHaveBeenCalled();
+      expect(trigger.getAttribute("aria-expanded")).toBe("false");
+      expect(document.activeElement).toBe(trigger);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("shows the brand head and filters rows through the search field", () => {
     const rows = buildChatRows(["s-2", "s-1"], byId, null, undefined, 90_000);
     render(

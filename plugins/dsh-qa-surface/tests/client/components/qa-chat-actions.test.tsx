@@ -7,7 +7,13 @@ afterEach(cleanup);
 describe("chat actions in history", () => {
   it("opens sharing from its quiet row action and restores focus on Escape", () => {
     const share = vi.fn();
-    render(<QaChatActions name="Demo chat" onShare={share} />);
+    render(
+      <QaChatActions
+        name="Demo chat"
+        onCopySessionId={vi.fn()}
+        onShare={share}
+      />,
+    );
     const trigger = screen.getByRole("button", {
       name: "Действия чата Demo chat",
     });
@@ -28,7 +34,12 @@ describe("chat actions in history", () => {
   it("closes on outside clicks and gives deletion the persistent trigger", () => {
     const remove = vi.fn();
     render(
-      <QaChatActions name="Demo chat" onShare={vi.fn()} onDelete={remove} />,
+      <QaChatActions
+        name="Demo chat"
+        onCopySessionId={vi.fn()}
+        onShare={vi.fn()}
+        onDelete={remove}
+      />,
     );
     const trigger = screen.getByRole("button", {
       name: "Действия чата Demo chat",

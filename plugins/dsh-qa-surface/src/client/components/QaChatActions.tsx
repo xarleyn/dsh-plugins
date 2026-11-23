@@ -2,9 +2,10 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { QaHistoryRowActions } from "./QaHistoryCatalog.js";
 
-/** Quiet actions attached to one owned chat, outside the conversation header. */
+/** Actions attached to a chat row in history. */
 export function QaChatActions(props: {
   name: string;
+  onCopySessionId: () => void;
   onShare?: () => void;
   onDelete?: (trigger: HTMLButtonElement) => void;
   organization?: QaHistoryRowActions;
@@ -148,6 +149,16 @@ export function QaChatActions(props: {
                   Поделиться чатом
                 </button>
               )}
+              <button
+                type="button"
+                onClick={() => {
+                  props.onCopySessionId();
+                  setOpen(false);
+                  trigger.current?.focus({ preventScroll: true });
+                }}
+              >
+                Скопировать ID сессии
+              </button>
               {props.onDelete === undefined ? null : (
                 <button
                   type="button"

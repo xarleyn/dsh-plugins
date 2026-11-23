@@ -3,6 +3,8 @@ import type { SessionSummary } from "@deepseek-ai/dsh-api-session-controller/cli
 import { isDelegatedSession } from "../lineage.js";
 import { QaAuditRowBadge } from "../audit/QaAuditRowBadge.js";
 import { auditMark, type QaAuditSummary } from "../audit/types.js";
+import { copyTextToClipboard } from "../clipboard.js";
+import { useTransientFlag } from "../markdown/use-transient-flag.js";
 import { QaSettingsButton } from "../user-settings/fields.js";
 import { QA_VERSION, QaChangelogModal } from "./QaChangelog.js";
 import { QaModal } from "./QaModal.js";
@@ -312,6 +314,9 @@ export const QaSidebar = memo(
     const [query, setQuery] = useState("");
     const [confirmingId, setConfirmingId] = useState<string | null>(null);
     const [changelogOpen, setChangelogOpen] = useState(false);
+    const [copyNotice, setCopyNotice] = useState("");
+    const { on: copyNoticeVisible, pulse: showCopyNotice } =
+      useTransientFlag(2400);
     const nav = useRef<HTMLElement | null>(null);
     const chatList = useRef<HTMLDivElement | null>(null);
     // The control the confirmation opened from. Rows shift up under a pointer
@@ -341,6 +346,14 @@ export const QaSidebar = memo(
     const drawerOpen = props.drawerOpen === true;
     const closeDrawer = () => {
       if (drawerOpen) props.onDrawerClose?.();
+    };
+    const copySessionId = (sessionId: string) => {
+      void copyTextToClipboard(sessionId).then((copied) => {
+        setCopyNotice(
+          copied ? "ID сессии скопирован" : "Не удалось скопировать ID сессии",
+        );
+        showCopyNotice();
+      });
     };
     if (collapsed && !drawerOpen) {
       return (
@@ -441,6 +454,7 @@ export const QaSidebar = memo(
           <QaChatActions
             name={name}
             organization={organization}
+            onCopySessionId={() => copySessionId(row.id)}
             {...(row.shareable && props.onShare !== undefined
               ? {
                   onShare: () => props.onShare?.(row.id),
@@ -610,6 +624,14 @@ export const QaSidebar = memo(
             }
             renderRow={renderRow}
           />
+        </div>
+        <div
+          className={
+            copyNoticeVisible ? "dsh-qa-history__hint" : "dsh-qa-sr-only"
+          }
+          role="status"
+        >
+          {copyNoticeVisible ? copyNotice : null}
         </div>
         <div
           className="dsh-qa-sidebar__footer"

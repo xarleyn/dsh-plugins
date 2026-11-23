@@ -27,6 +27,19 @@ async function runHistory({ page, choosePalette }) {
       .getByRole("button", { name, exact: true })
       .click();
   };
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"], {
+    origin: new URL(page.url()).origin,
+  });
+  await action("Скопировать ID сессии");
+  await history.getByText("ID сессии скопирован", { exact: true }).waitFor();
+  assert.ok(
+    await page.evaluate(
+      async (sessionId) =>
+        (await globalThis.navigator.clipboard.readText()) === sessionId,
+      id,
+    ),
+    "clipboard must contain the row's full session ID",
+  );
   const addFolder = async (name) => {
     await history.getByTestId("qa-history-create-folder").click();
     await page.getByLabel("Название каталога", { exact: true }).fill(name);
@@ -189,7 +202,7 @@ async function runHistory({ page, choosePalette }) {
       `${JSON.stringify({ measurements, menuBounds }, null, 2)}\n`,
     );
   console.log(
-    "packed QA history: folder CRUD, native drag/drop, pin/unpin, search, reload and desktop/phone geometry passed",
+    "packed QA history: session ID copy, folder CRUD, native drag/drop, pin/unpin, search, reload and desktop/phone geometry passed",
   );
 }
 
