@@ -1,14 +1,22 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import {
   QA_CHANGELOG,
   QA_VERSION,
+  QaChangelogModal,
+  type QaChangelogEntry,
 } from "../../../src/client/components/QaChangelog.js";
 import { QaSidebar } from "../../../src/client/components/QaSidebar.js";
 
 type ReleaseBump = "patch" | "minor" | "major";
+
+function changelogSections(entry: QaChangelogEntry) {
+  return "days" in entry
+    ? entry.days.flatMap((day) => day.sections)
+    : entry.sections;
+}
 
 describe("sidebar version and changelog", () => {
   it("opens the changelog dialog from the footer version button", () => {
@@ -47,6 +55,29 @@ describe("sidebar version and changelog", () => {
     expect(screen.queryByTestId("qa-surface-modal")).toBeNull();
   });
 
+  it("shows changes under their implementation dates in descending order", () => {
+    render(<QaChangelogModal open onClose={vi.fn()} />);
+    const entry = QA_CHANGELOG.find((candidate) => "days" in candidate)!;
+    const version = screen.getByText(`Версия ${entry.version}`, {
+      selector: "h3",
+    });
+    const headings = within(version.closest("section")!).getAllByRole(
+      "heading",
+      { level: 4 },
+    );
+    const dates = entry.days.map((day) => day.date);
+    expect(headings.map((heading) => heading.textContent)).toEqual(
+      [...new Set(dates)].sort().reverse(),
+    );
+    for (const [index, day] of entry.days.entries()) {
+      const group = headings[index]!.closest("section")!;
+      const items = within(group).getAllByRole("listitem");
+      expect(items.map((item) => item.textContent)).toEqual(
+        day.sections.flatMap((section) => section.items),
+      );
+    }
+  });
+
   it("does not draw a section heading with nothing under it", () => {
     render(
       <QaSidebar
@@ -61,15 +92,12 @@ describe("sidebar version and changelog", () => {
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: /Версия / }));
-    const sectionsWithContent = QA_CHANGELOG.flatMap((entry) =>
-      entry.sections.filter((section) =>
-        section.items.some((item) => item.trim() !== ""),
-      ),
+    const sections = QA_CHANGELOG.flatMap(changelogSections);
+    const sectionsWithContent = sections.filter((section) =>
+      section.items.some((item) => item.trim() !== ""),
     );
-    const emptySections = QA_CHANGELOG.flatMap((entry) =>
-      entry.sections.filter(
-        (section) => !section.items.some((item) => item.trim() !== ""),
-      ),
+    const emptySections = sections.filter(
+      (section) => !section.items.some((item) => item.trim() !== ""),
     );
     expect(
       document.querySelectorAll(".dsh-qa-changelog__section-title").length,
@@ -135,14 +163,13 @@ describe("sidebar version and changelog", () => {
     // nothing under it — and that text is frozen by the wave that published
     // it, so the rule holds the entry, not every heading.
     for (const entry of bundled) {
-      const items = entry.sections.flatMap((section) =>
+      const sections = changelogSections(entry);
+      const items = sections.flatMap((section) =>
         section.items.filter((item) => item.trim().length > 0),
       );
       expect(
         items.length,
-        `QA_CHANGELOG entry ${entry.version} is released but says nothing: its ${
-          entry.sections.length
-        } section(s) carry no non-empty item`,
+        `QA_CHANGELOG entry ${entry.version} is released but says nothing: its ${sections.length} section(s) carry no non-empty item`,
       ).toBeGreaterThan(0);
     }
   });

@@ -278,6 +278,8 @@ export const QA_SURFACE_STYLES = String.raw`
 .dsh-qa-changelog__version{display:flex;align-items:baseline;gap:8px;margin:0 0 2px;color:var(--dsw-alias-label-primary);font-size:13px;font-weight:600;line-height:20px}
 .dsh-qa-changelog__date{color:var(--dsw-alias-label-tertiary);font-size:12px;font-weight:400;line-height:16px}
 .dsh-qa-changelog__current{padding:0 8px;border-radius:999px;background:var(--dsh-qa-accent-soft);color:var(--dsh-qa-accent-hover);font-size:11px;font-weight:500;line-height:17px;white-space:nowrap}
+.dsh-qa-changelog__day{margin-top:12px;padding-top:8px;border-top:1px solid var(--dsw-alias-border-l2)}
+.dsh-qa-changelog__day-title{margin:0;color:var(--dsw-alias-label-primary);font-size:13px;font-weight:600;line-height:20px}
 .dsh-qa-changelog__section{margin:6px 0 0}
 .dsh-qa-changelog__section-title{margin:0;color:var(--dsw-alias-label-secondary);font-size:12px;font-weight:600;line-height:18px}
 .dsh-qa-changelog__list{margin:4px 0 0;padding-left:18px;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:20px}

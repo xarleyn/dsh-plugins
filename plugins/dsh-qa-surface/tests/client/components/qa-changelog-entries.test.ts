@@ -62,7 +62,11 @@ function compareVersions(left: string, right: string): number {
 describe("curated changelog shape", () => {
   it("says each thing once inside a section", () => {
     for (const entry of QA_CHANGELOG) {
-      for (const section of entry.sections) {
+      const sections =
+        "days" in entry
+          ? entry.days.flatMap((day) => day.sections)
+          : entry.sections;
+      for (const section of sections) {
         for (let left = 0; left < section.items.length; left += 1) {
           for (let right = left + 1; right < section.items.length; right += 1) {
             const first = section.items[left]!;
