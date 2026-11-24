@@ -2254,7 +2254,9 @@ export class QaSurface extends TypertRemoteService {
 
   @Remote("chatAccess")
   chatAccess(token: string, sessionId: string): QaChatAccess {
-    return this.sharing().access(token, sessionId);
+    return this.accountRemotes.run(() =>
+      this.sharing().access(token, sessionId),
+    );
   }
 
   @Remote("chatDelete")

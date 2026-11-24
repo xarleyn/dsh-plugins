@@ -99,7 +99,7 @@ describe("durable chat membership", () => {
     expect(() => f.store.revalidate(f.reader.token, old)).toThrow("changed");
     second.set(f.owner.token, "chat-a", f.reader.user.email, null);
     expect(() => f.store.access(f.reader.token, "chat-a")).toThrow(
-      "unavailable",
+      expect.objectContaining({ reason: "forbidden" }),
     );
     second.set(f.owner.token, "chat-a", f.reader.user.email, "read");
     expect(f.store.access(f.reader.token, "chat-a").revision).toBeGreaterThan(

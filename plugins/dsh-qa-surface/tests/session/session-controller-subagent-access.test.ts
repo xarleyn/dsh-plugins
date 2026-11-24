@@ -1,13 +1,26 @@
 import { describe, expect, it, vi } from "vitest";
 import { RemoteError } from "@deepseek-ai/dsh-typert-protocol";
 import { resolveConfig } from "../../src/resolve-config.js";
-import { QaSessionController } from "../../src/client/QaSessionController.js";
+import {
+  QaSessionController,
+  type QaSessionControllerOptions,
+} from "../../src/client/QaSessionController.js";
 import type { QaSharingApi } from "../../src/client/chat-sharing-api.js";
 import type { QaChatAccess } from "../../src/chat-sharing/types.js";
-import { harness } from "../helpers/session-fakes.js";
+import { harness, Source } from "../helpers/session-fakes.js";
+
+const denied = {
+  ok: false,
+  error: new RemoteError(
+    "gateway/internal",
+    "QA accounts refused the request (reason: forbidden)",
+    {},
+  ),
+} as const;
 
 function fixture() {
   const world = harness(["chat-a", "child-a"]);
+  const link = new Source<Record<string, unknown> | undefined>({});
   const access = vi.fn<QaSharingApi["access"]>(async (_token, id) =>
     id === "chat-a"
       ? {
@@ -21,14 +34,12 @@ function fixture() {
             revision: 0,
           },
         }
-      : {
-          ok: false,
-          error: new RemoteError("gateway/internal", "Unavailable", {}),
-        },
+      : denied,
   );
   const controller = new QaSessionController({
     ...world,
     config: resolveConfig(),
+    connection: link as unknown as QaSessionControllerOptions["connection"],
     accounts: {
       token: () => "demo-token",
       ownedIds: () => ["chat-a"],
@@ -43,8 +54,51 @@ function fixture() {
       set: vi.fn(),
     },
   });
-  return { world, access, controller };
+  return { world, access, controller, link };
 }
+
+it("retains the open chat when the access poll fails during a restart", async () => {
+  vi.useFakeTimers();
+  const { access, controller, link } = fixture();
+  try {
+    await controller.switchTo("chat-a");
+    access.mockResolvedValueOnce({
+      ok: false,
+      error: new RemoteError(
+        "gateway/internal",
+        "transport failure for /api/qaSurface/chatAccess: HTTP 502",
+        {},
+      ),
+    });
+    // The HTTP failure can arrive before the connection reports the lost link.
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(controller.getSnapshot()).toMatchObject({
+      sessionId: "chat-a",
+      error: null,
+    });
+
+    link.set(undefined);
+    expect(controller.getSnapshot()).toMatchObject({
+      phase: "reconnecting",
+      sessionId: "chat-a",
+      canSend: false,
+      error: null,
+    });
+
+    link.set({});
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(controller.getSnapshot()).toMatchObject({
+      phase: "ready",
+      sessionId: "chat-a",
+      chatAccess: { mode: "owner" },
+      canSend: true,
+      error: null,
+    });
+  } finally {
+    controller.dispose();
+    vi.useRealTimers();
+  }
+});
 
 describe("account access while watching a delegated session", () => {
   it("keeps the child open through access polls and returns to its owned chat", async () => {
@@ -95,10 +149,7 @@ describe("account access while watching a delegated session", () => {
         });
         access.mockResolvedValue(
           mode === "revoked"
-            ? {
-                ok: false,
-                error: new RemoteError("gateway/internal", "Unavailable", {}),
-              }
+            ? denied
             : {
                 ok: true,
                 value: {

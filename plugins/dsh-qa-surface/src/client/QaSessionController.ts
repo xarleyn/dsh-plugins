@@ -20,6 +20,7 @@ import {
 } from "../shared/answer-modes.js";
 import { qaPromptRequestId } from "./request-id.js";
 import { qaStorageNamespace } from "../shared/session-key.js";
+import { accountsReasonOf } from "./QaAccountsController.js";
 import type { QaSharingApi } from "./chat-sharing-api.js";
 import type { QaChatAccess } from "../chat-sharing/types.js";
 import type {
@@ -2847,19 +2848,23 @@ export class QaSessionController {
         operation !== this.generation
       )
         return;
-      if (!result.ok || (delegated && result.value.mode !== "owner")) {
-        this.unbind();
-        this.chatAccess = undefined;
-        this.fail(
-          "Доступ к чату отозван или аккаунт недоступен.",
-          new QaPolicyAttestationError("session-owned-elsewhere"),
-        );
+      if (!result.ok) {
+        // The RPC client can also return a failure for an interrupted HTTP request.
+        const reason = accountsReasonOf(result.error);
+        if (reason !== "forbidden" && reason !== "auth-required") return;
+      } else if (!delegated || result.value.mode === "owner") {
+        if (JSON.stringify(this.chatAccess) !== JSON.stringify(result.value)) {
+          this.chatAccess = result.value;
+          this.publish();
+        }
         return;
       }
-      if (JSON.stringify(this.chatAccess) !== JSON.stringify(result.value)) {
-        this.chatAccess = result.value;
-        this.publish();
-      }
+      this.unbind();
+      this.chatAccess = undefined;
+      this.fail(
+        "Доступ к чату отозван или аккаунт недоступен.",
+        new QaPolicyAttestationError("session-owned-elsewhere"),
+      );
     } catch {
       /* Transport failures do not fabricate a revocation. Server writes still recheck access. */
     }

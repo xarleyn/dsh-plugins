@@ -2259,6 +2259,11 @@ export function QaSurface(props: QaSurfaceProps) {
 
               <footer className="dsh-qa-footer" data-testid="qa-surface-footer">
                 <div className="dsh-qa-footer__inner">
+                  {state.phase === "reconnecting" ? (
+                    <p className="dsh-qa-reconnecting" role="status">
+                      Помощник временно недоступен. Восстанавливаем подключение…
+                    </p>
+                  ) : null}
                   <QaApproval
                     approvals={state.approvals}
                     onAnswer={handleAnswerApproval}

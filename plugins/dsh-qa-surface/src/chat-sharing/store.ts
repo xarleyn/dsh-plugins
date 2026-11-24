@@ -75,7 +75,8 @@ export class QaChatSharingStore {
     const ownerId = accounts.ownerIdOf(sessionId);
     const owner =
       ownerId === undefined ? undefined : accounts.accountById(ownerId);
-    if (owner === undefined) throw new Error("Chat access is unavailable.");
+    if (owner === undefined)
+      throw new QaAccountsError("forbidden", "Chat access is unavailable.");
     if (actor.id === owner.id)
       return {
         sessionId,
@@ -97,7 +98,8 @@ export class QaChatSharingStore {
       )
       .get(sessionId, owner.id, actor.id) as
       { mode: QaChatMode; revision: number } | undefined;
-    if (grant === undefined) throw new Error("Chat access is unavailable.");
+    if (grant === undefined)
+      throw new QaAccountsError("forbidden", "Chat access is unavailable.");
     return {
       sessionId,
       ownerId: owner.id,

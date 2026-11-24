@@ -25,7 +25,11 @@ import { acknowledgeOnboarding } from "../../helpers/onboarding.js";
 import { QaSurfacePanelRegistry } from "../../../src/client/panels/registry.js";
 import type { QaAccessApi } from "../../../src/client/types.js";
 import type { QaFormApi } from "../../../src/client/forms.js";
-import { harness, landDurableUserRow } from "../../helpers/session-fakes.js";
+import {
+  harness,
+  landDurableUserRow,
+  Source,
+} from "../../helpers/session-fakes.js";
 
 globalThis.ResizeObserver ??= class {
   observe() {}
@@ -196,6 +200,29 @@ async function mountSurface(
   await waitFor(() => expect(newChat).toHaveProperty("disabled", false));
   return { accounts, access, newChat };
 }
+
+it("shows reconnecting and keeps the draft in the open chat", async () => {
+  const world = harness([SAVED_SESSION]);
+  const link = new Source<Record<string, unknown> | undefined>({});
+  await mountSurface({
+    ...world,
+    connection: link as unknown as typeof world.connection,
+  });
+  const input = screen.getByTestId<HTMLTextAreaElement>("qa-composer-input");
+  fireEvent.change(input, { target: { value: "Черновик вопроса" } });
+
+  act(() => link.set(undefined));
+  const notice = screen.getByText(
+    "Помощник временно недоступен. Восстанавливаем подключение…",
+  );
+  expect(notice.getAttribute("role")).toBe("status");
+  expect(screen.queryByTestId("qa-surface-error")).toBeNull();
+
+  act(() => link.set({}));
+  expect(notice.isConnected).toBe(false);
+  expect(screen.getByTestId("qa-composer-input")).toBe(input);
+  expect(input.value).toBe("Черновик вопроса");
+});
 
 describe("first send from a new QA chat", () => {
   it("polls forms only for the parent across actual subagent navigation", async () => {
