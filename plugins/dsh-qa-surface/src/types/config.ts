@@ -193,6 +193,8 @@ export interface QaSurfaceConfig {
     readonly fileWritePolicy?: Partial<
       import("../shared/file-write-policy.js").QaFileWritePolicy
     >;
+    /** Rules for repeat detection in the next QA turn; an empty list disables them. */
+    readonly loopRules?: readonly import("../shared/tool-loop-rules.js").ToolLoopRuleInput[];
     /**
      * `true` attaches the QA tools only after the activation skill loads;
      * `false` attaches them to every managed agent at creation.
@@ -551,6 +553,7 @@ export interface ResolvedQaSurfaceConfig {
   readonly tools: {
     readonly discoveryMode: "off" | "observe" | "search";
     readonly fileWritePolicy: import("../shared/file-write-policy.js").QaFileWritePolicy;
+    readonly loopRules: readonly import("../shared/tool-loop-rules.js").ToolLoopRule[];
     readonly dynamicActivation: boolean;
     readonly activationSkill: string;
     readonly activationMode: QaToolActivationMode;

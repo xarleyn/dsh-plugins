@@ -1444,11 +1444,55 @@ are checked again after route resolution, before a child is created. The parent
 chat's model is unchanged. A missing spawn backend refuses the call; a Host
 without subagents can still load the QA surface.
 
-After two consecutive identical results from the model catalog, QA asks the
-assistant to reuse the result or change approach. It denies the repeated call
-before execution. If another step retries that call, QA offers one closing
-request. During that request, the Host denies tool execution. A model selection
-refusal from `qa_subagent` allows one catalog refresh per turn.
+#### Repeated tool calls
+
+Set `tools.loopRules` in the Host configuration or edit **Повторные вызовы
+инструментов** in the QA Surface settings card. Each rule names one tool and
+has one or more thresholds. Saved rules apply from the next QA agent turn.
+
+```yaml
+tools:
+  loopRules:
+    - tool: qa_list_subagent_models
+      thresholds:
+        - calls: 2
+          action: warn
+          message: Use the model list already collected.
+        - calls: 3
+          action: block
+          message: Use the earlier list or choose a different tool.
+        - calls: 4
+          action: finish
+          message: The model list has already been collected.
+    - tool: docs_search
+      maxDifferencePercent: 5
+      thresholds:
+        - calls: 3
+          action: warn
+          message: Use the earlier search results or switch to another source.
+```
+
+Repeat detection compares each result with the first in the current series,
+even if the arguments change. A materially different result starts a new
+series. The default `maxDifferencePercent` of `0` requires an exact match of
+the result text or its JSON representation. Nonzero values allow character
+insertions, deletions, and substitutions up to the given percentage of the
+longer result. QA compares results longer than 4096 characters exactly.
+Repeated errors must also share the same error code.
+
+`warn` sends the message after the numbered matching result. `block` denies
+the numbered and later attempts of that tool before execution. The assistant
+can still use other tools. `finish` denies tool calls and gives the model one
+closing request with the configured message. After a block, only one retry
+per model step advances the counter. QA counts results from parallel calls
+in request order before the next model step. Threshold counts must be distinct.
+Warnings precede blocks, and a finish, if configured, is the last threshold.
+
+With no `loopRules` setting, the catalog rule warns after two consecutive
+identical results, blocks the third call and closes the turn if a later step
+retries it. A model selection refusal from `qa_subagent` allows one catalog
+refresh per turn. An explicit list replaces the default, and an empty list
+disables repeat rules.
 
 QA also reserves one closing request after 64 model attempts or 64,000 reported
 output tokens in an agent's turn. Token usage is checked between requests.

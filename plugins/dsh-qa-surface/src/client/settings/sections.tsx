@@ -28,3 +28,4 @@ export { SlashSection } from "./sections/slash.js";
 export { SourcesSection } from "./sections/sources.js";
 export { StatusSection } from "./sections/status.js";
 export type { StatusProps } from "./sections/status.js";
+export { TOOL_LOOP_RULES_PATH, ToolLoopSection } from "./sections/tool-loop.js";

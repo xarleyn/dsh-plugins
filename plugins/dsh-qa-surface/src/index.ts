@@ -887,6 +887,7 @@ export class QaSurface extends TypertRemoteService {
     const disposeToolLoop = installQaToolLoop(
       ctx,
       (agent) => ownership.rootOf(String(agent.session.id)) !== undefined,
+      { rules: () => this.getConfig().tools.loopRules },
     );
     ctx.effect(() => disposeToolLoop, "dsh-qa-surface.tool-loop");
     // A turn the Host ended with a provider failure is written to the plugin's

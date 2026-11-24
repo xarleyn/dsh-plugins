@@ -38,6 +38,14 @@ export const QA_SETTINGS_STYLES: string =
 .qa-card-advanced summary{cursor:pointer;padding:11px 0;font-size:16px;font-weight:600}
 .qa-card-advanced summary:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));outline-offset:-1px}
 .qa-card-advanced-content{padding:2px 0 13px;display:grid;gap:10px}
+.qa-card-loop-rule summary{overflow-wrap:anywhere}
+.qa-card-loop-editor,.qa-card-loop-threshold{min-inline-size:0;margin:0}
+.qa-card-loop-editor{border:0;padding-inline:0}
+.qa-card-loop-threshold{display:grid;gap:8px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;padding:8px 12px 12px}
+.qa-card-loop-threshold legend{padding:0 4px;color:var(--dsw-alias-label-secondary);font-size:14px}
+.qa-card-loop-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:8px 12px}
+.qa-card-loop-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.qa-card-loop-threshold>.qa-card-btn{justify-self:start}
 .qa-card-rows{display:grid;gap:6px}
 .qa-card-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:9px;align-items:center;padding:7px 9px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;font-size:11px}
 .qa-card-row code{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-primary);font-family:ui-monospace,SFMono-Regular,Consolas,monospace}

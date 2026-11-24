@@ -1,5 +1,6 @@
+import Schema from "@deepseek-ai/schemastery";
 import { describe, expect, it } from "vitest";
-import { readConfigRefs } from "../../src/config.js";
+import { ConfigSchema, readConfigRefs } from "../../src/config.js";
 import {
   DEFAULT_QA_SURFACE_CONFIG,
   resolveConfig,
@@ -23,6 +24,47 @@ describe("ConfigSchema defaults", () => {
       resolveConfig(schemaParse({ thinkingPhrases: [" Точу ", "Точу"] }))
         .thinkingPhrases,
     ).toEqual(["Точу"]);
+  });
+
+  it("validates a repeat rule on the Host and orders thresholds by call number", () => {
+    const rule = {
+      tool: "demo_lookup",
+      thresholds: [
+        { calls: 4, action: "finish", message: "Summarize the results." },
+        { calls: 2, action: "warn", message: "Use the earlier result." },
+      ],
+    };
+    const config = resolveConfig(schemaParse({ tools: { loopRules: [rule] } }));
+    const mirror = new Schema(JSON.parse(JSON.stringify(ConfigSchema)));
+    expect(
+      mirror["~standard"].validate({ tools: config.tools }),
+    ).toHaveProperty("value");
+    expect(config.tools.loopRules).toEqual([
+      {
+        ...rule,
+        maxDifferencePercent: 0,
+        thresholds: [...rule.thresholds].reverse(),
+      },
+    ]);
+    for (const loopRules of [
+      [rule, rule],
+      [{ ...rule, maxDifferencePercent: 101 }],
+      [{ ...rule, thresholds: [rule.thresholds[1], rule.thresholds[1]] }],
+      [
+        {
+          ...rule,
+          thresholds: [{ calls: 2, action: "finish", message: "Summarize." }],
+        },
+      ],
+      [{ ...rule, thresholds: [{ calls: 3, action: "block" }] }],
+    ]) {
+      expect(
+        ConfigSchema["~standard"].validate({ tools: { loopRules } }),
+      ).toHaveProperty("issues");
+    }
+    expect(
+      resolveConfig(schemaParse({ tools: { loopRules: [] } })).tools.loopRules,
+    ).toEqual([]);
   });
 
   it("preserves the operator's Markdown and uses the built-in guide for blank text", () => {

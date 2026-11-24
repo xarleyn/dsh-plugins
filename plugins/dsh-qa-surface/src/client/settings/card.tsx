@@ -55,6 +55,8 @@ import {
   SlashSection,
   SourcesSection,
   StatusSection,
+  TOOL_LOOP_RULES_PATH,
+  ToolLoopSection,
   type ConfigProps,
 } from "./sections.js";
 
@@ -193,6 +195,7 @@ export function QaSettingsCard({ settingsForm, describe }: CardProps) {
     async (
       entries: readonly ConfigEntry[],
       cleared: readonly (readonly string[])[],
+      readback?: { readonly revision: number | undefined },
     ) => {
       const before = settingsForm.getSnapshot().revision;
       const ops = [
@@ -204,17 +207,20 @@ export function QaSettingsCard({ settingsForm, describe }: CardProps) {
         ...cleared.map((path) => ({ op: "unset" as const, path: [...path] })),
       ] as unknown as ScopeOps;
       try {
-        await settingsForm.mutate(ops);
+        if (readback === undefined) await settingsForm.mutate(ops);
+        else await settingsForm.mutate(ops, readback.revision);
       } catch (cause) {
         setWriteError(displayError(cause));
-        return;
+        return false;
       }
       const after = settingsForm.getSnapshot();
       const landed =
-        after.revision !== before || mutationLanded(entries, cleared, after);
+        (readback === undefined && after.revision !== before) ||
+        mutationLanded(entries, cleared, after);
       // Held until a later write lands: the message names what to look at, and
       // a timer that clears it would only hide the problem.
       setWriteError(landed ? null : REFUSED_MESSAGE);
+      return landed;
     },
     [settingsForm],
   );
@@ -323,6 +329,16 @@ export function QaSettingsCard({ settingsForm, describe }: CardProps) {
           <SourcesSection {...sectionProps} />
           <DocsSection {...sectionProps} />
           <DiscoverySection {...sectionProps} />
+          <ToolLoopSection
+            {...sectionProps}
+            onSave={(rules) =>
+              applyMutation(
+                [{ path: TOOL_LOOP_RULES_PATH, value: rules }],
+                [],
+                { revision: settings.revision },
+              )
+            }
+          />
           <FileWritesSection {...sectionProps} />
           <NotesSection {...sectionProps} />
           <AttachmentsSection {...sectionProps} />

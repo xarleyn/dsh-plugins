@@ -285,6 +285,7 @@ describe("qa surface config", () => {
         blockedExtensions: [".py", ".pyw"],
         message: expect.any(String),
       },
+      loopRules: DEFAULT_QA_SURFACE_CONFIG.tools.loopRules,
       dynamicActivation: true,
       activationSkill: "qa-surface",
       activationMode: "all",
@@ -312,6 +313,7 @@ describe("qa surface config", () => {
         blockedExtensions: [".py", ".pyw"],
         message: expect.any(String),
       },
+      loopRules: DEFAULT_QA_SURFACE_CONFIG.tools.loopRules,
       activationSkill: "qa-research",
       activationMode: "all",
       activationPresets: ["qa-research"],
@@ -341,6 +343,7 @@ describe("qa surface config", () => {
         blockedExtensions: [".py", ".pyw"],
         message: expect.any(String),
       },
+      loopRules: DEFAULT_QA_SURFACE_CONFIG.tools.loopRules,
     });
     // A default the corpus can never match would answer every search with "no
     // documentation matches", which reads as a missing document rather than a

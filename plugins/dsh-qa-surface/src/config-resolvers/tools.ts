@@ -2,6 +2,7 @@ import type { QaSurfaceConfig, ResolvedQaSurfaceConfig } from "../types.js";
 import { isDocumentationVersion } from "../shared/docs-version.js";
 import { DEFAULT_QA_SURFACE_CONFIG } from "./defaults.js";
 import { resolveFileWritePolicy } from "../shared/file-write-policy.js";
+import { resolveToolLoopRules } from "../shared/tool-loop-rules.js";
 
 type ToolsSlice = ResolvedQaSurfaceConfig["tools"];
 
@@ -59,6 +60,7 @@ export function resolveTools(input: QaSurfaceConfig): ToolsSlice {
   return Object.freeze({
     discoveryMode,
     fileWritePolicy: resolveFileWritePolicy(input.tools?.fileWritePolicy),
+    loopRules: resolveToolLoopRules(input.tools?.loopRules),
     activationSkill,
     activationMode,
     activationPresets: Object.freeze(activationPresets),

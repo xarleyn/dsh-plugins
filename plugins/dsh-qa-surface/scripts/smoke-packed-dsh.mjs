@@ -23,6 +23,7 @@ import { runUsageGuidePass } from "./smoke-usage-guide-browser.mjs";
 import { runIntegrationFolderBrowserPass } from "./smoke-integration-folder-browser.mjs";
 import { runFileDropBrowserPass } from "./smoke-file-drop-browser.mjs";
 import { runFileWriteSettingsBrowserPass } from "./smoke-file-writes-browser.mjs";
+import { runToolLoopSettingsBrowserPass } from "./smoke-tool-loop-settings-browser.mjs";
 import { runSubagentModelsPass } from "./smoke-subagent-models.mjs";
 import { runQuestionSoundsPass } from "./smoke-question-sounds.mjs";
 import { formReaderPatch, runFormReaderPass } from "./smoke-form-reader.mjs";
@@ -61,6 +62,7 @@ const reviewDockOnly = process.argv.includes("--review-dock");
 if (reviewDockOnly && !withBrowser)
   throw new Error("--review-dock requires --browser");
 const fileWriteSettingsOnly = process.argv.includes("--file-write-settings");
+const toolLoopSettingsOnly = process.argv.includes("--tool-loop-settings");
 const discoverySettingsOnly = process.argv.includes(
   "--tool-discovery-settings",
 );
@@ -888,6 +890,7 @@ try {
             modelSelectionOnly ||
             usageGuideOnly ||
             subagentModelsOnly ||
+            toolLoopSettingsOnly ||
             answerModesOnly ||
             reviewDockOnly
           ) || !/_API_KEY$/u.test(name),
@@ -1152,6 +1155,7 @@ try {
     !usageGuideOnly &&
     !modelSelectionOnly &&
     !chatLayoutOnly &&
+    !toolLoopSettingsOnly &&
     !answerModesOnly &&
     !reviewDockOnly;
   if (
@@ -1163,6 +1167,7 @@ try {
     !reviewDockOnly &&
     !answerModesOnly &&
     !discoverySettingsOnly &&
+    !toolLoopSettingsOnly &&
     !questionSoundsOnly
   )
     await runLanPass({
@@ -1190,6 +1195,12 @@ try {
         process.env.DSH_QA_FILE_WRITE_EVIDENCE ??
         join(temporaryRoot, "file-write-evidence"),
     });
+  if (toolLoopSettingsOnly || fullBrowser)
+    await runToolLoopSettingsBrowserPass({
+      origin,
+      authenticatedUrl: `${origin}/?token=${encodeURIComponent(token)}`,
+      cookie,
+    });
   if (liveModels) {
     await runLiveModelSelection({
       models: liveModels,
@@ -1198,7 +1209,7 @@ try {
       cookie,
       authenticatedUrl: `${origin}/?token=${encodeURIComponent(token)}`,
     });
-  } else if (withBrowser) {
+  } else if (withBrowser && !toolLoopSettingsOnly) {
     const sourceWorkspace = chatLayoutOnly
       ? (
           await rpc(
@@ -1320,7 +1331,7 @@ try {
   }
   completed = true;
   console.log(
-    `packed DSH ${dshVersion} QA smoke passed${withBrowser || fileWriteSettingsOnly || discoverySettingsOnly ? " with browser E2E" : ""}${chatLayoutOnly ? " (chat layout)" : ""}`,
+    `packed DSH ${dshVersion} QA smoke passed${withBrowser || fileWriteSettingsOnly || discoverySettingsOnly || toolLoopSettingsOnly ? " with browser E2E" : ""}${chatLayoutOnly ? " (chat layout)" : ""}`,
   );
 } finally {
   await stopProcess(host);

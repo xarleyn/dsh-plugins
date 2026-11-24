@@ -28,6 +28,13 @@ import {
 import type { QaSurfaceConfig } from "./types.js";
 import { QA_FILE_WRITE_EXTENSION_PATTERN } from "./shared/file-write-policy.js";
 import { QA_QUESTION_TIMEOUT_MAX_MINUTES } from "./shared/question-timing.js";
+import {
+  resolveToolLoopRules,
+  TOOL_LOOP_ACTIONS,
+  TOOL_LOOP_LIMITS,
+  TOOL_LOOP_TOOL_NAME,
+  type ToolLoopRuleInput,
+} from "./shared/tool-loop-rules.js";
 
 // Every schema default derives from the canonical resolved defaults: the Host
 // feeds the schema-parsed config into resolveConfig, so a default that exists
@@ -67,6 +74,65 @@ function readManifestVersion(): string | undefined {
 }
 
 const nullableString = z.union([z.string(), z.const(null)]);
+
+const toolLoopRulesShape = z
+  .array(
+    z.object({
+      tool: z
+        .string()
+        .max(TOOL_LOOP_LIMITS.toolName)
+        .pattern(TOOL_LOOP_TOOL_NAME)
+        .required(),
+      maxDifferencePercent: z.number().step(1).min(0).max(100).default(0),
+      thresholds: z
+        .array(
+          z.object({
+            calls: z
+              .number()
+              .step(1)
+              .min(2)
+              .max(TOOL_LOOP_LIMITS.calls)
+              .required(),
+            action: z.union(TOOL_LOOP_ACTIONS).required(),
+            message: z
+              .string()
+              .max(TOOL_LOOP_LIMITS.message)
+              .pattern(/\S/u)
+              .required(),
+          }),
+        )
+        .min(1)
+        .max(TOOL_LOOP_LIMITS.thresholds)
+        .required(),
+    }),
+  )
+  .max(TOOL_LOOP_LIMITS.rules)
+  .default(
+    D.tools.loopRules.map((rule) => ({
+      ...rule,
+      thresholds: [...rule.thresholds],
+    })),
+  );
+
+const toolLoopRulesSchema = z
+  .transform(
+    toolLoopRulesShape,
+    (rules) => {
+      try {
+        return resolveToolLoopRules(rules as readonly ToolLoopRuleInput[]);
+      } catch (error) {
+        throw new z.ValidationError(
+          error instanceof Error ? error.message : String(error),
+          {},
+        );
+      }
+    },
+    true,
+  )
+  .default(D.tools.loopRules);
+// The settings mirror rehydrates the declarative shape. The Host validates
+// relationships between rules and thresholds before it accepts a write.
+toolLoopRulesSchema.toJSON = () => toolLoopRulesShape.toJSON();
 
 const configSchema = z.object({
   searchSources: z
@@ -540,6 +606,7 @@ const configSchema = z.object({
           ...D.tools.fileWritePolicy,
           blockedExtensions: [...D.tools.fileWritePolicy.blockedExtensions],
         }),
+      loopRules: toolLoopRulesSchema,
       dynamicActivation: z.boolean().default(D.tools.dynamicActivation),
       discoveryMode: z
         .union(["off", "observe", "search"] as const)

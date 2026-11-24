@@ -2,20 +2,18 @@ import type { Context } from "@deepseek-ai/cordis";
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import { createUserMessage } from "@deepseek-ai/dsh-llm";
 import type { Session } from "@deepseek-ai/dsh-session";
-import type {
-  ToolExecution,
-  ToolExecutionResult,
-} from "@deepseek-ai/dsh-tools";
-import { QA_MODEL_SELECTION_REFUSED } from "./access/model-choices.js";
+import type { ToolExecution } from "@deepseek-ai/dsh-tools";
+import {
+  DEFAULT_TOOL_LOOP_RULES,
+  type ToolLoopRule,
+} from "./shared/tool-loop-rules.js";
 import {
   QA_MODEL_BUDGET_STOP,
   QA_MODEL_TIMEOUT_STOP,
   QA_TOOL_LOOP_STOP,
 } from "./shared/tool-loop-stop.js";
+import { ToolLoopTurn } from "./tool-loop-turn.js";
 
-const CATALOG = "qa_list_subagent_models";
-const REPEAT =
-  "The subagent model catalog has returned the same result twice. Use the earlier result. Choose a different action or answer with the evidence already collected.";
 const WRAP_UP =
   "Finish this turn now with a short user-facing answer. Use only the evidence already collected, say what is missing, and do not call tools.";
 const CLOSED_TOOLS =
@@ -26,6 +24,11 @@ interface ModelBudget {
   readonly outputTokens: number;
   readonly attemptMs: number;
   readonly closingMs: number;
+}
+
+interface ToolLoopOptions {
+  readonly budget?: ModelBudget;
+  readonly rules?: () => readonly ToolLoopRule[];
 }
 
 const DEFAULT_BUDGET: ModelBudget = {
@@ -40,17 +43,12 @@ type ClosingReason = typeof QA_TOOL_LOOP_STOP | typeof QA_MODEL_BUDGET_STOP;
 interface TurnState {
   readonly turn: number;
   readonly signal: AbortSignal;
+  readonly repeats: ToolLoopTurn;
   step: number;
   requests: number;
   outputTokens: number;
-  catalogStep?: number;
-  catalogCall?: string;
-  lastResult?: string;
-  identicalResults: number;
-  reminder: boolean;
-  blockedAt?: number;
-  refreshUsed: boolean;
   closing?: ClosingReason;
+  closingMessage?: string;
   closingStep?: number;
   stream?: {
     id: string;
@@ -76,19 +74,14 @@ function stop(
     agent.cancel({ kind: "hook", reason }, { keepInbox: true });
 }
 
-function resultKey(result: ToolExecutionResult): string | undefined {
-  return result.isError
-    ? JSON.stringify([result.error.info?.code, result.error.message])
-    : typeof result.value === "string"
-      ? result.value
-      : undefined;
-}
-
-/** Scoped to QA agents. Only this read-only, parameterless catalog has a repeat policy. */
+/** Scoped to QA-owned agents and their delegated sessions. */
 export function installQaToolLoop(
   ctx: Context,
   owns: (agent: Agent) => boolean,
-  budget: ModelBudget = DEFAULT_BUDGET,
+  {
+    budget = DEFAULT_BUDGET,
+    rules = () => DEFAULT_TOOL_LOOP_RULES,
+  }: ToolLoopOptions = {},
 ): () => void {
   const turns = new Map<Session, TurnState>();
   const find = (exec: Readonly<ToolExecution>) =>
@@ -122,9 +115,7 @@ export function installQaToolLoop(
             step,
             requests: 0,
             outputTokens: 0,
-            identicalResults: 0,
-            reminder: false,
-            refreshUsed: false,
+            repeats: new ToolLoopTurn(rules()),
           };
           turns.set(agent.session, state);
         }
@@ -135,14 +126,14 @@ export function installQaToolLoop(
         }
         if (overBudget(state)) state.closing ??= QA_MODEL_BUDGET_STOP;
 
-        const text =
+        const messages =
           state.closing !== undefined
-            ? WRAP_UP
-            : state.reminder
-              ? REPEAT
-              : undefined;
-        state.reminder = false;
-        if (text === undefined) return decision;
+            ? [state.closingMessage, WRAP_UP].filter(
+                (text) => text !== undefined,
+              )
+            : state.repeats.takeReminders();
+        if (messages.length === 0) return decision;
+        const text = messages.join("\n\n");
         if (state.closing !== undefined) state.closingStep = step;
         return {
           ...decision,
@@ -171,27 +162,16 @@ export function installQaToolLoop(
             kind: "deny",
             reason: CLOSED_TOOLS,
           });
-        if (exec.name !== CATALOG) {
-          state.identicalResults = 0;
-          state.reminder = false;
-          return next();
+        const denial = state.repeats.beforeCall(exec, state.step);
+        if (denial === undefined) return next();
+        if (denial.finishMessage !== undefined) {
+          state.closing = QA_TOOL_LOOP_STOP;
+          state.closingMessage = denial.finishMessage;
         }
-        if (state.blockedAt !== undefined || state.identicalResults >= 2) {
-          if (state.blockedAt !== undefined && state.blockedAt < state.step)
-            state.closing = QA_TOOL_LOOP_STOP;
-          state.blockedAt ??= state.step;
-          return Promise.resolve({ kind: "deny", reason: REPEAT });
-        }
-        // Parallel duplicates must neither run nor count as two model steps.
-        if (state.catalogStep === state.step)
-          return Promise.resolve({
-            kind: "deny",
-            reason:
-              "Use the result of the catalog call already requested in this step.",
-          });
-        state.catalogStep = state.step;
-        state.catalogCall = exec.callId;
-        return next();
+        return Promise.resolve({
+          kind: "deny",
+          reason: denial.message ?? CLOSED_TOOLS,
+        });
       },
       { global: true, prepend: true },
     ),
@@ -205,26 +185,7 @@ export function installQaToolLoop(
       (exec, result) => {
         const state = find(exec);
         if (state === undefined || state.closing !== undefined) return;
-        if (
-          exec.name === "qa_subagent" &&
-          result.isError &&
-          result.error.info?.code === QA_MODEL_SELECTION_REFUSED &&
-          !state.refreshUsed
-        ) {
-          state.refreshUsed = true;
-          state.identicalResults = 0;
-          delete state.blockedAt;
-        }
-        if (exec.name !== CATALOG || exec.callId !== state.catalogCall) return;
-        delete state.catalogCall;
-        const key = resultKey(result);
-        state.identicalResults =
-          key !== undefined && key === state.lastResult
-            ? state.identicalResults + 1
-            : 1;
-        if (key === undefined) delete state.lastResult;
-        else state.lastResult = key;
-        if (state.identicalResults === 2) state.reminder = true;
+        state.repeats.onResult(exec, result);
       },
       { global: true },
     ),

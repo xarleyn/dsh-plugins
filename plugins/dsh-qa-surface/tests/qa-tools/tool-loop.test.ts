@@ -20,6 +20,10 @@ import ToolRuntime, { defineTool } from "@deepseek-ai/dsh-tools";
 import { expect, it, onTestFinished } from "vitest";
 import { QaModelSelectionError } from "../../src/access/model-choices.js";
 import {
+  resolveToolLoopRules,
+  type ToolLoopRule,
+} from "../../src/shared/tool-loop-rules.js";
+import {
   QA_MODEL_BUDGET_STOP,
   QA_MODEL_TIMEOUT_STOP,
   QA_TOOL_LOOP_STOP,
@@ -29,7 +33,8 @@ import { installQaToolLoop } from "../../src/tool-loop.js";
 const catalog = "qa_list_subagent_models";
 const lookup = "demo_lookup";
 const answer = "Answer based on the results.";
-type Action = readonly string[] | "answer" | "empty" | "wait";
+type Call = string | { readonly tool: string; readonly query: string };
+type Action = readonly Call[] | "answer" | "empty" | "wait";
 
 class ScriptedAdapter extends LlmAdapter {
   readonly requests: GenerateOptions[] = [];
@@ -60,9 +65,13 @@ class ScriptedAdapter extends LlmAdapter {
         block: { type: "text", text: answer },
       };
     } else if (typeof action !== "string") {
-      for (const [index, name] of action.entries()) {
+      for (const [index, call] of action.entries()) {
         const id = ToolCallId(`call-${this.requests.length}-${index}`);
-        const args = "{}";
+        const name = typeof call === "string" ? call : call.tool;
+        const args =
+          typeof call === "string"
+            ? "{}"
+            : JSON.stringify({ query: call.query });
         yield { type: "block-start", index, blockType: "tool-call" };
         yield {
           type: "tool-call-delta",
@@ -90,8 +99,10 @@ async function harness(
     readonly outputTokens?: number;
     readonly attemptMs?: number;
     readonly lookupMs?: number;
+    readonly lookupResults?: readonly string[];
     readonly catalogResults?: readonly string[];
     readonly owns?: boolean;
+    readonly rules?: () => readonly ToolLoopRule[];
   } = {},
 ) {
   const ctx = new Context();
@@ -108,13 +119,17 @@ async function harness(
   ctx.llm.registerAdapter(["demo"], adapter);
   onTestFinished(
     installQaToolLoop(ctx, () => options.owns ?? true, {
-      attempts: options.attempts ?? 16,
-      outputTokens: options.outputTokens ?? 16_000,
-      attemptMs: options.attemptMs ?? 4_000,
-      closingMs: 1_000,
+      rules: options.rules,
+      budget: {
+        attempts: options.attempts ?? 16,
+        outputTokens: options.outputTokens ?? 16_000,
+        attemptMs: options.attemptMs ?? 4_000,
+        closingMs: 1_000,
+      },
     }),
   );
   let catalogExecutions = 0;
+  let lookupExecutions = 0;
   const ran: string[] = [];
   const agent = await ctx.agentLoop.create(SessionId("demo-session"), {
     provider: "demo",
@@ -125,7 +140,7 @@ async function harness(
       defineTool({
         name,
         description: "Return a synthetic result.",
-        parameters: {},
+        parameters: name === lookup ? { query: { type: "string" } } : {},
         output: {
           schema: { type: "string" },
           render: (_args, value) => [{ type: "text", text: value }],
@@ -142,7 +157,7 @@ async function harness(
   );
   register(lookup, async () => {
     if (options.lookupMs !== undefined) await wait(options.lookupMs);
-    return "demo evidence";
+    return options.lookupResults?.[lookupExecutions++] ?? "demo evidence";
   });
   register("qa_subagent", () => {
     throw new QaModelSelectionError("The selected model is disallowed.");
@@ -244,6 +259,96 @@ it("keeps checking when the catalog changes and allows a refresh after a model r
     "qa_subagent",
     catalog,
   ]);
+});
+
+it("applies configured warnings, blocks and a finish to repeated results across changing arguments", async () => {
+  let rules = resolveToolLoopRules([
+    {
+      tool: lookup,
+      thresholds: [
+        { calls: 2, action: "warn", message: "Use the first lookup result." },
+        {
+          calls: 3,
+          action: "block",
+          message: "This lookup is blocked for this turn.",
+        },
+        {
+          calls: 4,
+          action: "finish",
+          message: "Stop looking up the same evidence.",
+        },
+      ],
+    },
+  ]);
+  const { ctx, agent, adapter, ran } = await harness(
+    [
+      [{ tool: lookup, query: "first" }],
+      [catalog],
+      [{ tool: lookup, query: "different" }],
+      [lookup, lookup],
+      [lookup],
+      [catalog],
+      [lookup],
+      [lookup],
+      [lookup],
+      "answer",
+    ],
+    { rules: () => rules },
+  );
+  expect(await send(ctx, agent)).toEqual({
+    kind: "aborted",
+    reason: { kind: "hook", reason: QA_TOOL_LOOP_STOP },
+  });
+  expect(ran).toEqual([lookup, catalog, lookup]);
+  expect(JSON.stringify(adapter.requests[3]?.messages)).toContain(
+    "Use the first lookup result.",
+  );
+  expect(JSON.stringify(adapter.requests[4]?.messages)).toContain(
+    "This lookup is blocked for this turn.",
+  );
+  expect(JSON.stringify(adapter.requests[5]?.messages)).toContain(
+    "Stop looking up the same evidence.",
+  );
+  expect(JSON.stringify(adapter.requests[5]?.messages)).toContain(
+    "Finish this turn now",
+  );
+
+  rules = [];
+  expect(await send(ctx, agent)).toEqual({ kind: "completed" });
+  expect(ran).toEqual([lookup, catalog, lookup, lookup, lookup, lookup]);
+});
+
+it("warns at the configured character difference and resets when output moves away from the first result", async () => {
+  const reminder = "Use the similar status already received.";
+  const { ctx, agent, adapter } = await harness(
+    [[lookup], [lookup], [lookup], [lookup], "answer"],
+    {
+      lookupResults: [
+        "status=aaaa",
+        "status=baaa",
+        "status=bbaa",
+        "status=bbaa",
+      ],
+      rules: () =>
+        resolveToolLoopRules([
+          {
+            tool: lookup,
+            maxDifferencePercent: 10,
+            thresholds: [{ calls: 2, action: "warn", message: reminder }],
+          },
+        ]),
+    },
+  );
+  expect(await send(ctx, agent)).toEqual({ kind: "completed" });
+  expect(JSON.stringify(adapter.requests[2]?.messages.at(-1))).toContain(
+    reminder,
+  );
+  expect(JSON.stringify(adapter.requests[3]?.messages.at(-1))).not.toContain(
+    reminder,
+  );
+  expect(JSON.stringify(adapter.requests[4]?.messages.at(-1))).toContain(
+    reminder,
+  );
 });
 
 it.each([
