@@ -130,7 +130,7 @@ export interface QaSessionListing {
 export interface QaSessionLogReader {
   /** Capture session headers through the final synchronous purge decision. */
   watchCreated?(record: (header: QaStoredSessionHeader) => void): () => void;
-  list(): Promise<QaSessionListing>;
+  list(options?: { readonly timeoutMs?: number }): Promise<QaSessionListing>;
   read(sessionId: string): Promise<QaSessionReadResult>;
   /**
    * Whether the Harness holds this session in memory right now. Such a session
@@ -197,7 +197,9 @@ export interface QaStoredSessionEraser {
  * backend the admin console can live without.
  */
 interface SessionQueryLike {
-  listSessions(): Promise<readonly { readonly header: unknown }[]>;
+  listSessions(
+    signal?: AbortSignal,
+  ): Promise<readonly { readonly header: unknown }[]>;
   readSession(sessionId: string): Promise<{ readonly events: unknown }>;
 }
 
@@ -354,17 +356,19 @@ export function createSessionLogReader(
       return sessions()?.get(sessionId as SessionId) !== undefined;
     },
 
-    async list(): Promise<QaSessionListing> {
+    async list({ timeoutMs = listTimeoutMs } = {}): Promise<QaSessionListing> {
       const engine = query();
       if (engine === undefined) {
         return { headers: liveList(), complete: false };
       }
+      const controller = new AbortController();
       try {
         const settled = await settleWithin(
-          engine.listSessions(),
-          listTimeoutMs,
+          engine.listSessions(controller.signal),
+          timeoutMs,
         );
         if (settled === TIMED_OUT) {
+          controller.abort();
           // A listing that did not answer in time is no listing: the live view
           // is what this page can still show, and `complete: false` tells the
           // ownership sweep not to read the gap as deleted chats.

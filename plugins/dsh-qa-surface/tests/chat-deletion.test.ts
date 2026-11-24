@@ -11,7 +11,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QaAccounts } from "../src/accounts/store.js";
 import {
   createSessionEraser,
+  createSessionLogReader,
   staticSessionLogReader,
+  type QaSessionLogReader,
   type QaStoredSessionHeader,
 } from "../src/admin/session-log.js";
 import { QaChatDeletion } from "../src/chat-deletion.js";
@@ -58,6 +60,12 @@ describe("owner chat deletion", () => {
     );
   }
 
+  function queryRecords() {
+    return headers.map(({ parentSessionId, isFork, ...header }) => ({
+      header: { ...header, parentSession: parentSessionId, isSeeded: isFork },
+    }));
+  }
+
   function openStores() {
     accounts = new QaAccounts(join(home, "accounts.db"), {
       sessionTtlDays: 1,
@@ -71,17 +79,19 @@ describe("owner chat deletion", () => {
     accounts.close();
   }
 
-  function deletion() {
+  function deletion(
+    log: QaSessionLogReader = {
+      ...staticSessionLogReader({}),
+      list: () =>
+        Promise.resolve({
+          headers: headers.filter(({ id }) => existsSync(sessionDir(id))),
+          complete,
+        }),
+      live: (id) => held.has(id),
+    },
+  ) {
     return new QaChatDeletion({
-      log: {
-        ...staticSessionLogReader({}),
-        list: () =>
-          Promise.resolve({
-            headers: headers.filter(({ id }) => existsSync(sessionDir(id))),
-            complete,
-          }),
-        live: (id) => held.has(id),
-      },
+      log,
       sharing: () => sharing,
       files: createSessionEraser(home),
       logger: { warn: vi.fn(), info: vi.fn() },
@@ -110,6 +120,7 @@ describe("owner chat deletion", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     closeStores();
     rmSync(home, { recursive: true, force: true });
   });
@@ -215,6 +226,76 @@ describe("owner chat deletion", () => {
     expect(accounts.pendingChatDeletions()).toEqual([]);
     expect(sharing.access(owner, ROOT.id).mode).toBe("owner");
     expect(existsSync(sessionDir(CHILD.id))).toBe(true);
+  });
+
+  it("shares a slow catalog scan and keeps watching for children until both chats are deleted", async () => {
+    vi.useFakeTimers();
+    const listSessions = vi.fn(() => {
+      const snapshot = queryRecords();
+      return new Promise<typeof snapshot>((resolve) =>
+        setTimeout(() => resolve(snapshot), 9_000),
+      );
+    });
+    const stopWatching = vi.fn();
+    let onCreated: ((session: { header: unknown }) => void) | undefined;
+    const log = createSessionLogReader({
+      get: (name: string) =>
+        name === "sessionQuery" ? { listSessions } : undefined,
+      on: (_event: string, listener: typeof onCreated) => {
+        onCreated = listener;
+        return stopWatching;
+      },
+    } as never);
+    const service = deletion(log);
+
+    const first = service.request(accounts, owner, ROOT.id);
+    void first.catch(() => undefined);
+    await vi.advanceTimersByTimeAsync(4_000);
+    const child = {
+      id: "late-fork-agent",
+      createdAt: 4,
+      parentSessionId: FORK.id,
+    };
+    add(child);
+    onCreated?.({ header: { ...child, parentSession: FORK.id } });
+    const second = service.request(accounts, owner, FORK.id);
+    void second.catch(() => undefined);
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    await expect(first).resolves.toEqual({ state: "deleted" });
+    await expect(second).resolves.toEqual({ state: "deleted" });
+    expect(listSessions).toHaveBeenCalledTimes(1);
+    expect(stopWatching).toHaveBeenCalledTimes(1);
+    expect(existsSync(sessionDir(CHILD.id))).toBe(false);
+    expect(existsSync(sessionDir(child.id))).toBe(false);
+    expect(accounts.ownedSessionIds(owner)).toEqual([]);
+  });
+
+  it("cancels a stalled scan at the deletion deadline and leaves the chat available to retry", async () => {
+    vi.useFakeTimers();
+    const listSessions = vi
+      .fn<(signal?: AbortSignal) => Promise<{ header: unknown }[]>>()
+      .mockImplementationOnce(() => new Promise(() => undefined))
+      .mockResolvedValueOnce(queryRecords());
+    const log = createSessionLogReader({
+      get: (name: string) =>
+        name === "sessionQuery" ? { listSessions } : undefined,
+      on: () => vi.fn(),
+    } as never);
+    const service = deletion(log);
+
+    const refused = expect(
+      service.request(accounts, owner, ROOT.id),
+    ).rejects.toMatchObject({ reason: "conversation-list-incomplete" });
+    await vi.advanceTimersByTimeAsync(30_000);
+    await refused;
+    expect(listSessions.mock.calls[0]?.[0]?.aborted).toBe(true);
+    expect(accounts.pendingChatDeletions()).toEqual([]);
+    expect(sharing.access(owner, ROOT.id).mode).toBe("owner");
+    expect(existsSync(sessionDir(ROOT.id))).toBe(true);
+    await expect(service.request(accounts, owner, ROOT.id)).resolves.toEqual({
+      state: "deleted",
+    });
   });
 
   it("does not turn a browser-index claim into authority to erase a Host log", async () => {

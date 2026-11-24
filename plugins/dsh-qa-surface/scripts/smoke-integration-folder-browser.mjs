@@ -213,12 +213,17 @@ ${
       cookie,
     );
     if (sourceWorkspace) await grantLayoutSearchSource(origin, cookie, session);
-    const formSession = await rpc(
-      origin,
-      "qaSurface/createSession",
-      { args: { token: session.token, subroleId: null, adminPreview: false } },
-      cookie,
-    );
+    const createChat = () =>
+      rpc(
+        origin,
+        "qaSurface/createSession",
+        {
+          args: { token: session.token, subroleId: null, adminPreview: false },
+        },
+        cookie,
+      );
+    const formSession = await createChat();
+    const blankSession = chatLayoutOnly ? await createChat() : undefined;
     // Create closed, durable conversations across the same restart as the form.
     const removalExamples = [];
     if (!modelPass && !reviewDockOnly) {
@@ -473,7 +478,31 @@ ${
         },
       ]);
     }
-    if (chatLayoutOnly) return;
+    if (chatLayoutOnly) {
+      for (const id of [blankSession, formSession]) {
+        const row = sidebar.locator(`[data-chat-id="${id}"]`);
+        await row.hover();
+        await row.getByRole("button", { name: /^Действия чата/u }).click();
+        await page
+          .getByRole("group", { name: "Действия чата", exact: true })
+          .getByRole("button", { name: "Удалить чат", exact: true })
+          .click();
+        await page
+          .getByRole("dialog", { name: "Подтвердите удаление чата" })
+          .getByRole("button", { name: "Удалить чат", exact: true })
+          .click();
+        await row.waitFor({ state: "detached" });
+      }
+      const owned = await rpc(
+        origin,
+        "qaSurface/accountsOwnedSessions",
+        { args: { token: session.token } },
+        cookie,
+      );
+      assert.deepEqual(owned.ids, []);
+      console.log("packed QA owner deletion: blank and populated chats passed");
+      return;
+    }
     await sidebar.getByTestId("qa-history-create-folder").click();
     await page
       .getByLabel("Название каталога", { exact: true })

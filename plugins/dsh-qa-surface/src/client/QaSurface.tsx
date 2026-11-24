@@ -955,7 +955,11 @@ export function QaSurface(props: QaSurfaceProps) {
             setDeletionNotice(
               result.error.message.includes("(reason: conversation-shared)")
                 ? "Сначала отзовите доступ к этому чату у всех получателей."
-                : "Не удалось удалить чат. Попробуйте ещё раз.",
+                : result.error.message.includes(
+                      "(reason: conversation-list-incomplete)",
+                    )
+                  ? "Сервер не смог получить полный список сессий. Попробуйте удалить чат позже."
+                  : "Не удалось удалить чат. Попробуйте ещё раз.",
             );
             return;
           }
