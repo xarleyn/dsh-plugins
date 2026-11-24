@@ -968,7 +968,7 @@ export function createDocsSearchTool(
 ): ToolDefinition {
   return defineTool({
     name: "docs_search",
-    description: `Search the stand's documentation, which lives ${docsLayout(options)}. Use it — not memory and not a glob sweep over guessed paths — whenever a question is about the product, a version or a module. Query is a case-insensitive, safe grep-style regular expression: use alternatives such as \`brigadir|brigada\`, character classes and anchors instead of writing several words as one literal phrase; grouping and repetition are refused to keep execution bounded. Hits are lines, tagged with the module and version parsed from the path (${QA_DOCS_DIRECTORY}/<module>/<version>/…); pass version and module to stay inside one edition, and path to stay inside one subtree. Output is bounded by limit and by a byte budget, and a truncated result says so.${defaultVersionNote(options)}`,
+    description: `Search the stand's documentation, which lives ${docsLayout(options)}. Use it for published product facts and procedures. Verify memory leads against this corpus. Query is a case-insensitive, safe grep-style regular expression. Use single keywords or alternatives such as \`brigadir|brigada\`. Grouping and repetition are refused to keep execution bounded. Narrow by version, module or path. Open a hit with docs_read using its path and line (from). Pass the same source separately when a hit carries a source id. A truncated result is partial.${defaultVersionNote(options)}`,
     parameters: {
       source: CODE_SOURCE_PARAMETER,
       query: {
@@ -1151,7 +1151,7 @@ export function createDocsReadTool(
       path: {
         type: "string",
         required: true,
-        description: `The documentation file, as docs_search reports it (\`${QA_DOCS_DIRECTORY}/<module>/<version>/<file>\`), relative to ${QA_DOCS_DIRECTORY}/, or an absolute path inside the configured documentation root.`,
+        description: `Copy the file path from docs_search unchanged, e.g. ${QA_DOCS_DIRECTORY}/platform/2.0/guide.md. Put the source id in source and the line number in from. Corpus-relative paths and absolute paths inside the configured documentation root also work.`,
       },
       from: {
         type: "number",
@@ -1222,7 +1222,7 @@ export function createDocsReadTool(
         !versionMatches(result, source.docsVersion)
       )
         throw new Error(
-          "Documentation path does not belong to the selected source's edition.",
+          "Documentation path does not belong to the selected source's edition. Use code_sources to find a source whose docsVersion matches the file's version.",
         );
       return {
         ...result,

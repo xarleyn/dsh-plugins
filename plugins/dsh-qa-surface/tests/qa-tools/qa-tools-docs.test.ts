@@ -484,10 +484,10 @@ describe("docs_search", () => {
     cleanup();
   });
 
-  it("names the documentation as what it searches, not memory", () => {
+  it("names the documentation as the source for verifying memory leads", () => {
     const description = createDocsSearchTool().description;
     expect(description).toContain("docs/");
-    expect(description).toContain("not memory");
+    expect(description).toContain("Verify memory leads against this corpus.");
     expect(description).toContain("grep-style regular expression");
   });
 

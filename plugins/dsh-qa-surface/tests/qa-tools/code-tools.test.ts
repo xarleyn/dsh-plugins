@@ -123,6 +123,28 @@ describe("source-aware code and documentation tools", () => {
       hits: [expect.objectContaining({ text: "shared preview" })],
     });
   });
+  it("provides a corrected locator when a missing path repeats the selected id", async () => {
+    const scope = await codeScope(options(), exec());
+    const correction = '{"source":"stable","path":"file.ts"}';
+    await expect(readCode(scope, { path: "stable/file.ts" })).rejects.toThrow(
+      correction,
+    );
+    await expect(
+      searchCode(scope, { path: "stable/file.ts", query: "shared" }),
+    ).rejects.toThrow(correction);
+    await expect(readCode(scope, { path: "preview/file.ts" })).rejects.toThrow(
+      'No code file or directory at this path in source "stable"',
+    );
+  });
+  it("keeps a real directory whose name equals the source id", async () => {
+    await mkdir(join(root, "two/preview"));
+    await writeFile(join(root, "two/preview/nested.ts"), "literal path");
+    const scope = await codeScope(options(), exec(), "preview");
+    expect(await readCode(scope, { path: "preview/nested.ts" })).toMatchObject({
+      path: "preview/nested.ts",
+      text: "literal path",
+    });
+  });
   it("fails closed for missing/default ambiguity and access grants", async () => {
     await expect(codeScope(options(""), exec())).rejects.toThrow(/Several/u);
     await expect(codeScope(options(), exec(), "missing")).rejects.toThrow(
@@ -227,10 +249,10 @@ describe("source-aware code and documentation tools", () => {
     });
     expect(
       await reader.execute(
-        { path: "module/2.1/guide.md", source: "preview" },
+        { path: "docs/module/2.1/guide.md", source: "preview", from: 1 },
         toolExec(),
       ),
-    ).toMatchObject({ source: "preview" });
+    ).toMatchObject({ source: "preview", text: "source edition preview" });
     await expect(
       reader.execute(
         { path: "module/2.1/guide.md", source: "stable" },

@@ -82,11 +82,26 @@ async function target(scope: CodeScope, input: unknown): Promise<string> {
   if (!pathIsInside(absolute, scope.root))
     throw new Error("Code path escapes the selected source.");
   let cursor = scope.root;
-  for (const part of relative(scope.root, absolute)
-    .split(/[/\\]/u)
-    .filter(Boolean)) {
+  const parts = relative(scope.root, absolute).split(/[/\\]/u).filter(Boolean);
+  for (const [index, part] of parts.entries()) {
     cursor = resolve(cursor, part);
-    if ((await lstat(cursor)).isSymbolicLink())
+    const entry = await lstat(cursor).catch((error: unknown) => {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      const source = scope.source.id;
+      if (index === 0 && part === source && parts.length > 1) {
+        const locator = JSON.stringify({
+          source,
+          path: parts.slice(1).join("/"),
+        });
+        throw new Error(
+          `The path repeats the selected source id. Retry with ${locator} and keep the other arguments.`,
+        );
+      }
+      throw new Error(
+        `No code file or directory at this path in source ${JSON.stringify(source)}. Use code_search in that source to locate the path.`,
+      );
+    });
+    if (entry.isSymbolicLink())
       throw new Error("Code paths through symbolic links are refused.");
   }
   if (!pathIsInside(await realpath(absolute), scope.root))

@@ -37,7 +37,7 @@ describe("QA tool catalog", () => {
   });
 
   it("carries a stable, non-empty catalog version", () => {
-    expect(QA_TOOL_CATALOG_VERSION).toBe("6");
+    expect(QA_TOOL_CATALOG_VERSION).toBe("7");
   });
 
   it("builds without registering anything", () => {

@@ -25,7 +25,7 @@ import {
  *
  * Bump it whenever the catalog's tool set or their schemas change.
  */
-export const QA_TOOL_CATALOG_VERSION = "6";
+export const QA_TOOL_CATALOG_VERSION = "7";
 
 /** What the catalog's definitions read, beyond the execution record. */
 export interface QaToolsSelfcheckDeps extends CodeFilesOptions {
