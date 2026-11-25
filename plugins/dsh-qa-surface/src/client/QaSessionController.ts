@@ -348,6 +348,8 @@ export class QaSessionController {
   private admissionPending = false;
   private pendingSubmission: PendingSubmission | undefined;
   private pendingSequence = 0;
+  /** Changes on navigation or an explicit draft reset, including a role change. */
+  private submissionRevision = 0;
   /**
    * Request ids this binding has seen the Host name — in the Inbox queue or as a
    * durable transcript row. The mask that keeps an echo the session library
@@ -550,8 +552,9 @@ export class QaSessionController {
       this.state.viewingSubagent !== null
     )
       throw new Error("Дождитесь завершения ответа, чтобы сменить модель.");
-    const target = await this.liveTarget();
-    if (target === undefined)
+    const revision = this.submissionRevision;
+    const target = await this.liveTarget(revision);
+    if (target === undefined || !this.ownsSubmission(revision, target))
       throw new Error("Не удалось открыть чат для смены модели.");
     const id = String(target.sessionId);
     const result = await this.modelApi.selectModel({
@@ -575,7 +578,8 @@ export class QaSessionController {
    * recovering from a stale proof live here, so the prompt path and the
    * command path cannot drift apart on what "ready to send" means.
    */
-  private async liveTarget(): Promise<SessionFace | undefined> {
+  private async liveTarget(revision: number): Promise<SessionFace | undefined> {
+    if (!this.ownsSubmission(revision)) return undefined;
     if (this.session === undefined) {
       // A draft chat materializes its session only now: nothing was created
       // when the user pressed "New chat", so the first submission pays for it.
@@ -593,10 +597,15 @@ export class QaSessionController {
       // A refusal reports itself inside materializeDraft, with the Host's
       // reason, and a draft the user left while it was being created is
       // attested by whichever chat took its place: neither answer here.
-      if (!created || this.session === undefined) return undefined;
+      if (
+        !created ||
+        this.session === undefined ||
+        !this.ownsSubmission(revision)
+      )
+        return undefined;
     }
     const step = await this.attestPolicy();
-    if (step.kind === "stale") {
+    if (step.kind === "stale" || !this.ownsSubmission(revision)) {
       // The user moved to another chat while the proof was pending; that
       // binding attests through its own flow and must not receive a submission
       // meant for the old one.
@@ -611,7 +620,7 @@ export class QaSessionController {
     // attested id proves the submission rides exactly the session it proved.
     const target = this.session;
     if (
-      this.disposed ||
+      !this.ownsSubmission(revision) ||
       target === undefined ||
       String(target.sessionId) !== attestedId
     ) {
@@ -626,13 +635,13 @@ export class QaSessionController {
           await this.formApi.list(this.accounts?.token() ?? "", attestedId),
         );
       } catch {
-        if (!this.disposed && this.session === target)
+        if (this.ownsSubmission(revision, target))
           this.refuseSend(
             "Не удалось подключить пошаговые формы. Повторите отправку; если ошибка сохраняется, обновите страницу.",
           );
         return undefined;
       }
-      if (this.disposed || this.session !== target) return undefined;
+      if (!this.ownsSubmission(revision, target)) return undefined;
     }
     return target;
   }
@@ -651,6 +660,7 @@ export class QaSessionController {
     source?: QaSearchSourceEntry,
   ): Promise<boolean> {
     // Copy before the first await: later UI changes belong to later requests.
+    const revision = this.submissionRevision;
     const modes = qaAnswerModes(
       typeof selection === "boolean"
         ? selection
@@ -684,7 +694,8 @@ export class QaSessionController {
     if (selected) {
       const target = this.slashReadTarget();
       await this.refreshSlashCatalog(true);
-      if (this.disposed || this.slashReadTarget() !== target) return false;
+      if (!this.ownsSubmission(revision) || this.slashReadTarget() !== target)
+        return false;
       const current = this.slashEntries.find(
         (entry) => entry.id === selected.id,
       );
@@ -718,6 +729,7 @@ export class QaSessionController {
     }
     if (route.kind === "command") {
       return this.sendCommand(
+        revision,
         prompt,
         attachments,
         files,
@@ -760,13 +772,10 @@ export class QaSessionController {
       // session yet, so a question this stand has no room for must not
       // materialize one, must not enter the transcript, and must not leave the
       // composer — which is what a refusal ahead of `beginSubmission` buys.
-      const bound = this.session;
       const ceiling = await this.readQueueStatus();
-      // A chat that went away during the read answers for its own sends. One
-      // that merely arrived is this draft's session landing underneath, which
-      // the submission rides exactly the way it always did.
-      if (this.disposed || (bound !== undefined && this.session !== bound))
-        return false;
+      // The draft can acquire a session while the read is in flight. Only the
+      // originating chat may spend the answer, including a full-queue notice.
+      if (!this.ownsSubmission(revision)) return false;
       if (ceiling !== null && ceiling.full && ceiling.managed !== true) {
         this.requestQueueNotice = ceiling;
         this.publish();
@@ -779,10 +788,11 @@ export class QaSessionController {
       requestedDocument(prompt) !== undefined;
     if (fastReview && !fileRequest) {
       this.requestQueueNotice = null;
-      const target = await this.liveTarget();
-      if (target === undefined) return false;
+      const target = await this.liveTarget(revision);
+      if (target === undefined || !this.ownsSubmission(revision, target))
+        return false;
       await this.refreshSlashCatalog(true);
-      if (this.disposed || this.session !== target) return false;
+      if (!this.ownsSubmission(revision, target)) return false;
       const command = this.slashEntries.find(
         (entry) => entry.kind === "command" && entry.name === "no-review",
       );
@@ -793,6 +803,7 @@ export class QaSessionController {
         return false;
       }
       return this.sendCommand(
+        revision,
         `/no-review${prompt === "" ? "" : ` ${prompt}`}`,
         attachments,
         files,
@@ -816,8 +827,9 @@ export class QaSessionController {
     let target: SessionFace | undefined;
     let echo: SubmissionHandle | undefined;
     try {
-      target = await this.liveTarget();
-      if (target === undefined) return false;
+      target = await this.liveTarget(revision);
+      if (target === undefined || !this.ownsSubmission(revision, target))
+        return false;
       if (submission !== undefined && this.pendingSubmission === submission) {
         // Recovery may have replaced the original chat with a fresh session;
         // reconcile against the actual prompt target, not the abandoned one.
@@ -830,7 +842,7 @@ export class QaSessionController {
       if (files.length > 0) {
         const outcome = await stageQaFiles(this.fileUpload(), target, files);
         if (outcome.kind !== "ok") {
-          if (this.session === target) {
+          if (this.ownsSubmission(revision, target)) {
             this.operationError =
               outcome.kind === "unavailable"
                 ? "Вложения недоступны на этом сервере."
@@ -844,7 +856,7 @@ export class QaSessionController {
         // chat or closed the surface while it ran. Re-checked before anything is
         // written to the state and before the prompt is sent, so a draft meant
         // for the abandoned chat cannot land in it or in its replacement.
-        if (this.disposed || this.session !== target) return false;
+        if (!this.ownsSubmission(revision, target)) return false;
       }
       const content = buildQaPromptContent(prompt, attachments, receipts);
       // A queued send needs the Host's own echo, not the transcript one: the
@@ -868,7 +880,7 @@ export class QaSessionController {
         );
         if (!prepared.ok || !prepared.value)
           throw new Error("Answer modes were not admitted.");
-        if (this.disposed || this.session !== target) {
+        if (!this.ownsSubmission(revision, target)) {
           echo?.abandon();
           return false;
         }
@@ -883,7 +895,7 @@ export class QaSessionController {
           : queueing
             ? await target.prompt(content, "queue", undefined, echo?.requestId)
             : await target.prompt(content, "queue");
-      if (this.session !== target) return false;
+      if (!this.ownsSubmission(revision, target)) return false;
       if (!result.ok) {
         this.admissionPending = false;
         this.operationError = "Не удалось отправить сообщение.";
@@ -897,12 +909,12 @@ export class QaSessionController {
       this.publish();
       return true;
     } catch (error) {
-      this.admissionPending = false;
       // The prompt call never completed, so nothing settled the echo; a queued
       // row would otherwise sit in the strip claiming to be on its way.
       echo?.abandon();
       console.error("dsh-qa-surface: prompt failed", error);
-      if (this.session === target) {
+      if (this.ownsSubmission(revision, target)) {
+        this.admissionPending = false;
         this.operationError = "Не удалось отправить сообщение.";
         this.publish();
       }
@@ -988,6 +1000,7 @@ export class QaSessionController {
    * answer than leaving it in place to be edited.
    */
   private async sendCommand(
+    revision: number,
     line: string,
     attachments: readonly QaAttachmentDraft[],
     files: readonly QaFileDraft[],
@@ -1009,13 +1022,14 @@ export class QaSessionController {
     }
     let target: SessionFace | undefined;
     try {
-      target = await this.liveTarget();
-      if (target === undefined) return false;
+      target = await this.liveTarget(revision);
+      if (target === undefined || !this.ownsSubmission(revision, target))
+        return false;
       let receipts = new Map<string, string>();
       if (files.length > 0) {
         const outcome = await stageQaFiles(this.fileUpload(), target, files);
         if (outcome.kind !== "ok") {
-          if (this.session === target) {
+          if (this.ownsSubmission(revision, target)) {
             this.operationError =
               outcome.kind === "unavailable"
                 ? "Вложения недоступны на этом сервере."
@@ -1029,7 +1043,7 @@ export class QaSessionController {
         // chat or closed the surface while it ran. Re-checked before the command
         // reaches the Host, so a command meant for the abandoned chat cannot run
         // in it or in its replacement.
-        if (this.disposed || this.session !== target) return false;
+        if (!this.ownsSubmission(revision, target)) return false;
       }
       const result = await this.slashApi.execute(
         this.accounts?.token() ?? "",
@@ -1038,7 +1052,7 @@ export class QaSessionController {
         buildQaSlashAttachments(attachments, receipts),
         ...(modes === undefined ? [] : [modes]),
       );
-      if (this.session !== target) return false;
+      if (!this.ownsSubmission(revision, target)) return false;
       if (!result.ok) {
         this.operationError = slashExecuteFailureCopy(entry);
         this.publish();
@@ -1059,7 +1073,7 @@ export class QaSessionController {
       return true;
     } catch (error) {
       console.error("dsh-qa-surface: slash command failed", error);
-      if (this.session === target) {
+      if (this.ownsSubmission(revision, target)) {
         this.operationError = slashExecuteFailureCopy(entry);
         this.publish();
       }
@@ -1402,8 +1416,7 @@ export class QaSessionController {
       // typed into — but the send that chat had in flight is retired with it:
       // the projection reads the optimistic row and the busy flag out of it
       // without asking which chat is on screen.
-      this.pendingSubmission = undefined;
-      this.admissionPending = false;
+      this.retireSubmissions();
     }
     this.unbind();
     this.operationError = null;
@@ -1430,6 +1443,7 @@ export class QaSessionController {
     const attempt = (async () => {
       try {
         await this.waitForConnection();
+        if (this.disposed || operation !== this.generation) return false;
         const id =
           this.draftSessionId ??
           (await createQaSession({
@@ -1539,10 +1553,17 @@ export class QaSessionController {
   /**
    * Open one of this browser's indexed chats. The id must be present in the
    * host session list and pass policy attestation; an unknown id is forgotten
-   * from the index. Fixed-policy deployments cannot switch.
+   * from the index. A fixed chat can only return from a delegated transcript.
    */
   async switchTo(sessionId: string): Promise<void> {
-    if (this.disposed || this.config.session.policy === "fixed") return;
+    const fixed = this.config.session.policy === "fixed";
+    if (
+      this.disposed ||
+      (fixed &&
+        (this.viewingSubagent === null ||
+          sessionId !== this.config.session.fixedSessionId))
+    )
+      return;
     if (
       this.session !== undefined &&
       String(this.session.sessionId) === sessionId
@@ -1592,7 +1613,7 @@ export class QaSessionController {
       // and persisting this id as the open one would reopen it on the next load.
       if (!adopted) return;
       if (this.disposed || operation !== this.generation) return;
-      this.chats.saveActive(sessionId);
+      if (!fixed) this.chats.saveActive(sessionId);
     } catch (error) {
       // A newer operation superseded this switch: its own outcome governs.
       if (this.disposed || operation !== this.generation) return;
@@ -1802,6 +1823,7 @@ export class QaSessionController {
     this.emit();
     try {
       await this.waitForConnection();
+      if (this.disposed || operation !== this.generation) return;
       const saved =
         this.config.session.policy === "browser-persistent"
           ? this.chats.activeId()
@@ -1843,6 +1865,7 @@ export class QaSessionController {
               this.timeoutMs,
             )
           : this.sessions.list.getSnapshot();
+      if (this.disposed || operation !== this.generation) return;
       let id: string | null = null;
       let restored = false;
       let existing = false;
@@ -1881,7 +1904,6 @@ export class QaSessionController {
         this.enterDraft();
         return;
       }
-      if (this.disposed || operation !== this.generation) return;
       // A restored id's first bind stays quiet: the recovery path below may
       // replace it. A freshly created session must report a refusal at once —
       // it is the deployment's only chance to learn the reason.
@@ -2031,12 +2053,21 @@ export class QaSessionController {
   private openChat(): void {
     this.namedSession = null;
     this.chatKey = nextChatKey();
-    // A send in flight belongs to the chat that is ending. The projection reads
-    // the optimistic row and the busy flag out of it without asking which chat
-    // is on screen, so unless it dies here, the chat that takes this identity
-    // shows a question it never received and waits for a send it never made.
+    this.retireSubmissions();
+  }
+
+  private retireSubmissions(): void {
+    this.submissionRevision++;
     this.pendingSubmission = undefined;
     this.admissionPending = false;
+  }
+
+  private ownsSubmission(revision: number, target?: SessionFace): boolean {
+    return (
+      !this.disposed &&
+      this.submissionRevision === revision &&
+      (target === undefined || this.session === target)
+    );
   }
 
   /**
@@ -2774,6 +2805,7 @@ export class QaSessionController {
     | { kind: "stale" }
   > {
     if (session === undefined) return { kind: "refused", reason: null };
+    const revision = this.submissionRevision;
     const sessionId = String(session.sessionId);
     if (
       !this.config.lockdown.enabled &&
@@ -2797,7 +2829,7 @@ export class QaSessionController {
       lockdown: this.config.lockdown,
       report: reportFailure,
     });
-    if (this.session !== session) return { kind: "stale" };
+    if (!this.ownsSubmission(revision, session)) return { kind: "stale" };
     if (outcome.ok) {
       this.chatAccess = outcome.chatAccess;
       this.inheritedThroughSeq = outcome.inheritedThroughSeq;

@@ -605,15 +605,17 @@ describe("authenticated QA chat transport", () => {
   });
   it("shows delegated descendants only to the root owner, including their images", async () => {
     const f = fixture();
+    const delegated = { origin: "subagent", agentAvailable: true };
     f.native.list.mockResolvedValue({
       items: [
-        { sessionId: "chat-a" },
-        { sessionId: "child", parentSessionId: "chat-a", origin: "subagent" },
+        { sessionId: "chat-a", agentAvailable: true },
+        { ...delegated, sessionId: "child", parentSessionId: "chat-a" },
+        { ...delegated, sessionId: "nested", parentSessionId: "child" },
       ],
     } as never);
     expect(
       (await f.transport.list(f.owner.token, signal())).items,
-    ).toHaveLength(2);
+    ).toHaveLength(3);
     expect(
       (await f.transport.list(f.reader.token, signal())).items,
     ).toHaveLength(1);
@@ -623,6 +625,20 @@ describe("authenticated QA chat transport", () => {
     await expect(
       f.transport.attachment(f.reader.token, { sessionId: "child" } as never),
     ).rejects.toThrow();
+    f.native.list.mockClear();
+    const frames = f.transport.control(f.owner.token, signal());
+    const control = frames[Symbol.asyncIterator]();
+    try {
+      const frame = (await control.next()).value;
+      expect(Object.keys(frame.value.projections).sort()).toEqual([
+        "chat-a",
+        "child",
+        "nested",
+      ]);
+      expect(f.native.list).toHaveBeenCalledOnce();
+    } finally {
+      await control.return?.();
+    }
   });
   it("terminates an already opened idle subscription after revocation", async () => {
     const f = fixture();

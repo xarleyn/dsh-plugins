@@ -40,6 +40,10 @@ import {
   type QaDocumentDelivery,
 } from "../shared/document-redelivery.js";
 
+function indexSessions(listing: SessionListValue) {
+  return new Map(listing.items.map((item) => [String(item.sessionId), item]));
+}
+
 /** Durable access is checked before and after asynchronous reads and per frame. */
 export class QaChatTransport {
   private readonly locks = new Map<string, Promise<unknown>>();
@@ -148,7 +152,16 @@ export class QaChatTransport {
     id: string,
     signal: AbortSignal,
   ): Promise<SessionProjectionsValue> {
-    const access = await this.sessionAccess(token, id, signal);
+    return this.readProjections(token, id, signal);
+  }
+
+  private async readProjections(
+    token: string,
+    id: string,
+    signal: AbortSignal,
+    rows?: ReturnType<typeof indexSessions>,
+  ): Promise<SessionProjectionsValue> {
+    const access = await this.sessionAccess(token, id, signal, rows);
     const value = await this.ctx.sessionController.projections(
       { sessionId: SessionId(id) },
       signal,
@@ -207,16 +220,18 @@ export class QaChatTransport {
     // No native Host-wide baseline or delta is exposed to a QA account.
     while (!signal.aborted) {
       const listing = await this.list(token, signal);
+      const rows = indexSessions(listing);
       const projections: Record<string, SessionProjectionBaseline> = {};
       for (const item of listing.items) {
         try {
           // Cold rows already carry bounded cache hints. Replaying every cold
           // history on each polling tick thrashes the prepared-session cache.
           if (!item.agentAvailable) continue;
-          const value = await this.projections(
+          const value = await this.readProjections(
             token,
             String(item.sessionId),
             signal,
+            rows,
           );
           if (value !== null && value.kind !== "migration-required")
             projections[String(item.sessionId)] = {
@@ -475,18 +490,16 @@ export class QaChatTransport {
     token: string,
     id: string,
     signal: AbortSignal,
-    catalog?: SessionListValue,
+    catalogRows?: ReturnType<typeof indexSessions>,
   ) {
     try {
       return this.store().access(token, id);
     } catch {
       // A delegated child carries no membership of its own. Resolve its
       // authoritative lineage and require the root owner, never a participant.
-      this.store().visible(token);
-      const listing = catalog ?? (await this.list(token, signal));
-      const rows = new Map(
-        listing.items.map((item) => [String(item.sessionId), item]),
-      );
+      // Parentage is immutable; the current owner is still checked below and
+      // revalidated after reading. A control frame already has this catalog.
+      const rows = catalogRows ?? indexSessions(await this.list(token, signal));
       const seen = new Set<string>();
       let current = id;
       while (true) {

@@ -1,3 +1,4 @@
+import { QaChangelogVersion } from "./QaChangelogVersion.js";
 import { QaModal } from "./QaModal.js";
 
 /**
@@ -11,7 +12,7 @@ import { QaModal } from "./QaModal.js";
 declare const __DSH_QA_VERSION__: string;
 export const QA_VERSION = __DSH_QA_VERSION__;
 
-interface QaChangelogSection {
+export interface QaChangelogSection {
   readonly title: string;
   readonly items: readonly string[];
 }
@@ -29,6 +30,20 @@ export const QA_CHANGELOG: readonly QaChangelogEntry[] = [
   {
     version: "0.23.6",
     days: [
+      {
+        date: "2026-11-26",
+        sections: [
+          {
+            title: "Отправка и история чатов",
+            items: [
+              "Если во время проверки очереди вы открыли другой чат или сменили роль, QA отменяет отправку вопроса из прежнего черновика.",
+              "Чат, выбранный из истории при загрузке страницы, остаётся открытым даже после удаления прежнего чата.",
+              "В закреплённом чате кнопка «В чат» возвращает из транскрипта субагента к переписке. Можно сразу задать следующий вопрос.",
+              "При обновлении истории сервер читает список сессий один раз, даже если в чате работают несколько субагентов.",
+            ],
+          },
+        ],
+      },
       {
         date: "2026-11-24",
         sections: [
@@ -1309,35 +1324,6 @@ export const QA_CHANGELOG: readonly QaChangelogEntry[] = [
   },
 ];
 
-function QaChangelogSections({
-  sections,
-  heading: Heading,
-}: {
-  readonly sections: readonly QaChangelogSection[];
-  readonly heading: "h4" | "h5";
-}) {
-  return (
-    sections
-      // Keep the published text intact when a section has no items.
-      .filter((section) => section.items.some((item) => item.trim() !== ""))
-      .map((section, index) => (
-        <div
-          key={`${section.title}:${index}`}
-          className="dsh-qa-changelog__section"
-        >
-          <Heading className="dsh-qa-changelog__section-title">
-            {section.title}
-          </Heading>
-          <ul className="dsh-qa-changelog__list">
-            {section.items.map((item) => (
-              <li key={item}>{item}</li>
-            ))}
-          </ul>
-        </div>
-      ))
-  );
-}
-
 /** Props of the {@link QaChangelogModal} dialog. */
 export interface QaChangelogModalProps {
   readonly open: boolean;
@@ -1360,29 +1346,11 @@ export function QaChangelogModal(props: QaChangelogModalProps) {
       wide
     >
       {QA_CHANGELOG.map((entry) => (
-        <section key={entry.version} className="dsh-qa-changelog__entry">
-          <h3 className="dsh-qa-changelog__version">
-            Версия {entry.version}
-            {"date" in entry && (
-              <span className="dsh-qa-changelog__date">{entry.date}</span>
-            )}
-            {entry.version === QA_VERSION ? (
-              <span className="dsh-qa-changelog__current">текущая</span>
-            ) : null}
-          </h3>
-          {"days" in entry ? (
-            entry.days.map((day) => (
-              <section key={day.date} className="dsh-qa-changelog__day">
-                <h4 className="dsh-qa-changelog__day-title">
-                  <time dateTime={day.date}>{day.date}</time>
-                </h4>
-                <QaChangelogSections sections={day.sections} heading="h5" />
-              </section>
-            ))
-          ) : (
-            <QaChangelogSections sections={entry.sections} heading="h4" />
-          )}
-        </section>
+        <QaChangelogVersion
+          key={entry.version}
+          entry={entry}
+          current={entry.version === QA_VERSION}
+        />
       ))}
     </QaModal>
   );

@@ -116,4 +116,37 @@ describe("QA chat index and switching", () => {
     expect(controller.getSnapshot().sessionId).toBe("saved");
     controller.dispose();
   });
+
+  it("returns from a subagent to the configured chat with a fresh attestation", async () => {
+    const world = harness(["saved", "child", "other"]);
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig({
+        session: { policy: "fixed", fixedSessionId: "saved" },
+      }),
+    });
+    try {
+      await controller.ensureSession();
+      await controller.viewSubagent("child", "Demo");
+      await controller.switchTo("other");
+      expect(controller.getSnapshot()).toMatchObject({
+        sessionId: "child",
+        canSend: false,
+      });
+      const previous = world.secureSession.mock.calls.length;
+      await controller.closeSubagent();
+      expect(controller.getSnapshot()).toMatchObject({
+        sessionId: "saved",
+        viewingSubagent: null,
+        canSend: true,
+      });
+      expect(world.secureSession).toHaveBeenCalledTimes(previous + 1);
+      expect(world.faces.get("child")?.prompt).not.toHaveBeenCalled();
+      expect(world.stored.has("dsh-qa-surface.session:v1:/qa:session")).toBe(
+        false,
+      );
+    } finally {
+      controller.dispose();
+    }
+  });
 });
