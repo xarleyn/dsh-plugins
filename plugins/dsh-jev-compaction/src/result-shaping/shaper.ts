@@ -17,8 +17,12 @@
  * already had.
  */
 
+import {
+  createRequestDeadline,
+  withinDeadline,
+} from "@yadsh/dsh-plugin-kit/http";
 import type { ResolvedJevCompactionConfig } from "../config/index.js";
-import type { SystemOneBackend } from "../jev/types.js";
+import type { JevQuestion, JevState, SystemOneBackend } from "../jev/types.js";
 import { estimateStateTokens } from "../jev/types.js";
 import {
   shortRef,
@@ -51,6 +55,7 @@ export interface ShaperDeps {
   readonly readConfig: () => ResolvedJevCompactionConfig;
   readonly backend: SystemOneBackend;
   readonly archive: OriginalResultArchive;
+  readonly onArchived?: () => void;
   readonly metrics: ShapingMetrics;
   /** Structured skip log line; never throws. */
   readonly onSkip: (
@@ -91,44 +96,25 @@ export interface ShapeOutcome<T extends ContentBlockLike = ContentBlockLike> {
   readonly jevRequests: number;
 }
 
-/**
- * Combine the caller's cancellation with the shaper's own request deadline.
- * The deadline bounds the critical path even when the transport's own timeout
- * is misconfigured high.
- */
-function withDeadline(
-  signal: AbortSignal | undefined,
-  timeoutMs: number,
-): { signal: AbortSignal; dispose: () => void } {
-  const controller = new AbortController();
-  const timer = setTimeout(
-    () => controller.abort(new Error("shaping request timed out")),
-    timeoutMs,
-  );
-  const onAbort = (): void => controller.abort(signal?.reason);
-  if (signal !== undefined) {
-    if (signal.aborted) controller.abort(signal.reason);
-    else signal.addEventListener("abort", onAbort, { once: true });
-  }
-  return {
-    signal: controller.signal,
-    dispose: () => {
-      clearTimeout(timer);
-      if (signal !== undefined) signal.removeEventListener("abort", onAbort);
-    },
-  };
-}
-
 function isTimeout(error: unknown): boolean {
+  if (error instanceof Error && error.name === "TimeoutError") return true;
   const message = error instanceof Error ? error.message : String(error);
   return /timed out|abort|cancel/i.test(message);
 }
 
 export class ImmediateResultShaper {
   private readonly deps: ShaperDeps;
+  private activeRequests = 0;
+  private lifetime = new AbortController();
 
   constructor(deps: ShaperDeps) {
     this.deps = deps;
+  }
+
+  setEnabled(enabled: boolean): void {
+    if (!enabled) this.lifetime.abort();
+    else if (this.lifetime.signal.aborted)
+      this.lifetime = new AbortController();
   }
 
   /**
@@ -151,6 +137,10 @@ export class ImmediateResultShaper {
       return undefined;
     };
 
+    const signal = input.signal
+      ? AbortSignal.any([input.signal, this.lifetime.signal])
+      : this.lifetime.signal;
+    if (signal.aborted) return skip("cancelled");
     const extracted = extractText(input.content);
     if (extracted === undefined) return skip("unsupported-content");
 
@@ -174,6 +164,8 @@ export class ImmediateResultShaper {
     if (analysis.runs.length === 0) return skip("not-repetitive");
 
     metrics.increment(SHAPE_METRICS.eligible);
+    if (this.activeRequests >= config.resultShaping.maxConcurrent)
+      return skip("concurrency-limit");
     if (input.reserve !== undefined && !input.reserve(extracted.text.length)) {
       return skip("turn-budget");
     }
@@ -185,8 +177,10 @@ export class ImmediateResultShaper {
       analysis.runs,
       extracted.text.length,
       analysis.lines.length,
+      signal,
     );
-    if (collapsed === undefined) return skip("jev-error");
+    if (typeof collapsed === "string") return skip(collapsed);
+    if (signal.aborted) return skip("cancelled");
 
     const accepted: LineRun[] = [];
     let sawLowConfidence = false;
@@ -219,7 +213,13 @@ export class ImmediateResultShaper {
       return skip("low-savings");
     }
 
-    const archiveRef = await this.archive(input, config, extracted.text);
+    const archiveRef = await this.archive(
+      input,
+      config,
+      extracted.text,
+      signal,
+    );
+    if (signal.aborted) return skip("cancelled");
     if (archiveRef === "blocked") {
       metrics.increment(SHAPE_METRICS.keptOriginal);
       return skip("archive-error");
@@ -258,9 +258,7 @@ export class ImmediateResultShaper {
   }
 
   /**
-   * Ask the classifier about every run. `undefined` means the request failed,
-   * which keeps the whole result — a transport error is never a reason to
-   * delete output.
+   * Ask the classifier about every run; a failed batch keeps the whole result.
    */
   private async classify<T extends ContentBlockLike>(
     input: ShapeInput<T>,
@@ -268,7 +266,13 @@ export class ImmediateResultShaper {
     runs: readonly LineRun[],
     totalChars: number,
     totalLines: number,
-  ): Promise<(Map<string, RunScores> & { jevRequests: number }) | undefined> {
+    signal: AbortSignal,
+  ): Promise<
+    | (Map<string, RunScores> & { jevRequests: number })
+    | "jev-error"
+    | "concurrency-limit"
+    | "cancelled"
+  > {
     const metrics = this.deps.metrics;
     const shaping = config.resultShaping;
     const state = buildShapingState({
@@ -292,13 +296,22 @@ export class ImmediateResultShaper {
     let jevRequests = 0;
 
     for (const batch of batches) {
+      if (
+        this.activeRequests >=
+        this.deps.readConfig().resultShaping.maxConcurrent
+      )
+        return "concurrency-limit";
       const questions = buildRunQuestions(
         batch,
         config.state.resultPreviewChars,
       );
-      const deadline = withDeadline(input.signal, shaping.requestTimeoutMs);
+      const deadline = createRequestDeadline({
+        signal,
+        timeoutMs: shaping.requestTimeoutMs,
+      });
       const startedAt = Date.now();
       try {
+        deadline.signal.throwIfAborted();
         jevRequests += 1;
         metrics.increment(SHAPE_METRICS.requests);
         metrics.add(
@@ -306,9 +319,8 @@ export class ImmediateResultShaper {
           estimateStateTokens(JSON.stringify(state)) +
             estimateStateTokens(JSON.stringify(questions)),
         );
-        const answers = await this.deps.backend.score(
-          state,
-          questions,
+        const answers = await withinDeadline(
+          this.score(state, questions, deadline.signal),
           deadline.signal,
         );
         metrics.add(SHAPE_METRICS.jevLatencyMs, Date.now() - startedAt);
@@ -323,6 +335,7 @@ export class ImmediateResultShaper {
         }
       } catch (error: unknown) {
         metrics.add(SHAPE_METRICS.jevLatencyMs, Date.now() - startedAt);
+        if (signal.aborted) return "cancelled";
         metrics.increment(SHAPE_METRICS.errors);
         if (isTimeout(error)) metrics.increment(SHAPE_METRICS.timeouts);
         this.deps.onSkip("jev-error", {
@@ -330,7 +343,7 @@ export class ImmediateResultShaper {
           callId: input.callId,
           error: error instanceof Error ? error.message : String(error),
         });
-        return undefined;
+        return "jev-error";
       } finally {
         deadline.dispose();
       }
@@ -338,33 +351,18 @@ export class ImmediateResultShaper {
     return Object.assign(scores, { jevRequests });
   }
 
-  /**
-   * Settle an archive write against the shaper's deadline. The store keeps
-   * its own size bound; this bounds how long the tool path may wait for it.
-   */
-  private withArchiveDeadline<T>(
-    work: Promise<T>,
+  /** Even after the caller times out, the backend owns its slot until it settles. */
+  private async score(
+    state: JevState,
+    questions: readonly JevQuestion[],
     signal: AbortSignal,
-  ): Promise<T> {
-    if (signal.aborted) {
-      return Promise.reject(new Error("archive write timed out"));
+  ) {
+    this.activeRequests += 1;
+    try {
+      return await this.deps.backend.score(state, questions, signal);
+    } finally {
+      this.activeRequests -= 1;
     }
-    return new Promise<T>((resolve, reject) => {
-      const onAbort = (): void => {
-        reject(new Error("archive write timed out"));
-      };
-      signal.addEventListener("abort", onAbort, { once: true });
-      work.then(
-        (value) => {
-          signal.removeEventListener("abort", onAbort);
-          resolve(value);
-        },
-        (error: unknown) => {
-          signal.removeEventListener("abort", onAbort);
-          reject(error instanceof Error ? error : new Error(String(error)));
-        },
-      );
-    });
   }
 
   /**
@@ -376,6 +374,7 @@ export class ImmediateResultShaper {
     input: ShapeInput<T>,
     config: ResolvedJevCompactionConfig,
     text: string,
+    signal: AbortSignal,
   ): Promise<string | undefined | "blocked"> {
     if (!config.archive.enabled) return undefined;
     const metrics = this.deps.metrics;
@@ -389,22 +388,30 @@ export class ImmediateResultShaper {
       contentHash: contentRef(input.content),
       charCount: Array.from(text).length,
     };
-    const deadline = withDeadline(
-      input.signal,
-      config.resultShaping.requestTimeoutMs,
-    );
+    const deadline = createRequestDeadline({
+      signal,
+      timeoutMs: config.resultShaping.requestTimeoutMs,
+    });
     try {
-      // The deadline is enforced here, not inside the store: a filesystem
-      // write cannot be aborted, and the tool path must not wait on a stuck
-      // one. Losing the race keeps the original, which is the safe answer even
-      // if the write happens to land afterwards.
-      const ref = await this.withArchiveDeadline(
-        this.deps.archive.put(entry, { signal: deadline.signal }),
+      // The caller can return before an in-flight filesystem operation settles.
+      // A late successful write still schedules retention.
+      deadline.signal.throwIfAborted();
+      const ref = await withinDeadline(
+        this.deps.archive
+          .put(entry, {
+            signal: deadline.signal,
+            maxBytes: config.archive.maxBytes,
+          })
+          .then((stored) => {
+            this.deps.onArchived?.();
+            return stored;
+          }),
         deadline.signal,
       );
       metrics.increment(SHAPE_METRICS.archiveWrites);
       return shortRef(ref);
     } catch (error: unknown) {
+      if (signal.aborted) return "blocked";
       metrics.increment(SHAPE_METRICS.archiveFailures);
       this.deps.onSkip("archive-error", {
         tool: input.toolName,

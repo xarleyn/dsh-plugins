@@ -104,6 +104,21 @@ describe("LocalResultArchive", () => {
     expect(await readdir(root)).toHaveLength(1);
   });
 
+  it("keeps a renewed original when a retention scan captured its previous age", async () => {
+    const original = entry("reused");
+    const ref = await archive.put(original);
+    await utimes(
+      join(root, `sha256-${refHex(ref)}.json`),
+      new Date(0),
+      new Date(0),
+    );
+    const [stale] = await archive.list();
+    await Promise.all([archive.put(original), archive.put(original)]);
+    expect(await archive.deleteUnchanged(stale!)).toBe("changed");
+    expect(await archive.get(ref)).toMatchObject({ content: original.content });
+    expect(await readdir(root)).toHaveLength(1);
+  });
+
   it("keeps different payloads apart", async () => {
     await archive.put(entry("one"));
     await archive.put(entry("two"));
@@ -125,6 +140,10 @@ describe("LocalResultArchive", () => {
       "utf8",
     );
     expect(await archive.get(ref)).toBeNull();
+    await archive.put(entry("original"));
+    expect((await archive.get(ref))?.content).toEqual([
+      { type: "text", text: "original" },
+    ]);
   });
 
   it("returns null for an unknown or malformed entry", async () => {

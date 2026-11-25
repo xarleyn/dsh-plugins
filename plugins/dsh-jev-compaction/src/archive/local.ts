@@ -19,9 +19,11 @@ import {
   rename,
   stat,
   unlink,
+  utimes,
   writeFile,
 } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { randomUUID } from "node:crypto";
+import { dirname, join, resolve } from "node:path";
 
 import { dshHomePath } from "@deepseek-ai/dsh-home-paths";
 
@@ -57,9 +59,21 @@ function entryPath(root: string, ref: ArchiveRef): string {
   return join(root, `sha256-${refHex(ref)}.json`);
 }
 
+interface ArchiveFile {
+  ref: string;
+  path: string;
+  bytes: number;
+  mtimeMs: number;
+}
+
+function missing(error: unknown): boolean {
+  return (error as NodeJS.ErrnoException)?.code === "ENOENT";
+}
+
 /** The local filesystem archive. */
 export class LocalResultArchive implements OriginalResultArchive {
   readonly root: string;
+  private static readonly pending = new Map<string, Promise<void>>();
 
   constructor(root: string) {
     this.root = root;
@@ -67,22 +81,52 @@ export class LocalResultArchive implements OriginalResultArchive {
 
   async put(
     entry: ArchivedToolResult,
-    _options?: { readonly signal?: AbortSignal },
+    options?: { readonly signal?: AbortSignal; readonly maxBytes?: number },
   ): Promise<ArchiveRef> {
+    options?.signal?.throwIfAborted();
     const serialized = JSON.stringify(entry);
     const bytes = Buffer.byteLength(serialized, "utf8");
-    if (bytes > MAX_ARCHIVE_ENTRY_BYTES) {
+    const limit =
+      options?.maxBytes !== undefined && options.maxBytes > 0
+        ? Math.min(options.maxBytes, MAX_ARCHIVE_ENTRY_BYTES)
+        : MAX_ARCHIVE_ENTRY_BYTES;
+    // An entry that would evict itself cannot back a recoverable result.
+    if (bytes > limit) {
       throw new Error(
-        `archive entry of ${bytes} bytes exceeds the ${MAX_ARCHIVE_ENTRY_BYTES}-byte limit`,
+        `archive entry of ${bytes} bytes exceeds the ${limit}-byte limit`,
       );
     }
-    const path = entryPath(this.root, entry.contentHash);
-    if (await this.exists(path)) return entry.contentHash;
-    await mkdir(dirname(path), { recursive: true });
-    // Atomic: a reader never sees a half-written entry under its final name.
-    const temporary = `${path}.${process.pid}.${Date.now()}.tmp`;
-    await writeFile(temporary, serialized, "utf8");
-    await rename(temporary, path);
+    await this.mutate(entry.contentHash, async () => {
+      options?.signal?.throwIfAborted();
+      const path = entryPath(this.root, entry.contentHash);
+      const existing = await this.statEntry(path);
+      if (
+        existing?.isFile() &&
+        existing.size <= limit &&
+        (await this.get(entry.contentHash)) !== null
+      ) {
+        // A new reference renews the retention window. Make the new mtime
+        // distinguishable even if it lands in the same millisecond as a scan.
+        const now = new Date(
+          Math.max(Date.now(), Math.floor(existing.mtimeMs) + 1),
+        );
+        await utimes(path, now, now);
+        return;
+      }
+      await mkdir(dirname(path), { recursive: true });
+      const temporary = `${path}.${randomUUID()}.tmp`;
+      try {
+        await writeFile(temporary, serialized, {
+          flag: "wx",
+          signal: options?.signal,
+        });
+        await rename(temporary, path);
+      } finally {
+        await unlink(temporary).catch((error: unknown) => {
+          if (!missing(error)) throw error;
+        });
+      }
+    });
     return entry.contentHash;
   }
 
@@ -95,7 +139,8 @@ export class LocalResultArchive implements OriginalResultArchive {
       }
       // Integrity: an entry that does not hash back to its own name is not
       // evidence of anything, so report it as missing.
-      if (contentRef(parsed.content) !== parsed.contentHash) return null;
+      if (parsed.contentHash !== ref || contentRef(parsed.content) !== ref)
+        return null;
       return parsed;
     } catch {
       return null;
@@ -103,26 +148,50 @@ export class LocalResultArchive implements OriginalResultArchive {
   }
 
   async delete(ref: ArchiveRef): Promise<void> {
-    await unlink(entryPath(this.root, ref)).catch(() => undefined);
+    await this.mutate(ref, () =>
+      unlink(entryPath(this.root, ref)).catch((error: unknown) => {
+        if (!missing(error)) throw error;
+      }),
+    );
+  }
+
+  /** Do not remove an original that was referenced again after the GC scan. */
+  deleteUnchanged(
+    entry: ArchiveFile,
+    signal?: AbortSignal,
+  ): Promise<"deleted" | "changed" | "missing"> {
+    return this.mutate(entry.ref, async () => {
+      const path = entryPath(this.root, entry.ref);
+      const current = await this.statEntry(path);
+      if (!current) return "missing";
+      if (
+        signal?.aborted ||
+        current.mtimeMs !== entry.mtimeMs ||
+        current.size !== entry.bytes
+      )
+        return "changed";
+      try {
+        await unlink(path);
+        return "deleted";
+      } catch (error) {
+        if (missing(error)) return "missing";
+        throw error;
+      }
+    });
   }
 
   /** Names of every stored entry, oldest first by file mtime. */
-  async list(): Promise<
-    { ref: string; path: string; bytes: number; mtimeMs: number }[]
-  > {
+  async list(signal?: AbortSignal): Promise<ArchiveFile[]> {
     let names: string[];
     try {
       names = await readdir(this.root);
-    } catch {
-      return [];
+    } catch (error) {
+      if (missing(error)) return [];
+      throw error;
     }
-    const entries: {
-      ref: string;
-      path: string;
-      bytes: number;
-      mtimeMs: number;
-    }[] = [];
+    const entries: ArchiveFile[] = [];
     for (const name of names) {
+      if (signal?.aborted) break;
       const match = /^sha256-([0-9a-f]{64})\.json$/u.exec(name);
       if (match === null) continue;
       const path = join(this.root, name);
@@ -143,11 +212,27 @@ export class LocalResultArchive implements OriginalResultArchive {
     return entries;
   }
 
-  private async exists(path: string): Promise<boolean> {
+  private async statEntry(path: string) {
     try {
-      return (await stat(path)).isFile();
-    } catch {
-      return false;
+      return await stat(path);
+    } catch (error) {
+      if (missing(error)) return undefined;
+      throw error;
     }
+  }
+
+  /** Writers and GC for a given path also coordinate across overlapping mounts. */
+  private mutate<T>(ref: ArchiveRef, change: () => Promise<T>): Promise<T> {
+    const path = resolve(entryPath(this.root, ref));
+    const pending = LocalResultArchive.pending;
+    const next = (pending.get(path) ?? Promise.resolve()).then(change);
+    const settled = next.then(
+      () => undefined,
+      () => undefined,
+    );
+    pending.set(path, settled);
+    return next.finally(() => {
+      if (pending.get(path) === settled) pending.delete(path);
+    });
   }
 }

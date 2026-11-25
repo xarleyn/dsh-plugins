@@ -18,6 +18,8 @@ export type ShapeSkipReason =
   | "already-shaped"
   | "nested-dispatch"
   | "turn-budget"
+  | "concurrency-limit"
+  | "cancelled"
   | "not-repetitive"
   | "low-savings"
   | "low-confidence"

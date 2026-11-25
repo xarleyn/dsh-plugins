@@ -36,7 +36,7 @@ Off by default.
 | `minLines`                    | `80`                                                                      | Line-count trigger                                       |
 | `repetitionTriggerRatio`      | `0.45`                                                                    | Fraction of lines inside collapsible runs                |
 | `maxPerTurn`                  | `2`                                                                       | Shaping requests allowed per turn                        |
-| `maxConcurrent`               | `2`                                                                       | Concurrent shaping requests                              |
+| `maxConcurrent`               | `2`                                                                       | Concurrent classifier requests across sessions           |
 | `preserveErrors`              | `true`                                                                    | Leave failed tool results untouched                      |
 | `minRunLines`                 | `3`                                                                       | Shortest run that may collapse                           |
 | `keepHeadLines`               | `8`                                                                       | Head lines pinned from collapsing                        |
@@ -46,6 +46,9 @@ Off by default.
 | `minSavingsRatio`             | `0.30`                                                                    | Gate: minimum fraction saved                             |
 | `requestTimeoutMs`            | `2500`                                                                    | Per-request deadline on the tool path                    |
 | `maxInputCharsPerTurn`        | `50000`                                                                   | Character budget for shaping requests per turn           |
+
+When the classifier is at capacity or misses its deadline, the chat keeps the
+full result. An outstanding request occupies its slot until the backend settles.
 
 A result is a candidate when it is enabled, the tool is allowed, the result is
 successful, its text is long enough, and it is line-heavy, repetition-heavy or
@@ -99,8 +102,8 @@ only copy of the pre-shaping original.
 | Field           | Default         | Meaning                                                                           |
 | --------------- | --------------- | --------------------------------------------------------------------------------- |
 | `enabled`       | `true`          | Archive before shaping                                                            |
-| `rootPath`      | `""`            | **Deployment-only.** Empty resolves `$DSH_HOME/data/dsh-jev-compaction/originals` |
-| `retentionDays` | `14`            | Older entries are removed; `0` keeps them                                         |
+| `rootPath`      | `""`            | Next mount. Empty resolves `$DSH_HOME/data/dsh-jev-compaction/originals`           |
+| `retentionDays` | `14`            | Days since the most recent reference. `0` keeps older entries.                     |
 | `maxBytes`      | `1073741824`    | Size ceiling, oldest-first; `0` disables it                                       |
 | `deduplicate`   | `true`          | Reuse the entry when the content hash already exists                              |
 | `onFailure`     | `keep-original` | `keep-original` skips shaping; `shape-anyway` shapes without a reference          |
@@ -108,7 +111,8 @@ only copy of the pre-shaping original.
 Entries are content-addressed (`sha256:<hex>`), stored one JSON file per
 distinct payload, written atomically, and verified against their hash on read —
 a tampered entry is reported as missing instead of returned as truth.
-Retention runs lazily and never on the shaping path.
+A background retention pass runs after a write. A single original larger than
+the total size limit follows the configured archive failure policy.
 
 The shaped text receives a short opaque reference
 (`sha256:0123456789ab`), never a path. It is not a capability: nothing resolves

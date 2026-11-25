@@ -3,9 +3,8 @@
  * §29, §32, §48).
  *
  * The subsystem owns everything the two layers must not share: its own
- * per-turn budget, its own metrics, and its own archive handle. Rebuilding the
- * archive on a configuration change keeps a live `archive.rootPath` edit from
- * silently writing to the old location for the rest of the process.
+ * per-turn budget, its own metrics, and its own archive handle. The archive
+ * root is fixed for this mount, including all its background retention passes.
  */
 
 import type { Context } from "@deepseek-ai/cordis";
@@ -19,6 +18,7 @@ import { goalFromSession } from "../jev/state.js";
 import type { SystemOneBackend } from "../jev/types.js";
 import { JEV_EVENTS } from "../observability/logging.js";
 import { TurnShapeBudget, latestTurn } from "./budget.js";
+import { shapingEnabled } from "./eligibility.js";
 import { createPostExecuteListener, type PostExecuteListener } from "./hook.js";
 import {
   SHAPE_METRICS,
@@ -60,20 +60,27 @@ export class ResultShapingSubsystem {
   /** Process-scoped counters, separate from historical compaction. */
   readonly metrics = new ShapingMetrics();
   private readonly budget = new TurnShapeBudget();
-  private archive: OriginalResultArchive;
-  private archiveRoot: string | undefined;
-  private shaper: ImmediateResultShaper;
+  private readonly archive: OriginalResultArchive;
+  private readonly shaper: ImmediateResultShaper;
+  private collectionLifetime = new AbortController();
+  private retention: ResolvedJevCompactionConfig["archive"];
+  private disposed = false;
+  private collection: Promise<void> | undefined;
+  private collectionRequested = false;
 
   constructor(deps: ResultShapingDeps) {
     this.deps = deps;
     const config = deps.readConfig();
-    this.archiveRoot =
-      deps.archive === undefined ? resolveArchiveRoot(config) : undefined;
-    this.archive = deps.archive ?? new LocalResultArchive(this.archiveRoot!);
+    this.retention = config.archive;
+    this.archive =
+      deps.archive ?? new LocalResultArchive(resolveArchiveRoot(config));
     this.shaper = new ImmediateResultShaper({
       readConfig: deps.readConfig,
       backend: deps.backend,
       archive: this.archive,
+      onArchived: () => {
+        void this.collectArchive();
+      },
       metrics: this.metrics,
       onSkip: (reason, details) => {
         this.deps.debug(JEV_EVENTS.shapingSkip, { reason, ...details });
@@ -112,48 +119,54 @@ export class ResultShapingSubsystem {
     );
   }
 
-  /**
-   * Adopt a configuration change: rebuild the archive when its root moved and
-   * drop the per-turn budget, whose ceilings may have changed.
-   */
+  /** The configured archive path takes effect when the plugin is next mounted. */
   onConfigChanged(): void {
-    const config = this.deps.readConfig();
+    if (this.disposed) return;
     this.budget.reset();
-    if (this.deps.archive !== undefined) return;
-    const root = resolveArchiveRoot(config);
-    if (root === this.archiveRoot) return;
-    this.archiveRoot = root;
-    this.archive = new LocalResultArchive(root);
-    this.shaper = new ImmediateResultShaper({
-      readConfig: this.deps.readConfig,
-      backend: this.deps.backend,
-      archive: this.archive,
-      metrics: this.metrics,
-      onSkip: (reason, details) => {
-        this.deps.debug(JEV_EVENTS.shapingSkip, { reason, ...details });
-      },
-      onShaped: (details) => {
-        this.deps.info(JEV_EVENTS.shapingApplied, details);
-      },
-    });
-    this.deps.info(JEV_EVENTS.shapingArchiveRoot, { root });
+    const config = this.deps.readConfig();
+    this.shaper.setEnabled(shapingEnabled(config));
+    const previous = this.retention;
+    this.retention = config.archive;
+    if (
+      previous.retentionDays !== this.retention.retentionDays ||
+      previous.maxBytes !== this.retention.maxBytes
+    ) {
+      // A pass still holding the old, stricter policy must not keep deleting.
+      this.collectionLifetime.abort();
+      this.collectionLifetime = new AbortController();
+      if (config.enabled && config.archive.enabled) void this.collectArchive();
+    }
   }
 
-  /** Retention pass; never on the shaping path, never fatal. */
-  async collectArchive(): Promise<void> {
-    const config = this.deps.readConfig();
-    if (!(this.archive instanceof LocalResultArchive)) return;
-    try {
-      const report = await collectArchive(this.archive, config);
-      if (report.deleted > 0 || report.errors > 0) {
-        this.deps.info(JEV_EVENTS.shapingArchiveGc, { ...report });
+  /** Join a background pass and rescan once for writes made during its snapshot. */
+  collectArchive(): Promise<void> {
+    const archive = this.archive;
+    if (!(archive instanceof LocalResultArchive) || this.disposed)
+      return Promise.resolve();
+    this.collectionRequested = true;
+    return (this.collection ??= Promise.resolve().then(async () => {
+      try {
+        while (this.collectionRequested && !this.disposed) {
+          this.collectionRequested = false;
+          try {
+            const report = await collectArchive(
+              archive,
+              this.deps.readConfig(),
+              this.collectionLifetime.signal,
+            );
+            if (report.deleted > 0 || report.errors > 0)
+              this.deps.info(JEV_EVENTS.shapingArchiveGc, { ...report });
+          } catch (error: unknown) {
+            this.deps.warn(JEV_EVENTS.error, {
+              stage: "archive-gc",
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        }
+      } finally {
+        this.collection = undefined;
       }
-    } catch (error: unknown) {
-      this.deps.warn(JEV_EVENTS.error, {
-        stage: "archive-gc",
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
+    }));
   }
 
   /** Flat counter snapshot for diagnostics and the `/jev-compact` report. */
@@ -174,6 +187,9 @@ export class ResultShapingSubsystem {
   }
 
   dispose(): void {
+    this.disposed = true;
+    this.collectionLifetime.abort();
+    this.shaper.setEnabled(false);
     for (const disposer of this.disposers.splice(0)) {
       try {
         disposer();

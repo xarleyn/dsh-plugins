@@ -36,6 +36,5 @@ export const JEV_EVENTS = {
   /** Immediate result shaping at `tools/post-execute`. */
   shapingSkip: "jev-compaction/result-shaping-skip",
   shapingApplied: "jev-compaction/result-shaping-applied",
-  shapingArchiveRoot: "jev-compaction/result-shaping-archive-root",
   shapingArchiveGc: "jev-compaction/result-shaping-archive-gc",
 } as const;

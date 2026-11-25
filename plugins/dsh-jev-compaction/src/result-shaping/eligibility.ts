@@ -56,6 +56,10 @@ export type TriggerVerdict =
   | { readonly eligible: true }
   | { readonly eligible: false; readonly reason: ShapeSkipReason };
 
+export function shapingEnabled(config: ResolvedJevCompactionConfig): boolean {
+  return config.enabled && config.resultShaping.enabled;
+}
+
 /**
  * Apply the candidate rules in order: enabled, tool allowed, successful
  * result, shapeable text, size and shape trigger, not already bounded. The
@@ -66,7 +70,7 @@ export function evaluateTrigger(
   config: ResolvedJevCompactionConfig,
 ): TriggerVerdict {
   const shaping = config.resultShaping;
-  if (!shaping.enabled) return { eligible: false, reason: "disabled" };
+  if (!shapingEnabled(config)) return { eligible: false, reason: "disabled" };
   if (!isToolEligible(input.toolName, config)) {
     return { eligible: false, reason: "tool-not-allowed" };
   }

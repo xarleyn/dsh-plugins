@@ -2,7 +2,7 @@
  * Archive retention (result-shaping SPEC §24).
  *
  * Collection is lazy and never on the shaping path: it runs after a write, or
- * on demand, and it stops at the first failure instead of escalating. The rule
+ * on demand, and records per-file failures. The rule
  * is oldest-first — the newest originals are the ones a user is most likely to
  * want after noticing a shaped result, so they are the last to go.
  */
@@ -33,11 +33,12 @@ const KEEP_EVERYTHING: GcReport = Object.freeze({
 export async function collectArchive(
   archive: LocalResultArchive,
   config: ResolvedJevCompactionConfig,
+  signal?: AbortSignal,
 ): Promise<GcReport> {
   const { retentionDays, maxBytes } = config.archive;
   if (retentionDays <= 0 && maxBytes <= 0) return KEEP_EVERYTHING;
 
-  const entries = await archive.list();
+  const entries = await archive.list(signal);
   if (entries.length === 0) return KEEP_EVERYTHING;
 
   const cutoff =
@@ -52,6 +53,7 @@ export async function collectArchive(
   let kept = 0;
 
   for (const entry of entries) {
+    if (signal?.aborted) break;
     const tooOld = cutoff !== undefined && entry.mtimeMs < cutoff;
     const overSize = maxBytes > 0 && total > maxBytes;
     if (!tooOld && !overSize) {
@@ -59,10 +61,15 @@ export async function collectArchive(
       continue;
     }
     try {
-      await archive.delete(entry.ref);
+      const outcome = await archive.deleteUnchanged(entry, signal);
+      if (outcome === "changed") {
+        kept += 1;
+        continue;
+      }
+      total -= entry.bytes;
+      if (outcome === "missing") continue;
       deleted += 1;
       bytesFreed += entry.bytes;
-      total -= entry.bytes;
     } catch {
       // A failed unlink is not worth failing the collection over; count it and
       // keep going so one locked file cannot pin the whole archive.

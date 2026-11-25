@@ -27,6 +27,7 @@ import type {
 import { resolvePostExecuteContent } from "@yadsh/dsh-plugin-kit/post-execute";
 
 import type { ResolvedJevCompactionConfig } from "../config/index.js";
+import { shapingEnabled } from "./eligibility.js";
 import type { ShapeSkipReason } from "./metrics.js";
 import type { ImmediateResultShaper } from "./shaper.js";
 
@@ -76,7 +77,7 @@ export function createPostExecuteListener(
       }
       if (effective.kind !== "content") return downstream;
       const config = readConfig();
-      if (!config.resultShaping.enabled) return downstream;
+      if (!shapingEnabled(config)) return downstream;
       // Nested code-mode/PTC dispatches never reach the model as their own
       // result: shaping them would be invisible at best (SPEC §28).
       if (exec.parent !== undefined) {

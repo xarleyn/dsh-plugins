@@ -33,7 +33,7 @@ export type ArchiveRef = string;
 export interface OriginalResultArchive {
   put(
     entry: ArchivedToolResult,
-    options?: { readonly signal?: AbortSignal },
+    options?: { readonly signal?: AbortSignal; readonly maxBytes?: number },
   ): Promise<ArchiveRef>;
   get(ref: ArchiveRef): Promise<ArchivedToolResult | null>;
   delete?(ref: ArchiveRef): Promise<void>;
