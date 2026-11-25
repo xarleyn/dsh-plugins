@@ -171,19 +171,19 @@ export function createDraftWorkspaceContribution(
     if (!wide) return null;
 
     const rename = async (draft: DraftSession, title: string) => {
-      const result = await ctx.remote.draftSessions.update({
+      await ctx.draftComposerBridge.updateMetadata({
         id: draft.id,
         expectedRevision: draft.revision,
         title,
       });
-      if (!result.ok) throw new Error(result.error.message);
-      source.accept(result.value);
     };
     const duplicate = async (draft: DraftSession) => {
+      const saved = await ctx.draftComposerBridge.flush();
+      const original = saved?.id === draft.id ? saved : draft;
       const created = await ctx.draftSessionLifecycle.create({
-        workspaceId: draft.workspaceId,
-        text: draft.text,
-        ...(draft.title === undefined ? {} : { title: draft.title }),
+        workspaceId: original.workspaceId,
+        text: original.text,
+        ...(original.title === undefined ? {} : { title: original.title }),
       });
       source.accept(created);
       await ctx.draftComposerBridge.open(created);
@@ -227,9 +227,7 @@ export function createDraftWorkspaceContribution(
         draftId,
         beforeDraftId,
       )) {
-        const result = await ctx.remote.draftSessions.update(update);
-        if (!result.ok) throw new Error(result.error.message);
-        source.accept(result.value);
+        await ctx.draftComposerBridge.updateMetadata(update);
       }
     };
 

@@ -10,7 +10,7 @@ import type {
   RemoteResult,
   TypertRemoteNamespace,
 } from "@deepseek-ai/dsh-typert-protocol";
-import type { DraftSession } from "../shared/types.js";
+import type { DraftSession, UpdateDraftRequest } from "../shared/types.js";
 import { DRAFT_COMPOSER_SOURCE } from "./session-source.js";
 import type { DraftSessionLifecycle } from "./lifecycle.js";
 import type { DraftSidebarSource } from "./sidebar.js";
@@ -162,10 +162,33 @@ export class DraftComposerBridge extends Service {
     const active = this.active;
     if (active === undefined) return undefined;
     this.clearTimer(active);
-    const result = this.saveQueue.then(
-      () => this.drain(active),
-      () => this.drain(active),
-    );
+    return this.enqueueSave(() => this.drain(active));
+  }
+
+  /** Sidebar edits share the active composer's revision and pending text. */
+  updateMetadata(
+    request: Pick<
+      UpdateDraftRequest,
+      "id" | "expectedRevision" | "title" | "order"
+    >,
+  ): Promise<DraftSession> {
+    return this.enqueueSave(async () => {
+      const active =
+        this.active?.draft.id === request.id ? this.active : undefined;
+      const previous = active && (await this.drain(active));
+      const result = await this.drafts.update({
+        ...request,
+        expectedRevision: previous?.revision ?? request.expectedRevision,
+      });
+      if (!result.ok) throw new Error(result.error.message);
+      if (active) active.draft = result.value;
+      this.sidebar?.accept(result.value);
+      return result.value;
+    });
+  }
+
+  private enqueueSave<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.saveQueue.then(operation, operation);
     this.saveQueue = result.then(
       () => undefined,
       () => undefined,

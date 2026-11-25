@@ -21,7 +21,11 @@ const draft = {
   revision: 1,
 } satisfies DraftSession;
 
-function renderContribution(ctx: unknown, source: unknown) {
+function renderContribution(
+  ctx: unknown,
+  source: unknown,
+  drafts: readonly DraftSession[] = [draft],
+) {
   const component = createDraftWorkspaceContribution(
     ctx as never,
     source as never,
@@ -30,7 +34,7 @@ function renderContribution(ctx: unknown, source: unknown) {
     wide: true,
     useDrafts: <Selected>(
       selector: (value: readonly DraftSession[]) => Selected,
-    ) => selector([draft]),
+    ) => selector(drafts),
     useSessions: <Selected>(selector: (value: SessionListState) => Selected) =>
       selector({
         byId: {
@@ -55,6 +59,26 @@ function renderContribution(ctx: unknown, source: unknown) {
 describe("workspace draft contribution", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it("moves both reordered rows through the same revision queue as autosave", async () => {
+    const second = { ...draft, id: "draft-b", order: 1, revision: 3 };
+    const updateMetadata = vi.fn(async () => draft);
+    const menu = renderContribution(
+      { draftComposerBridge: { updateMetadata } },
+      {},
+      [draft, second],
+    );
+    const reorder = menu.props.onReorder as (
+      workspaceId: string,
+      id: string,
+      before: string,
+    ) => Promise<void>;
+    await reorder(draft.workspaceId, second.id, draft.id);
+    expect(updateMetadata.mock.calls).toEqual([
+      [{ id: second.id, expectedRevision: 3, order: 0 }],
+      [{ id: draft.id, expectedRevision: 1, order: 1 }],
+    ]);
   });
 
   it("adds a Drafts tab to an existing native tab host without replacing it", () => {
@@ -228,6 +252,27 @@ describe("workspace draft contribution", () => {
     await (element.props.onCreate as () => Promise<void>)();
 
     expect(create).toHaveBeenCalledOnce();
+  });
+
+  it("copies the flushed text of the selected draft when duplicating", async () => {
+    const saved = { ...draft, text: "Just typed", revision: 2 };
+    const create = vi.fn(async () => ({ ...saved, id: "copy" }));
+    const open = vi.fn();
+    const element = renderContribution(
+      {
+        draftComposerBridge: { flush: async () => saved, open },
+        draftSessionLifecycle: { create },
+      },
+      { accept: vi.fn() },
+    );
+    await (element.props.onDuplicate as (value: DraftSession) => Promise<void>)(
+      draft,
+    );
+    expect(create).toHaveBeenCalledWith({
+      workspaceId: draft.workspaceId,
+      text: "Just typed",
+    });
+    expect(open).toHaveBeenCalledWith(expect.objectContaining({ id: "copy" }));
   });
 
   it("restores the active composer when draft deletion is rejected", async () => {

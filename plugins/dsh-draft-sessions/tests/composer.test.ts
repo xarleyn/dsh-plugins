@@ -5,7 +5,8 @@ import {
   DraftComposerBridge,
   type DraftComposerBridgeOptions,
 } from "../src/client/composer.js";
-import type { DraftSession } from "../src/shared/types.js";
+import type { DraftSession, UpdateDraftRequest } from "../src/shared/types.js";
+import { createDraftWorkspaceContribution } from "../src/client/workspace-contribution.js";
 
 function draft(
   id: string,
@@ -98,6 +99,62 @@ afterEach(() => {
 });
 
 describe("DraftComposerBridge", () => {
+  it("serializes a sidebar rename, edits during that rename and the next navigation", async () => {
+    const composer = input();
+    const initial = draft("draft-a", "session-a", "original");
+    let stored = initial;
+    const entered = Promise.withResolvers<void>();
+    const proceed = Promise.withResolvers<void>();
+    const update = vi.fn(async (request: UpdateDraftRequest) => {
+      if (request.expectedRevision !== stored.revision)
+        return {
+          ok: false,
+          error: { code: "DRAFT_STALE_REVISION", message: "stale draft" },
+        };
+      if (request.title) {
+        entered.resolve();
+        await proceed.promise;
+      }
+      stored = {
+        ...stored,
+        text: request.text ?? stored.text,
+        ...(request.title ? { title: request.title } : {}),
+        revision: stored.revision + 1,
+      };
+      return { ok: true, value: stored };
+    });
+    const options = bridgeOptions([composer, input()], update as never);
+    const bridge = new DraftComposerBridge(new Context(), options);
+    await bridge.open(initial);
+    composer.edit("typed before rename");
+    const render = createDraftWorkspaceContribution(
+      { draftComposerBridge: bridge } as never,
+      { accept: vi.fn() } as never,
+    );
+    const menu = render({
+      wide: true,
+      useDrafts: (select) => select([initial]),
+      useSessions: (select) => select({ byId: {} } as never),
+      useWorkspaces: (select) => select({ items: [] } as never),
+    }) as {
+      props: { onRename(value: DraftSession, title: string): Promise<void> };
+    };
+    const renamed = menu.props.onRename(initial, "New title");
+    await entered.promise;
+    composer.edit("typed while renaming");
+    const switched = bridge.open(draft("draft-b", "session-b", ""));
+    proceed.resolve();
+    await Promise.all([renamed, switched]);
+    expect(stored).toMatchObject({
+      title: "New title",
+      text: "typed while renaming",
+      revision: 4,
+    });
+    expect(
+      update.mock.calls.map(([request]) => request.expectedRevision),
+    ).toEqual([1, 2, 3]);
+  });
+
   it("retains the backing Session and restores exact text through InputHub", async () => {
     const composer = input();
     const events: string[] = [];
@@ -346,7 +403,7 @@ describe("DraftComposerBridge", () => {
     await expect(bridge.flush()).resolves.toMatchObject({ id: "draft-b" });
   });
 
-  it("surfaces revision conflicts and blocks the Session switch", async () => {
+  it("surfaces another tab's revision conflict before renaming or switching and preserves the local edit", async () => {
     const firstInput = input();
     const secondInput = input();
     const events: string[] = [];
@@ -365,6 +422,22 @@ describe("DraftComposerBridge", () => {
     await bridge.open(draft("draft-a", "session-a", "AAA"));
     firstInput.edit("local edit");
 
+    await expect(
+      bridge.updateMetadata({
+        id: "draft-a",
+        expectedRevision: 1,
+        title: "My title",
+      }),
+    ).rejects.toMatchObject({
+      code: "DRAFT_STALE_REVISION",
+      localText: "local edit",
+    });
+    expect(update).toHaveBeenCalledOnce();
+    expect(update).toHaveBeenCalledWith({
+      id: "draft-a",
+      expectedRevision: 1,
+      text: "local edit",
+    });
     await expect(
       bridge.open(draft("draft-b", "session-b", "BBB")),
     ).rejects.toMatchObject({
