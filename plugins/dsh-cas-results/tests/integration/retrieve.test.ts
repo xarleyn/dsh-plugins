@@ -64,7 +64,70 @@ function execute(
   return tool.execute(args, {});
 }
 
+async function retrievePage(
+  tool: Deps["retrieve"],
+  args: { ref: string; offset?: number; limit?: number },
+) {
+  return (await execute(tool, args)) as {
+    content: string;
+    offset: number;
+    returnedBytes: number;
+    truncated: boolean;
+  };
+}
+
 describe("dsh_cas_retrieve", () => {
+  it.each(["Я", "界", "😀", "\uFEFF"])(
+    "joins pages when %s crosses the default byte limit",
+    async (character) => {
+      const d = await deps();
+      const original = "a".repeat(32767) + character + "Z";
+      const { ref } = await d.store.put({
+        payload: encoder.encode(original),
+        kind: "text",
+        mediaType: "text/plain",
+        encoding: "utf8",
+      });
+      const first = await retrievePage(d.retrieve, { ref });
+      const next = await retrievePage(d.retrieve, {
+        ref,
+        offset: first.offset + first.returnedBytes,
+      });
+      expect(first.returnedBytes).toBe(32767);
+      expect(first.truncated).toBe(true);
+      expect(next.truncated).toBe(false);
+      expect(first.content + next.content).toBe(original);
+      expect(first.returnedBytes + next.returnedBytes).toBe(
+        encoder.encode(original).length,
+      );
+    },
+  );
+
+  it("keeps a leading BOM and gives a usable error for an impossible text window", async () => {
+    const d = await deps();
+    const { ref } = await d.store.put({
+      payload: encoder.encode("\uFEFF😀Z"),
+      kind: "text",
+      mediaType: "text/plain",
+      encoding: "utf8",
+    });
+    const first = await retrievePage(d.retrieve, { ref, limit: 4 });
+    expect(first.content).toBe("\uFEFF");
+    expect(first.returnedBytes).toBe(3);
+    await expect(
+      execute(d.retrieve, { ref, offset: 3, limit: 1 }),
+    ).rejects.toThrow(/at least 4 bytes/u);
+    await expect(execute(d.retrieve, { ref, offset: 4 })).rejects.toThrow(
+      /inside a UTF-8 character/u,
+    );
+    await expect(execute(d.retrieve, { ref, limit: 0 })).rejects.toThrow(
+      /positive/u,
+    );
+    expect(
+      await execute(d.retrieve, { ref, offset: 4, limit: 1, encoding: "hex" }),
+    ).toMatchObject({ returnedBytes: 1, content: "9f" });
+  });
+
   it("returns byte-identical content for text payloads (SPEC AC2)", async () => {
     const d = await deps();
     const original = `CRLF ✓ 中文\r\n${makeText(50_000)}`;

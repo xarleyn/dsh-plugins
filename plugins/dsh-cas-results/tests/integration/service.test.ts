@@ -3,13 +3,15 @@
  * tool registration, public store surface, and dispose symmetry.
  */
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Context } from "@deepseek-ai/cordis";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { CasResultsService } from "../../src/service.js";
+import { FilesystemCasStore } from "../../src/cas/filesystem-store.js";
+import type { CasStore } from "../../src/cas/types.js";
 import type { CasResultsConfig } from "../../src/config.js";
 import type { CasPostExecuteListener } from "../../src/integration/post-execute.js";
 import { silentPluginLogger, tempRoot } from "../fixtures/store-fixtures.js";
@@ -38,7 +40,10 @@ interface Wiring {
   mountToolRuntime(): void;
 }
 
-async function wire(overrides: Record<string, unknown> = {}): Promise<Wiring> {
+async function wire(
+  overrides: Record<string, unknown> = {},
+  store?: CasStore,
+): Promise<Wiring> {
   const root = await tempRoot();
   const ctx = new Context();
   const surface: CapturedSurface = { listeners: [], tools: [] };
@@ -83,7 +88,7 @@ async function wire(overrides: Record<string, unknown> = {}): Promise<Wiring> {
   const service = new CasResultsService(
     ctx,
     { gc: { enabled: false }, ...overrides } as CasResultsConfig,
-    { storeRoot: root, logger: silentPluginLogger() },
+    { storeRoot: root, logger: silentPluginLogger(), ...(store && { store }) },
   );
   return {
     service,
@@ -101,6 +106,19 @@ async function dispose(wiring: Wiring): Promise<void> {
 }
 
 describe("CasResultsService wiring", () => {
+  it("keeps shared page snapshots until the service owning the store shuts down", async () => {
+    const owner = await wire();
+    const store = owner.service.store;
+    if (!(store instanceof FilesystemCasStore))
+      throw new Error("Expected a filesystem store");
+    const release = vi.spyOn(store, "dispose");
+    const consumer = await wire({}, store);
+    await dispose(consumer);
+    expect(release).not.toHaveBeenCalled();
+    await dispose(owner);
+    expect(release).toHaveBeenCalledOnce();
+  });
+
   it("unmounts the listener and every tool when the service is disposed", async () => {
     const wiring = await wire({ exposeGcTool: true });
     expect(wiring.surface.listeners).toHaveLength(1);

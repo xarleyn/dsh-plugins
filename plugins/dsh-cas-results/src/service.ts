@@ -137,11 +137,16 @@ export class CasResultsService extends Service {
         consoleSink: createHostLoggerSink(ctx.logger),
       }) as PluginLogger & PluginLoggerLike);
     this.counters = deps.counters ?? new CasCounters();
-    this.store =
-      deps.store ??
-      new FilesystemCasStore(deps.storeRoot ?? resolveStoreDir(this.config), {
-        compression: this.config.storage.compression,
-      });
+    if (deps.store) {
+      this.store = deps.store;
+    } else {
+      const store = new FilesystemCasStore(
+        deps.storeRoot ?? resolveStoreDir(this.config),
+        { compression: this.config.storage.compression },
+      );
+      this.store = store;
+      this.disposers.push(() => store.dispose());
+    }
 
     const disposers = this.disposers;
     ctx.inject(["tools"], (toolCtx: ToolHostContextLike) => {

@@ -51,7 +51,7 @@ export interface CasPutInput {
 export interface CasReadOptions {
   offset?: number;
   limit?: number;
-  /** Re-hash the decompressed payload and compare with the address. Default: true. */
+  /** Verify the logical bytes against the content address. Default: true. */
   verify?: boolean;
 }
 

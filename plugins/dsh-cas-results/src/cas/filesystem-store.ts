@@ -15,12 +15,12 @@
  */
 
 import {
+  lstat,
   mkdir,
   opendir,
   open,
   readFile,
   rename,
-  link,
   stat,
   unlink,
   writeFile,
@@ -30,12 +30,19 @@ import { dirname, join } from "node:path";
 
 import {
   applyAutoCompression,
+  compressPayload,
   decompressPayload,
   type CompressionMode,
   resolveCodec,
 } from "./compression.js";
 import { CasError } from "./errors.js";
 import { assertValidHash, formatCasRef, sha256Hex } from "./hash.js";
+import {
+  isMissing,
+  publishFile,
+  removeStalePublication,
+} from "./publish-file.js";
+import { VerifiedPages } from "./verified-pages.js";
 import type {
   CasGcOptions,
   CasGcResult,
@@ -49,6 +56,7 @@ import type {
   CasSearchResult,
   CasStore,
   CasStoreStats,
+  StorageCodec,
 } from "./types.js";
 
 const META_VERSION = 1;
@@ -83,10 +91,37 @@ function truncateLine(line: string): string {
     : line;
 }
 
+async function readIfPresent(path: string): Promise<Buffer | undefined> {
+  try {
+    return await readFile(path);
+  } catch (error) {
+    if (isMissing(error)) return undefined;
+    throw error;
+  }
+}
+
+async function matchesPayload(
+  stored: Buffer,
+  codec: StorageCodec,
+  payload: Uint8Array,
+): Promise<boolean> {
+  if (codec === "none") return stored.equals(payload);
+  try {
+    return (
+      Buffer.compare(await decompressPayload(stored, codec), payload) === 0
+    );
+  } catch (error) {
+    if (error instanceof CasError && error.code === "CAS_INTEGRITY_FAILED")
+      return false;
+    throw error;
+  }
+}
+
 export class FilesystemCasStore implements CasStore {
   private readonly root: string;
   private readonly compression: CompressionMode;
   private readonly now: () => Date;
+  private readonly pages = new VerifiedPages(() => this.tmpPath());
 
   constructor(root: string, options: FilesystemCasStoreOptions) {
     this.root = root;
@@ -157,88 +192,139 @@ export class FilesystemCasStore implements CasStore {
   private async putUnchecked(input: CasPutInput): Promise<CasObject> {
     await this.ensureRoots();
     const hash = sha256Hex(input.payload);
-    const existing = await this.readMeta(hash).catch(() => undefined);
-    if (existing !== undefined && (await this.blobExists(hash))) {
-      // Storage deduplication: identical payload is stored once (SPEC §13).
-      const timestamp = this.now();
-      const updated = await this.writeMeta(hash, {
-        ...existing,
-        hits: existing.hits + 1,
-        lastAccessedAt: timestamp.toISOString(),
-      }).catch(() => ({ ...existing, hits: existing.hits + 1 }));
-      return { ref: formatCasRef(hash), metadata: updated, reused: true };
+    const blobPath = this.blobPath(hash);
+    const metaPath = this.metaPath(hash);
+    let metadata = await this.readMeta(hash).catch((error: unknown) => {
+      if (isMissing(error)) return undefined;
+      throw error;
+    });
+    if (metadata && metadata.size === input.payload.length) {
+      const info = await stat(blobPath).catch((error: unknown) => {
+        if (isMissing(error)) return undefined;
+        throw error;
+      });
+      // This store keeps gzip only if it saves space. A crossed raw/gzip
+      // pair therefore cannot have both the recorded size and codec shape.
+      const plausibleSize =
+        metadata.storageCodec === "none"
+          ? metadata.storedSize === metadata.size
+          : metadata.storedSize < metadata.size;
+      if (info?.isFile() && info.size === metadata.storedSize && plausibleSize)
+        return this.finishPut(metadata, input.payload.length, info.size, false);
+    }
+    let stored = await readIfPresent(blobPath);
+    let prepared: { codec: StorageCodec; bytes: Uint8Array } | undefined;
+
+    if (!metadata) {
+      if (stored) {
+        // A pre-existing writer could leave a complete blob before publishing
+        // its metadata. Identify it by content, including raw gzip-shaped data.
+        const codec = stored.equals(input.payload) ? "none" : "gzip";
+        if (!(await matchesPayload(stored, codec, input.payload)))
+          throw new CasError(
+            "CAS_INTEGRITY_FAILED",
+            `unrecognized blob for ${formatCasRef(hash)}`,
+          );
+        prepared = { bytes: stored, codec };
+      } else {
+        const codec = resolveCodec(
+          this.compression,
+          input.kind,
+          input.mediaType,
+        );
+        prepared = await applyAutoCompression(input.payload, codec);
+      }
+      const timestamp = this.now().toISOString();
+      const proposed: CasMetadata = {
+        version: META_VERSION,
+        algorithm: "sha256",
+        hash,
+        size: input.payload.length,
+        storedSize: prepared.bytes.length,
+        kind: input.kind,
+        mediaType: input.mediaType,
+        encoding: input.encoding,
+        storageCodec: prepared.codec,
+        createdAt: timestamp,
+        lastAccessedAt: timestamp,
+        firstTool: input.firstTool ?? null,
+        hits: 0,
+      };
+      const bytes = Buffer.from(`${JSON.stringify(proposed, null, 2)}\n`);
+      // Elect one immutable representation before any writer publishes the
+      // blob. A subsequent put can complete a writer interrupted between them.
+      await this.publishBytes(metaPath, bytes);
+      metadata = await this.readMeta(hash);
     }
 
-    const codec = resolveCodec(this.compression, input.kind, input.mediaType);
-    const { bytes: storedBytes, codec: effectiveCodec } =
-      codec === "gzip"
-        ? await applyAutoCompression(input.payload, "gzip")
-        : { bytes: input.payload, codec: "none" as const };
-    const timestamp = this.now().toISOString();
-    const metadata: CasMetadata = {
-      version: META_VERSION,
-      algorithm: "sha256",
-      hash,
-      size: input.payload.length,
-      storedSize: storedBytes.length,
-      kind: input.kind,
-      mediaType: input.mediaType,
-      encoding: input.encoding,
-      storageCodec: effectiveCodec,
-      createdAt: timestamp,
-      lastAccessedAt: timestamp,
-      firstTool: input.firstTool ?? null,
-      hits: 0,
-    };
+    const chosen = metadata;
+    const encoded = async () =>
+      prepared?.codec === chosen.storageCodec
+        ? prepared.bytes
+        : compressPayload(input.payload, chosen.storageCodec);
+    if (!stored) {
+      const bytes = await encoded();
+      if (await this.publishBytes(blobPath, bytes)) {
+        const storedSize = (await stat(blobPath)).size;
+        return this.finishPut(chosen, input.payload.length, storedSize, true);
+      }
+      stored = await readFile(blobPath);
+    }
+    if (await matchesPayload(stored, chosen.storageCodec, input.payload))
+      return this.finishPut(chosen, input.payload.length, stored.length, false);
+    // Repair a mismatched legacy pair from the caller's original bytes.
+    // All concurrent repairs use the same elected codec.
+    const bytes = await encoded();
+    await this.publishBytes(blobPath, bytes, true);
+    return this.finishPut(chosen, input.payload.length, bytes.length, true);
+  }
 
+  private async finishPut(
+    metadata: CasMetadata,
+    size: number,
+    storedSize: number,
+    wroteBlob: boolean,
+  ): Promise<CasObject> {
+    const corrected =
+      metadata.size !== size || metadata.storedSize !== storedSize;
+    if (corrected || !wroteBlob) {
+      const updated = {
+        ...metadata,
+        size,
+        storedSize,
+        hits: metadata.hits + (wroteBlob ? 0 : 1),
+        lastAccessedAt: this.now().toISOString(),
+      };
+      try {
+        metadata = await this.writeMeta(metadata.hash, updated);
+      } catch (error) {
+        if (corrected) throw error;
+      }
+    }
+    return { ref: formatCasRef(metadata.hash), metadata, reused: !wroteBlob };
+  }
+
+  private async publishBytes(
+    destination: string,
+    bytes: Uint8Array,
+    replace = false,
+  ): Promise<boolean> {
     const tmp = this.tmpPath();
-    const finalBlob = this.blobPath(hash);
-    await mkdir(dirname(finalBlob), { recursive: true, mode: 0o700 });
+    await mkdir(dirname(destination), { recursive: true, mode: 0o700 });
     try {
       const handle = await open(tmp, "wx", 0o600);
       try {
-        await handle.writeFile(storedBytes);
+        await handle.writeFile(bytes);
         await handle.sync();
       } finally {
         await handle.close();
       }
-      // Exclusive commit: when the link loses the race against a concurrent
-      // writer, their identical blob stays in place. Without hard-link
-      // support the staged file is renamed atomically over the target;
-      // clobbering an identical payload is benign. A rename refusal on
-      // Windows (EPERM while the target is being replaced concurrently) is
-      // only fatal when no equivalent blob actually appeared.
-      try {
-        await link(tmp, finalBlob);
-      } catch {
-        try {
-          await rename(tmp, finalBlob);
-        } catch {
-          if (!(await this.blobExists(hash))) {
-            throw new CasError(
-              "CAS_STORE_IO",
-              `failed to commit blob ${formatCasRef(hash)}`,
-            );
-          }
-        }
-      }
+      if (!replace) return await publishFile(tmp, destination);
+      await rename(tmp, destination);
+      return true;
     } finally {
       await unlink(tmp).catch(() => undefined);
     }
-
-    try {
-      await this.writeMeta(hash, metadata);
-    } catch (error) {
-      // Never keep a blob that cannot be served back with its metadata
-      // (SPEC §26): remove it and fail so the caller passes the original
-      // tool result through.
-      await unlink(finalBlob).catch(() => undefined);
-      throw new CasError(
-        "CAS_STORE_IO",
-        `metadata write failed for ${formatCasRef(hash)}: ${String(error)}`,
-      );
-    }
-    return { ref: formatCasRef(hash), metadata, reused: false };
   }
 
   async has(hash: string): Promise<boolean> {
@@ -265,32 +351,27 @@ export class FilesystemCasStore implements CasStore {
         `CAS object ${formatCasRef(hash)} is not available`,
       );
     }
-    let stored: Uint8Array;
+    const offset = clamp(options.offset ?? 0, 0, meta.size);
+    const limit = clamp(
+      options.limit ?? Number.MAX_SAFE_INTEGER,
+      0,
+      meta.size - offset,
+    );
+    let payload: Uint8Array;
     try {
-      stored = await readFile(this.blobPath(hash));
+      payload = await this.readWindow(
+        meta,
+        offset,
+        limit,
+        options.verify !== false,
+      );
     } catch (error) {
+      if (error instanceof CasError) throw error;
       throw new CasError(
         "CAS_STORE_IO",
         `failed to read blob ${formatCasRef(hash)}: ${String(error)}`,
       );
     }
-    let payload = await decompressPayload(stored, meta.storageCodec);
-    if (options.verify !== false) {
-      const actual = sha256Hex(payload);
-      if (actual !== hash) {
-        throw new CasError(
-          "CAS_INTEGRITY_FAILED",
-          `CAS object ${formatCasRef(hash)} failed its integrity check`,
-        );
-      }
-    }
-    const offset = Math.min(Math.max(options.offset ?? 0, 0), payload.length);
-    const limit = clamp(
-      options.limit ?? Number.MAX_SAFE_INTEGER,
-      0,
-      payload.length - offset,
-    );
-    payload = payload.subarray(offset, offset + limit);
     void this.touch(hash, this.now()).catch(() => undefined);
     return {
       ref: formatCasRef(hash),
@@ -302,6 +383,48 @@ export class FilesystemCasStore implements CasStore {
       truncated: offset + payload.length < meta.size,
       bytes: payload,
     };
+  }
+
+  private async readWindow(
+    meta: CasMetadata,
+    offset: number,
+    limit: number,
+    verify: boolean,
+  ): Promise<Uint8Array> {
+    const path = this.blobPath(meta.hash);
+    if (verify && limit < meta.size) {
+      try {
+        return await this.pages.read(path, meta, offset, limit);
+      } catch (error) {
+        // A read-only/full mount can still serve an old gzip blob. Also
+        // recover if another process swept an idle scratch copy.
+        if (
+          !["ENOENT", "EROFS", "EPERM", "EACCES", "ENOSPC", "EDQUOT"].includes(
+            (error as NodeJS.ErrnoException).code ?? "",
+          )
+        )
+          throw error;
+      }
+    }
+    const bytes = await decompressPayload(
+      await readFile(path),
+      meta.storageCodec,
+    );
+    if (
+      verify &&
+      (bytes.length !== meta.size || sha256Hex(bytes) !== meta.hash)
+    ) {
+      throw new CasError(
+        "CAS_INTEGRITY_FAILED",
+        `CAS object ${formatCasRef(meta.hash)} failed its integrity check`,
+      );
+    }
+    return bytes.subarray(offset, offset + limit);
+  }
+
+  /** Drop process-local range indexes and disposable decoded files. */
+  dispose(): void {
+    this.pages.dispose();
   }
 
   async search(hash: string, query: CasSearchQuery): Promise<CasSearchResult> {
@@ -455,9 +578,11 @@ export class FilesystemCasStore implements CasStore {
       for await (const entry of dir) {
         const path = join(this.root, "tmp", entry.name);
         try {
-          const info = await stat(path);
+          const info = await lstat(path);
           if (now - info.mtimeMs > TMP_ORPHAN_AGE_MS) {
-            await unlink(path);
+            if (info.isDirectory()) {
+              if (!(await removeStalePublication(path))) continue;
+            } else await unlink(path);
             removed += 1;
           }
         } catch {
@@ -507,21 +632,7 @@ export class FilesystemCasStore implements CasStore {
         encoding: "utf8",
         mode: 0o600,
       });
-      try {
-        await rename(tmp, path);
-      } catch {
-        // Lost the replace race against a concurrent writer committing the
-        // same payload; either writer's metadata serves identical content.
-        const committed = await stat(path).then(
-          () => true,
-          () => false,
-        );
-        if (!committed)
-          throw new CasError(
-            "CAS_STORE_IO",
-            `failed to commit metadata for ${formatCasRef(hash)}`,
-          );
-      }
+      await rename(tmp, path);
     } finally {
       await unlink(tmp).catch(() => undefined);
     }
@@ -568,6 +679,7 @@ export class FilesystemCasStore implements CasStore {
   }
 
   private async deleteObject(entry: MetaDirEntry): Promise<boolean> {
+    this.pages.forget(entry.hash);
     try {
       await unlink(this.blobPath(entry.hash));
     } catch {

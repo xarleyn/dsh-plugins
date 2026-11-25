@@ -37,7 +37,9 @@ dsh_cas_retrieve(ref="sha256:ac7819…e029")
   No LLM, no clocks, no locale-dependent output.
 - **Retrieval tools** — `dsh_cas_retrieve` (bounded, paginated, utf8/base64/
   hex), `dsh_cas_search` (substring with context lines), `dsh_cas_info`,
-  `dsh_cas_stats`, and an opt-in `dsh_cas_gc`.
+  `dsh_cas_stats`, and an opt-in `dsh_cas_gc`. Continue from
+  `offset + returnedBytes`. UTF-8 pages end on a whole character. Use base64
+  or hex when an exact byte window starts inside a character.
 - **Fail-open safety** — storage failures, corrupt blobs, and disabled config
   always leave the original tool result untouched; tool errors are never
   transformed by default.

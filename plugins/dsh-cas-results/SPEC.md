@@ -13,8 +13,10 @@ table at the bottom of this file must always reflect reality.
    (≤ `preview.maxChars` characters) that carries the complete
    `sha256:<64 hex>` reference.
 2. For every textual payload, the bytes read back from the CAS equal the
-   original UTF-8 bytes; `SHA-256(retrieved) === reference` is verified on
-   every verified read.
+   original UTF-8 bytes. A full read checks the logical SHA-256 against the
+   reference. Pages come from an immutable verified snapshot or from blocks
+   checked against digests established by a full verification of that blob.
+   A change in the backing file invalidates the snapshot.
 3. Ten identical tool outputs produce exactly one physical blob; reuse
    increments an advisory hit counter on the object metadata.
 4. The same payload always produces the same `sha256:<64 hex>` reference;

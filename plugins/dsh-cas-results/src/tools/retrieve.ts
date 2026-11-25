@@ -48,7 +48,8 @@ export function createRetrieveTool(deps: RetrieveDeps) {
       },
       offset: {
         type: "integer",
-        description: "Byte offset to start reading from. Default: 0.",
+        description:
+          "Byte offset to start reading from. For text, use the previous offset plus returnedBytes to start on a character boundary.",
       },
       limit: {
         type: "integer",
@@ -107,6 +108,12 @@ export function createRetrieveTool(deps: RetrieveDeps) {
       const hash = readRefArg(query);
       const config = readConfig();
       const requestedLimit = readOptionalInteger(query, "limit");
+      if (requestedLimit !== undefined && requestedLimit <= 0) {
+        throw new CasError(
+          "CAS_INVALID_ARGUMENT",
+          "limit must be a positive byte count",
+        );
+      }
       const limit = Math.min(
         requestedLimit ?? config.retrieval.defaultBytes,
         config.retrieval.maxBytes,
@@ -136,9 +143,13 @@ export function createRetrieveTool(deps: RetrieveDeps) {
             ? "base64"
             : "utf8"
           : requestedEncoding;
-      const content = encodePayload(read.bytes, encoding);
+      const bytes =
+        encoding === "utf8"
+          ? utf8Page(read.bytes, read.offset, read.truncated)
+          : read.bytes;
+      const content = encodePayload(bytes, encoding);
       counters.increment("retrievalCalls");
-      counters.increment("retrievalBytes", read.bytes.length);
+      counters.increment("retrievalBytes", bytes.length);
       return {
         ref: read.ref,
         kind: read.kind,
@@ -146,7 +157,7 @@ export function createRetrieveTool(deps: RetrieveDeps) {
         encoding,
         totalBytes: read.totalSize,
         offset: read.offset,
-        returnedBytes: read.bytes.length,
+        returnedBytes: bytes.length,
         truncated: read.truncated,
         content,
       };
@@ -161,5 +172,44 @@ function encodePayload(
   const buffer = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   if (encoding === "base64") return buffer.toString("base64");
   if (encoding === "hex") return buffer.toString("hex");
-  return new TextDecoder("utf8", { fatal: false }).decode(bytes);
+  return new TextDecoder("utf8", { ignoreBOM: true }).decode(bytes);
+}
+
+/** Keep the next offset at a character boundary without exceeding the byte limit. */
+function utf8Page(
+  bytes: Uint8Array,
+  offset: number,
+  truncated: boolean,
+): Uint8Array {
+  if (!bytes.length) return bytes;
+  if (offset > 0 && (bytes[0]! & 0xc0) === 0x80) {
+    throw new CasError(
+      "CAS_INVALID_ARGUMENT",
+      "The offset is inside a UTF-8 character. Use the previous page's offset plus returnedBytes, or request base64 for arbitrary byte offsets.",
+    );
+  }
+  if (!truncated) return bytes;
+  let start = bytes.length - 1;
+  while (
+    start > 0 &&
+    bytes.length - start <= 3 &&
+    (bytes[start]! & 0xc0) === 0x80
+  )
+    start--;
+  const tail = bytes.subarray(start);
+  // A streaming decoder holds back only a genuinely unfinished sequence.
+  // Invalid input still receives the usual replacement character.
+  if (
+    new TextDecoder("utf8", { ignoreBOM: true }).decode(tail, {
+      stream: true,
+    }) !== ""
+  )
+    return bytes;
+  if (start === 0) {
+    throw new CasError(
+      "CAS_INVALID_ARGUMENT",
+      "The byte limit is too small for the next UTF-8 character. Request at least 4 bytes or use base64.",
+    );
+  }
+  return bytes.subarray(0, start);
 }
