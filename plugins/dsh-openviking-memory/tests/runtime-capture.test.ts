@@ -199,14 +199,13 @@ describe("capture and the pending queue", () => {
     expect(harness.requestsFor(ovPath(ovSession))).toHaveLength(0);
     expect(await listPending()).toHaveLength(2);
 
-    // An older pending commit is superseded by a newer message: the commit is
-    // dropped (upstream's `removePendingCommits`) and the message is appended,
-    // so the queue stays one ordered run of writes.
+    // Close the second turn at its timestamp. The next capture has a strictly
+    // later timestamp and supersedes that final commit.
     const commit = await enqueue(
       "commitSession",
       ovSession,
       { keep_recent_count: 10 },
-      { createdAt: Date.now() + 10_000 },
+      { createdAt: createdAt[1]! },
     );
     expect(commit.ok).toBe(true);
     expect((await listPending()).map((item) => item.entry.type)).toEqual([
@@ -240,6 +239,7 @@ describe("capture and the pending queue", () => {
       "Third queued message.",
     ]);
     const afterSupersede = pending.map((item) => item.entry.createdAt);
+    expect(afterSupersede[2]).toBeGreaterThan(createdAt[1]!);
     expect(afterSupersede).toEqual(
       [...afterSupersede].sort((left, right) => left - right),
     );

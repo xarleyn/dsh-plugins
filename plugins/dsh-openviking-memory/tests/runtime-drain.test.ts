@@ -11,7 +11,11 @@
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { enqueue, listPending } from "../src/openviking/pending-queue.js";
+import {
+  claimForReplay,
+  enqueue,
+  listPending,
+} from "../src/openviking/pending-queue.js";
 import {
   createFakeAgent,
   createFakeSession,
@@ -56,6 +60,101 @@ function surfaceFor(owners: Record<string, string>): {
 }
 
 describe("the drainer's replay", () => {
+  it.each(["turn/end", "dispose"] as const)(
+    "holds a %s commit when opening discovers another worker's message",
+    async (action) => {
+      const session = createFakeSession("resuming", {
+        cwd: "/workspace/project",
+      });
+      const sessionId = ovId("resuming");
+      harness = await createHarness(
+        {},
+        {
+          fetchImpl: transport({
+            [ovPath(sessionId)]: () => ok({ pending_tokens: 50000 }),
+          }),
+        },
+      );
+      const queued = await enqueue("addMessage", sessionId, {
+        content: "last message",
+      });
+      const held = await claimForReplay(queued.path!);
+      // Opening and closing a chat can be the first actions after reconnecting.
+      // A capture-free event registers the session without initializing memory.
+      await emit(harness, "session/event", session, {
+        type: "turn/start",
+        time: Date.now(),
+        data: {},
+      });
+      if (action === "turn/end") {
+        await emit(harness, "session/event", session, {
+          type: "turn/end",
+          time: Date.now(),
+          data: {},
+        });
+        await emit(harness, "session/flush", session);
+      } else {
+        await harness.plugin.runtime.dispose(session);
+      }
+      expect(harness.requestsFor(ovPath(sessionId, "/commit"))).toHaveLength(0);
+      const pending = await listPending(true);
+      expect(pending[0]?.filename).toBe(held);
+      expect(pending.map(({ entry }) => entry.type)).toEqual(
+        action === "dispose" ? ["addMessage", "commitSession"] : ["addMessage"],
+      );
+    },
+  );
+
+  it("keeps a session commit behind a message held by an overlapping session-start replay", async () => {
+    const { agent } = createFakeAgent({ sessionId: "resuming" });
+    const sessionId = ovId("earlier-chat");
+    let started!: () => void;
+    let release!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const proceed = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const delivered: string[] = [];
+    harness = await createHarness(
+      {},
+      {
+        fetchImpl: transport({
+          [ovPath(sessionId, "/messages")]: async () => {
+            started();
+            await proceed;
+            delivered.push("message");
+            return ok();
+          },
+          [ovPath(sessionId, "/commit")]: () => {
+            delivered.push("commit");
+            return ok();
+          },
+        }),
+      },
+    );
+    const now = Date.now();
+    await enqueue(
+      "addMessage",
+      sessionId,
+      { content: "last message" },
+      { createdAt: now },
+    );
+    await enqueue("commitSession", sessionId, {}, { createdAt: now + 1 });
+    const opening = harness.plugin.runtime.initialize(agent);
+    try {
+      await entered;
+      await harness.plugin.runtime.drainTick();
+      expect(delivered).toEqual([]);
+      expect(harness.requestsFor(ovPath(sessionId, "/commit"))).toHaveLength(0);
+    } finally {
+      release();
+      await opening;
+    }
+    expect(delivered).toEqual(["message", "commit"]);
+    expect(await pendingFiles()).toEqual([]);
+  });
   it("sends a queued write once the server recovers", async () => {
     let down = true;
     const sessionId = "dsh-drain";

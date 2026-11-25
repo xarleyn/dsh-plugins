@@ -54,8 +54,11 @@ afterEach(async () => {
 });
 
 /** Queue files as they are listed on disk (claimed `.processing` ones excluded). */
-export async function queueFiles(): Promise<string[]> {
-  return (await readdir(dir)).filter((name) => name.endsWith(".json"));
+export async function queueFiles(includeClaims = false): Promise<string[]> {
+  return (await readdir(dir, { recursive: true })).filter(
+    (name) =>
+      name.endsWith(".json") || (includeClaims && name.endsWith(".processing")),
+  );
 }
 
 export async function readEntry(filename: string): Promise<PendingEntry> {

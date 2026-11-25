@@ -11,8 +11,8 @@
  * `replayPending`'s closing `cleanStale()` enforces.
  */
 
-import { readdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { writeFile } from "node:fs/promises";
+import { basename, join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
@@ -43,9 +43,9 @@ describe("enqueue", () => {
     expect(result.ok).toBe(true);
     expect(result.deduped).toBeUndefined();
     expect(result.dedupKey).toMatch(/^[0-9a-f]{64}$/);
-    expect(result.path).toBe(`${result.dedupKey}_0.json`);
+    expect(basename(result.path!)).toBe(`${result.dedupKey}_0.json`);
 
-    expect(await readdir(dir)).toEqual([result.path]);
+    expect(await queueFiles(true)).toEqual([result.path]);
     expect(await readEntry(result.path!)).toEqual({
       type: "addMessage",
       sessionId: "dsh-fields",
@@ -138,7 +138,7 @@ describe("claims", () => {
     const claimed = await claimForReplay(filename);
     expect(claimed?.startsWith(filename.replace(/\.json$/, "."))).toBe(true);
     expect(claimed?.endsWith(".processing")).toBe(true);
-    expect(await readdir(dir)).toEqual([claimed]);
+    expect(await queueFiles(true)).toEqual([claimed]);
 
     // The original name is gone, and a claimed file is not claimable again.
     expect(await claimForReplay(filename)).toBeNull();
@@ -189,7 +189,7 @@ describe("incrementRetry", () => {
 
     expect(await incrementRetry(item!.filename, item!.entry)).toBe(true);
     expect(item!.entry.retries).toBe(1);
-    expect(await readdir(dir)).toEqual([
+    expect(await queueFiles(true)).toEqual([
       queued.path!.replace("_0.json", "_1.json"),
     ]);
 

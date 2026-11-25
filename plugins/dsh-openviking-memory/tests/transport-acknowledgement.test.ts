@@ -1,4 +1,4 @@
-import { readdir, utimes } from "node:fs/promises";
+import { utimes } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { OpenVikingClient } from "../src/api-client.js";
@@ -11,7 +11,7 @@ import {
   listPending,
   replayPending,
 } from "../src/openviking/pending-queue.js";
-import { dir, readEntry } from "./pending-queue.helpers.js";
+import { dir, queueFiles, readEntry } from "./pending-queue.helpers.js";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -64,7 +64,7 @@ describe("durable transport acknowledgement", () => {
     const claimed = await claimForReplay(queued.path!);
     expect(claimed).not.toBeNull();
     expect(await listPending()).toEqual([]);
-    expect(await readdir(dir)).toEqual([claimed]);
+    expect(await queueFiles(true)).toEqual([claimed]);
   });
 
   it("recovers an expired lease and keeps a late acknowledgement from deleting its successor", async () => {
@@ -81,6 +81,6 @@ describe("durable transport acknowledgement", () => {
     expect(await dequeue(first!)).toBe(false);
     const entry = await readEntry(second!);
     expect(await incrementRetry(first!, entry)).toBe(false);
-    expect(await readdir(dir)).toEqual([second]);
+    expect(await queueFiles(true)).toEqual([second]);
   });
 });

@@ -29,9 +29,9 @@ import { OpenVikingClient, traceIdOf } from "./api-client.js";
 import type { InjectionPlan, ResolvedConfig } from "./config.js";
 import { buildProfileBlock } from "./openviking/profile-inject.js";
 import {
-  dequeue,
-  enqueue,
   listPending,
+  queueSessionWrite,
+  readQueueSnapshot,
   replayPending,
   type PendingEntryType,
 } from "./openviking/pending-queue.js";
@@ -89,6 +89,7 @@ interface SessionState {
   lastRecallBlock: string;
   readonly toolNames: Map<string, string>;
   writes: Promise<void>;
+  writing: boolean;
   initializationRetryable: boolean;
   hasPendingWrites: boolean;
   pendingCreatedAt: number;
@@ -188,6 +189,7 @@ export class OpenVikingRuntime {
       lastRecallBlock: "",
       toolNames: new Map(),
       writes: Promise.resolve(),
+      writing: false,
       initializationRetryable: false,
       hasPendingWrites: false,
       pendingCreatedAt: 0,
@@ -302,6 +304,8 @@ export class OpenVikingRuntime {
     const health = await client.healthResult();
     if (!health.ok) {
       state.initializationRetryable = isRetryableFailure(health);
+      if (state.config.syncTurns && state.initializationRetryable)
+        await this.refreshPendingState(state);
       return state;
     }
     const ensured = await client.ensureSessionResult(
@@ -313,6 +317,8 @@ export class OpenVikingRuntime {
       !(ensured.status === 409 && ensured.error?.code === "ALREADY_EXISTS")
     ) {
       state.initializationRetryable = isRetryableFailure(ensured);
+      if (state.config.syncTurns && state.initializationRetryable)
+        await this.refreshPendingState(state);
       return state;
     }
     // Replay is a write, so it stays behind the same toggle: a backlog queued
@@ -443,27 +449,23 @@ export class OpenVikingRuntime {
     const payload = captureEvent(event, state.config, state.toolNames);
     if (!payload) return;
     this.enqueueWrite(state, async () => {
-      if (state.hasPendingWrites) {
-        await this.enqueuePendingMessage(state, payload);
+      if (!state.ready && !state.hasPendingWrites)
+        await this.ensureState(state);
+      if (
+        state.hasPendingWrites ||
+        (!state.ready && state.initializationRetryable)
+      ) {
+        await this.enqueuePending(state, "addMessage", payload);
         return;
       }
-      if (!state.ready && !(await this.ensureState(state)).ready) {
-        if (state.initializationRetryable) {
-          await this.enqueuePendingMessage(state, payload);
-        }
-        return;
-      }
-      if (state.hasPendingWrites) {
-        await this.enqueuePendingMessage(state, payload);
-        return;
-      }
+      if (!state.ready) return;
       const response = await state.client.addMessage(
         state.ovSessionId,
         payload,
         state.config.peerId,
       );
       if (isRetryableFailure(response)) {
-        await this.enqueuePendingMessage(state, payload);
+        await this.enqueuePending(state, "addMessage", payload);
       }
     });
   }
@@ -473,8 +475,9 @@ export class OpenVikingRuntime {
     const state = this.stateFor(session);
     if (!state.scoping.allowed || !state.config.syncTurns) return;
     this.enqueueWrite(state, async () => {
-      if (state.hasPendingWrites) return;
-      if (!state.ready && !(await this.ensureState(state)).ready) return;
+      if (!state.ready && !state.hasPendingWrites)
+        await this.ensureState(state);
+      if (!state.ready || state.hasPendingWrites) return;
       const metadata = await state.client.getSession(
         state.ovSessionId,
         state.config.peerId,
@@ -497,7 +500,7 @@ export class OpenVikingRuntime {
           : response.error?.message || response.error?.code,
       });
       if (isRetryableFailure(response)) {
-        await this.enqueueFinalCommit(state, {
+        await this.enqueuePending(state, "commitSession", {
           keep_recent_count: state.config.commitKeepRecentCount,
         });
       }
@@ -526,11 +529,13 @@ export class OpenVikingRuntime {
         const commitPayload = {
           keep_recent_count: state.config.commitKeepRecentCount,
         };
+        if (!state.ready && !state.hasPendingWrites)
+          await this.ensureState(state);
         if (state.hasPendingWrites) {
-          await this.enqueueFinalCommit(state, commitPayload);
+          await this.enqueuePending(state, "commitSession", commitPayload);
           return;
         }
-        if (!state.ready && !(await this.ensureState(state)).ready) return;
+        if (!state.ready) return;
         const response = await state.client.commitSession(
           state.ovSessionId,
           state.config.peerId,
@@ -547,7 +552,7 @@ export class OpenVikingRuntime {
           trace_id: traceIdOf(response.result) || response.traceId,
         });
         if (isRetryableFailure(response)) {
-          await this.enqueueFinalCommit(state, commitPayload);
+          await this.enqueuePending(state, "commitSession", commitPayload);
         }
       });
       try {
@@ -563,22 +568,29 @@ export class OpenVikingRuntime {
     state: SessionState,
     operation: () => Promise<void>,
   ): void {
-    state.writes = state.writes.then(operation).catch((error) =>
-      this.log("write_error", {
-        sessionId: state.ovSessionId,
-        error: error instanceof Error ? error.message : String(error),
-      }),
-    );
+    state.writing = true;
+    const writes = state.writes
+      .then(operation)
+      .catch((error) =>
+        this.log("write_error", {
+          sessionId: state.ovSessionId,
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      )
+      .finally(() => {
+        if (state.writes === writes) state.writing = false;
+      });
+    state.writes = writes;
   }
 
   private async enqueuePending(
     state: SessionState,
     type: PendingEntryType,
     payload: unknown,
-  ): Promise<{ ok: boolean; error?: string }> {
+  ): Promise<void> {
     const createdAt = Math.max(Date.now(), state.pendingCreatedAt + 1);
     state.pendingCreatedAt = createdAt;
-    const result = await enqueue(type, state.ovSessionId, payload, {
+    const result = await queueSessionWrite(type, state.ovSessionId, payload, {
       createdAt,
       // The identity this session's writes speak as, recorded with the entry so
       // a later replay — possibly in a process that never saw the session —
@@ -601,47 +613,25 @@ export class OpenVikingRuntime {
         error: result.error,
       });
     }
-    return result;
-  }
-
-  private async enqueueFinalCommit(
-    state: SessionState,
-    payload: unknown,
-  ): Promise<void> {
-    await this.removePendingCommits(state);
-    await this.enqueuePending(state, "commitSession", payload);
-  }
-
-  private async enqueuePendingMessage(
-    state: SessionState,
-    payload: unknown,
-  ): Promise<void> {
-    const result = await this.enqueuePending(state, "addMessage", payload);
-    if (result.ok) await this.removePendingCommits(state);
-  }
-
-  private async removePendingCommits(state: SessionState): Promise<void> {
-    const pending = await listPending();
-    for (const item of pending) {
-      if (
-        item.entry?.type === "commitSession" &&
-        item.entry.sessionId === state.ovSessionId
-      ) {
-        await dequeue(item.filename);
-      }
-    }
   }
 
   async refreshPendingState(state: SessionState): Promise<void> {
+    const snapshot = await readQueueSnapshot(true);
+    let latest;
+    for (const { entry } of snapshot.entries) {
+      if (entry.sessionId === state.ovSessionId) latest = entry.createdAt || 0;
+    }
+    this.applyPendingState(state, latest, snapshot.unsettled);
+  }
+
+  private applyPendingState(
+    state: SessionState,
+    latest: number | undefined,
+    unsettled: number,
+  ): void {
     const wasPending = state.hasPendingWrites;
-    const pending = (await listPending()).filter(
-      (item) => item.entry?.sessionId === state.ovSessionId,
-    );
-    state.hasPendingWrites = pending.length > 0;
-    state.pendingCreatedAt = pending.reduce(
-      (latest, item) => Math.max(latest, Number(item.entry?.createdAt || 0)),
-      state.pendingCreatedAt,
-    );
+    state.hasPendingWrites = latest !== undefined || unsettled > 0;
+    state.pendingCreatedAt = Math.max(state.pendingCreatedAt, latest ?? 0);
     // Only the flip back to direct sends is logged: the recovery moment that
     // proves the drainer worked, once per outage.
     if (wasPending && !state.hasPendingWrites) {
@@ -708,8 +698,24 @@ export class OpenVikingRuntime {
           await this.replayPendingQueue({ consumeRetries: false });
         }
       }
-      for (const state of this.states.values()) {
-        await this.refreshPendingState(state);
+      // Refresh every latch from one cut. A capture already writing, or one
+      // submitted while that cut is being read, owns a newer latch decision.
+      const states = [...this.states.values()]
+        .filter((state) => !state.writing)
+        .map((state) => ({ state, writes: state.writes }));
+      if (states.length) {
+        const { entries, unsettled } = await readQueueSnapshot(true);
+        const latest = new Map(
+          entries.map(({ entry }) => [entry.sessionId, entry.createdAt || 0]),
+        );
+        for (const { state, writes } of states) {
+          if (state.writes === writes)
+            this.applyPendingState(
+              state,
+              latest.get(state.ovSessionId),
+              unsettled,
+            );
+        }
       }
     } finally {
       this.drainRunning = false;

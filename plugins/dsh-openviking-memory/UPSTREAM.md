@@ -91,6 +91,9 @@ manual-only OpenViking operation:
   a replay can only be attributed through a session that is live in this process.
   A sync has to keep both, or per-account deployments stop replaying their
   backlog.
+- The fork indexes new queue entries by message key and session, reads older flat
+  files in place, and includes active claims when ordering overlapping replays.
+  Preserve these disk-layout and ordering rules when syncing the queue module.
 
 This document is the record of *what* changed; `docs/upstream-sync.md` describes
 how to bring later upstream revisions in.

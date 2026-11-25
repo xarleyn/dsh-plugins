@@ -71,7 +71,9 @@ export function transport(
 export async function pendingFiles(): Promise<string[]> {
   const dir = process.env.OPENVIKING_PENDING_DIR;
   if (!dir) throw new Error("OPENVIKING_PENDING_DIR is not set");
-  return (await readdir(dir)).filter((name) => name.endsWith(".json"));
+  return (await readdir(dir, { recursive: true })).filter((name) =>
+    name.endsWith(".json"),
+  );
 }
 
 export function captureEvent(text: string): {

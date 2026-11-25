@@ -32,19 +32,27 @@
 
 import {
   mkdir,
-  readdir,
   readFile,
   rename,
   writeFile,
   unlink,
   stat,
   chmod,
+  rmdir,
+  utimes,
 } from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { isRetryableFailure } from "./retryable.js";
 import type { RetryableResult } from "./retryable.js";
+import {
+  allQueueFiles,
+  commitBucket,
+  entryBucket,
+  legacyIndex,
+  names,
+} from "./pending-layout.js";
 
 const DEFAULT_MAX_RETRIES = 3;
 const DEFAULT_TTL_DAYS = 7;
@@ -274,19 +282,13 @@ async function findExistingByDedupKey(
 ): Promise<{ readonly filename: string; readonly entry: PendingEntry } | null> {
   let files: string[];
   try {
-    files = await readdir(dir);
+    files = await names(dir);
   } catch {
     return null;
   }
 
-  // Fast path: filenames are `${dedupKey}_${retries}.json` (or
-  // .processing). `dedupKey` is a sha256 hex produced by makeDedupKey
-  // (no underscores), so `${dedupKey}_` is a unique prefix per key.
-  // Filter on prefix BEFORE opening the file to avoid readFile +
-  // JSON.parse on every entry in the directory on every enqueue call —
-  // the previous implementation was O(n²) in queue size. Worst case here
-  // is O(n) readdir entries, but only the (typically single) prefix
-  // match actually gets opened and parsed.
+  // Modern messages have a bucket per digest. An indexed hit on an old flat
+  // entry or a session's commits can also reach here: only open its own file.
   const prefix = `${dedupKey}_`;
 
   for (const f of files) {
@@ -302,14 +304,10 @@ async function findExistingByDedupKey(
   return null;
 }
 
-async function recoverStaleProcessing(dir: string): Promise<number> {
-  let files: string[];
-  try {
-    files = await readdir(dir);
-  } catch {
-    return 0;
-  }
-
+async function recoverStaleProcessing(
+  dir: string,
+  files: readonly string[],
+): Promise<number> {
   const now = Date.now();
   let recovered = 0;
   for (const f of files) {
@@ -318,9 +316,8 @@ async function recoverStaleProcessing(dir: string): Promise<number> {
     try {
       const lease = LEASE_SUFFIX.exec(f);
       // Retain recovery support for pre-lease .processing files after upgrade.
-      const claimedAt =
-        lease === null ? (await stat(from)).mtimeMs : Number(lease[1]);
-      if (now - claimedAt < PROCESSING_STALE_MS) continue;
+      if (lease && now - Number(lease[1]) < PROCESSING_STALE_MS) continue;
+      if (now - (await stat(from)).mtimeMs < PROCESSING_STALE_MS) continue;
       const to = join(dir, pendingFromProcessingFilename(f));
       await rename(from, to);
       recovered++;
@@ -344,14 +341,26 @@ export async function enqueue(
   type: PendingEntryType,
   sessionId: string,
   payload: unknown,
-  options: { readonly createdAt?: number; readonly user?: string } = {},
+  options: {
+    readonly createdAt?: number;
+    readonly user?: string;
+    readonly finalCommit?: boolean;
+  } = {},
 ): Promise<EnqueueResult> {
   const dir = getPendingDir();
   const now = Number.isFinite(options.createdAt)
     ? (options.createdAt as number)
     : Date.now();
-  const dedupKey = makeDedupKey(type, sessionId, payload);
-  const filename = pendingFilename(dedupKey, 0);
+  // A final commit covers all messages preceding this request. An earlier
+  // commit already in flight may have the same body but a different boundary.
+  const dedupKey = makeDedupKey(
+    type,
+    sessionId,
+    options.finalCommit ? [payload, randomUUID()] : payload,
+  );
+  const bucket = entryBucket(type, sessionId, dedupKey);
+  const bucketDir = join(dir, bucket);
+  const filename = join(bucket, pendingFilename(dedupKey, 0));
   const entry: PendingEntry = {
     type,
     sessionId,
@@ -364,6 +373,12 @@ export async function enqueue(
 
   try {
     await ensurePendingDir(dir);
+    if ((await legacyIndex(dir)).keys.has(dedupKey)) {
+      const previous = await findExistingByDedupKey(dir, dedupKey);
+      if (previous)
+        return { ok: true, path: previous.filename, deduped: true, dedupKey };
+    }
+    await mkdir(bucketDir, { recursive: true, mode: PENDING_DIR_MODE });
   } catch (err) {
     return {
       ok: false,
@@ -372,17 +387,31 @@ export async function enqueue(
     };
   }
 
-  const existing = await findExistingByDedupKey(dir, dedupKey);
+  const existing = await findExistingByDedupKey(bucketDir, dedupKey);
   if (existing) {
-    return { ok: true, path: existing.filename, deduped: true, dedupKey };
+    return {
+      ok: true,
+      path: join(bucket, existing.filename),
+      deduped: true,
+      dedupKey,
+    };
   }
 
   try {
-    await writeFile(join(dir, filename), JSON.stringify(entry), {
-      encoding: "utf-8",
-      flag: "wx",
-      mode: PENDING_FILE_MODE,
-    });
+    const write = () =>
+      writeFile(join(dir, filename), JSON.stringify(entry), {
+        encoding: "utf-8",
+        flag: "wx",
+        mode: PENDING_FILE_MODE,
+      });
+    try {
+      await write();
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      // The preceding entry in the same bucket was acknowledged concurrently.
+      await mkdir(bucketDir, { recursive: true, mode: PENDING_DIR_MODE });
+      await write();
+    }
     return { ok: true, path: filename, dedupKey };
   } catch (err) {
     if ((err as { code?: string } | null)?.code !== "EEXIST") {
@@ -394,9 +423,14 @@ export async function enqueue(
     }
   }
 
-  const duplicate = await findExistingByDedupKey(dir, dedupKey);
+  const duplicate = await findExistingByDedupKey(bucketDir, dedupKey);
   if (duplicate) {
-    return { ok: true, path: duplicate.filename, deduped: true, dedupKey };
+    return {
+      ok: true,
+      path: join(bucket, duplicate.filename),
+      deduped: true,
+      dedupKey,
+    };
   }
   return {
     ok: false,
@@ -409,29 +443,106 @@ export async function enqueue(
  * List all pending queue entries.
  * Returns array of { filename, entry } sorted by createdAt ascending.
  */
-export async function listPending(): Promise<PendingListItem[]> {
+export async function readQueueSnapshot(
+  includeProcessing = false,
+): Promise<{ entries: PendingListItem[]; unsettled: number }> {
   const dir = getPendingDir();
-  let files: string[];
-  try {
-    await recoverStaleProcessing(dir);
-    files = await readdir(dir);
-  } catch {
-    return [];
+  let unsettled = 0;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    let files = await allQueueFiles(dir);
+    if (await recoverStaleProcessing(dir, files))
+      files = await allQueueFiles(dir);
+    const entries: PendingListItem[] = [];
+    let changed = false;
+    for (const filename of files) {
+      if (!includeProcessing && !filename.endsWith(".json")) continue;
+      try {
+        entries.push({ filename, entry: await readEntry(dir, filename) });
+      } catch (error) {
+        // A file which became a claim between listing and reading must not
+        // disappear from an ordering snapshot and let its successor through.
+        if (
+          includeProcessing &&
+          (error as NodeJS.ErrnoException).code === "ENOENT"
+        ) {
+          changed = true;
+          break;
+        }
+        // Malformed old entries have always been ignored.
+      }
+    }
+    if (changed) {
+      unsettled = files.length;
+      continue;
+    }
+    entries.sort(
+      (a, b) =>
+        (a.entry.createdAt || 0) - (b.entry.createdAt || 0) ||
+        Number(a.entry.type === "commitSession") -
+          Number(b.entry.type === "commitSession") ||
+        a.filename.localeCompare(b.filename),
+    );
+    return { entries, unsettled: 0 };
   }
+  // Other workers keep moving entries. The next tick can retry without
+  // holding up session creation or assuming that there is no pending work.
+  return { entries: [], unsettled };
+}
 
-  const entries: PendingListItem[] = [];
-  for (const f of files) {
-    if (!f.endsWith(".json")) continue;
-    try {
-      const entry = await readEntry(dir, f);
-      entries.push({ filename: f, entry });
-    } catch {
-      // Corrupted file - skip.
+export async function listPending(
+  includeProcessing = false,
+): Promise<PendingListItem[]> {
+  return (await readQueueSnapshot(includeProcessing)).entries;
+}
+
+/** Queue files which were final commits at the time this writer observed them. */
+async function pendingCommitFiles(sessionId: string): Promise<string[]> {
+  const dir = getPendingDir();
+  const bucket = commitBucket(sessionId);
+  const local = (await names(join(dir, bucket))).map((name) =>
+    join(bucket, name),
+  );
+  try {
+    const old = (await legacyIndex(dir)).commits.get(sessionId) ?? [];
+    return [...old, ...local].filter((filename) => filename.endsWith(".json"));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
+}
+
+/** A new message supersedes earlier queued commits; a final commit replaces
+ * their boundary only once its own entry is durable. Never remove an active
+ * claim or let two concurrent finalizers remove one another's successor. */
+export async function queueSessionWrite(
+  type: PendingEntryType,
+  sessionId: string,
+  payload: unknown,
+  options: { readonly createdAt: number; readonly user?: string },
+): Promise<EnqueueResult> {
+  const result = await enqueue(type, sessionId, payload, {
+    ...options,
+    finalCommit: type === "commitSession",
+  });
+  if (!result.ok || !result.path) return result;
+  for (const filename of await pendingCommitFiles(sessionId)) {
+    if (filename === result.path) continue;
+    const entry = await readEntry(getPendingDir(), filename).catch(
+      () => undefined,
+    );
+    if (!entry) continue; // Claimed or acknowledged by another worker.
+    if (entry.createdAt < options.createdAt) {
+      await dequeue(filename);
+    } else if (type === "commitSession") {
+      // At the same millisecond messages precede the final commit. Between
+      // simultaneous commits, all writers must retain the same one.
+      const older =
+        entry.createdAt === options.createdAt &&
+        entry.dedupKey < result.dedupKey;
+      await dequeue(older ? filename : result.path);
     }
   }
-
-  entries.sort((a, b) => (a.entry.createdAt || 0) - (b.entry.createdAt || 0));
-  return entries;
+  return result;
 }
 
 /**
@@ -476,6 +587,8 @@ export async function dequeue(filename: string): Promise<boolean> {
   const dir = getPendingDir();
   try {
     await unlink(join(dir, filename));
+    if (dirname(filename) !== ".")
+      await rmdir(join(dir, dirname(filename))).catch(() => {});
     return true;
   } catch {
     return false;
@@ -503,7 +616,7 @@ export async function incrementRetry(
 
   if (entry.retries > maxRetries) {
     try {
-      await unlink(join(dir, owned));
+      await dequeue(owned);
     } catch {
       // Best effort.
     }
@@ -540,10 +653,7 @@ export async function cleanStale(): Promise<number> {
 
   for (const { filename, entry } of pending) {
     const age = now - (entry.createdAt || 0);
-    if (age > ttlMs) {
-      await dequeue(filename);
-      cleaned++;
-    }
+    if (age > ttlMs && (await dequeue(filename))) cleaned++;
   }
   return cleaned;
 }
@@ -567,10 +677,9 @@ export async function replayPending(
   options: ReplayOptions = {},
 ): Promise<ReplaySummary> {
   const consumeRetries = options.consumeRetries !== false;
-  const pending = await listPending();
-
+  const { entries: pending, unsettled } = await readQueueSnapshot(true);
   if (pending.length === 0) {
-    return { replayed: 0, failed: 0, skipped: 0, deferred: 0 };
+    return { replayed: 0, failed: 0, skipped: 0, deferred: unsettled };
   }
 
   const replayLimit = getReplayLimit();
@@ -585,27 +694,43 @@ export async function replayPending(
   let skipped = 0;
   let deferred = 0;
   let processed = 0;
+  const busySessions = new Set(
+    pending
+      .filter(({ filename }) => filename.endsWith(".processing"))
+      .map(({ entry }) => entry.sessionId),
+  );
+  const discardClaim = async (filename: string, sessionId: string) => {
+    const removed = await dequeue(filename);
+    if (!removed) busySessions.add(sessionId);
+    return removed;
+  };
 
   for (const { filename, entry } of pending) {
-    if (processed >= replayLimit) {
+    if (processed >= replayLimit || busySessions.has(entry.sessionId)) {
       deferred++;
-      continue;
-    }
-
-    if ((entry.retries || 0) >= getMaxRetries()) {
-      await dequeue(filename);
-      skipped++;
       continue;
     }
 
     const claimedFilename = await claimForReplay(filename);
     if (!claimedFilename) {
+      busySessions.add(entry.sessionId);
+      skipped++;
+      continue;
+    }
+    if ((entry.retries || 0) >= getMaxRetries()) {
+      await discardClaim(claimedFilename, entry.sessionId);
       skipped++;
       continue;
     }
     processed++;
 
     let res: PendingFetchResult | undefined;
+    const claimedPath = join(getPendingDir(), claimedFilename);
+    const renewal = setInterval(() => {
+      const now = new Date();
+      void utimes(claimedPath, now, now).catch(() => {});
+    }, PROCESSING_STALE_MS / 3);
+    renewal.unref();
     try {
       const encodedSid = encodeURIComponent(entry.sessionId);
       const routing = routingOf(entry);
@@ -628,12 +753,14 @@ export async function replayPending(
           routing,
         );
       } else {
-        await dequeue(claimedFilename);
+        await discardClaim(claimedFilename, entry.sessionId);
         skipped++;
         continue;
       }
     } catch {
       res = { ok: false };
+    } finally {
+      clearInterval(renewal);
     }
 
     if (entry.type === "commitSession") {
@@ -649,16 +776,18 @@ export async function replayPending(
     }
 
     if (res?.ok) {
-      await dequeue(claimedFilename);
-      replayed++;
+      if (await discardClaim(claimedFilename, entry.sessionId)) replayed++;
+      else skipped++;
     } else if (!isRetryableReplayFailure(res)) {
-      await dequeue(claimedFilename);
+      await discardClaim(claimedFilename, entry.sessionId);
       skipped++;
     } else {
       if (consumeRetries) {
-        await incrementRetry(claimedFilename, entry);
+        if (!(await incrementRetry(claimedFilename, entry)))
+          busySessions.add(entry.sessionId);
       } else {
         const released = await releaseClaim(claimedFilename);
+        if (!released) busySessions.add(entry.sessionId);
         log("pending-queue", {
           action: released ? "replay-deferred" : "release-failed",
           sessionId: entry.sessionId,
@@ -670,10 +799,7 @@ export async function replayPending(
         });
       }
       failed++;
-      if (entry.type === "addMessage") {
-        deferred += Math.max(0, pending.length - processed);
-        break;
-      }
+      if (entry.type === "addMessage") busySessions.add(entry.sessionId);
     }
   }
 
