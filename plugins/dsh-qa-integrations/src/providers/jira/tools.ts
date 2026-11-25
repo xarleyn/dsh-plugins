@@ -469,7 +469,7 @@ export function createJiraTools(
         startAt: {
           type: "number",
           description:
-            "Offset to start at, from a previous answer's pagination.startAt.",
+            "For the next page, pass pagination.nextStartAt from the previous answer.",
         },
         limit: {
           type: "number",

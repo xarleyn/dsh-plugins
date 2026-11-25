@@ -469,6 +469,14 @@ export class JiraProvider implements IntegrationProvider {
             site,
             include,
             fieldNames,
+            startAt:
+              typeof query["startAt"] === "number"
+                ? query["startAt"]
+                : undefined,
+            maxResults:
+              typeof query["maxResults"] === "number"
+                ? query["maxResults"]
+                : undefined,
             issueKey:
               typeof input["issueKey"] === "string"
                 ? input["issueKey"]

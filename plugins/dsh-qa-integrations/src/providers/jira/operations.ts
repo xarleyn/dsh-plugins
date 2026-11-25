@@ -510,6 +510,9 @@ export interface JiraProjectionContext {
   readonly fieldNames?: ReadonlyMap<string, string> | undefined;
   /** The issue a one-issue operation was asked about, when Jira omits it. */
   readonly issueKey?: string | undefined;
+  /** Offset actually sent, for pages that omit their start position. */
+  readonly startAt?: number | undefined;
+  readonly maxResults?: number | undefined;
 }
 
 export type JiraProjection = (
@@ -673,7 +676,7 @@ export const JIRA_PROJECTIONS: Readonly<Record<string, JiraProjection>> =
       const source = recordOf(data);
       const issues = arrayOf(source, "issues");
       const total = numberOf(source, "total");
-      const startAt = numberOf(source, "startAt") ?? 0;
+      const startAt = numberOf(source, "startAt") ?? context.startAt ?? 0;
       // A product that pages a search by offset answers with the size of the
       // whole result and expects the next page at a position, so the cursor is
       // the position after the rows that actually arrived. The upstream count
@@ -694,7 +697,7 @@ export const JIRA_PROJECTIONS: Readonly<Record<string, JiraProjection>> =
           // a narrower question.
           nextCursor:
             stringOf(source, "nextPageToken") ??
-            (total !== undefined && startAt + upstream < total
+            (total !== undefined && upstream > 0 && startAt + upstream < total
               ? String(startAt + upstream)
               : undefined),
         }),
@@ -705,15 +708,24 @@ export const JIRA_PROJECTIONS: Readonly<Record<string, JiraProjection>> =
       const source = recordOf(data);
       const comments = arrayOf(source, "comments");
       const total = numberOf(source, "total");
-      const startAt = numberOf(source, "startAt") ?? 0;
+      const startAt = numberOf(source, "startAt") ?? context.startAt ?? 0;
+      const nextStartAt = startAt + comments.length;
+      const pageSize = numberOf(source, "maxResults") ?? context.maxResults;
+      // Some deployments omit the total. A full page can be continued once;
+      // an empty page always terminates, even if the reported total is stale.
+      const hasMore =
+        comments.length > 0 &&
+        (total === undefined
+          ? pageSize !== undefined && comments.length >= pageSize
+          : nextStartAt < total);
       return compact({
         items: comments.map((item) => commentSummary(item, context.flags)),
         pagination: compact({
           startAt,
           returned: comments.length,
           total,
-          hasMore:
-            total === undefined ? undefined : startAt + comments.length < total,
+          hasMore,
+          nextStartAt: hasMore ? nextStartAt : undefined,
         }),
       });
     },

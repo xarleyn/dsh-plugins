@@ -10,6 +10,8 @@
  * transport caps the body it reads), so it can build the whole text and cut it
  * once, instead of threading a budget through every recursion.
  */
+import { adfDate } from "../shared/adf-date.js";
+
 export interface AdfText {
   readonly text: string;
   readonly truncated: boolean;
@@ -79,20 +81,17 @@ function inline(value: unknown): string {
   if (type === "hardBreak") return "\n";
   if (type === "mention") {
     const source = attrs(current);
-    return `@${fieldText(source, "text") || fieldText(source, "id")}`;
+    const label = fieldText(source, "text") || fieldText(source, "id");
+    return label.startsWith("@") ? label : `@${label}`;
   }
   if (type === "emoji") {
     const source = attrs(current);
     const shortName = fieldText(source, "shortName");
-    return shortName === "" ? fieldText(source, "text") : `:${shortName}:`;
+    return shortName === ""
+      ? fieldText(source, "text")
+      : `:${shortName.replace(/^:|:$/gu, "")}:`;
   }
-  if (type === "date") {
-    const stamp = attrs(current)["timestamp"];
-    const parsed = typeof stamp === "number" ? new Date(stamp) : undefined;
-    return parsed === undefined || Number.isNaN(parsed.getTime())
-      ? "[date]"
-      : parsed.toISOString().slice(0, 10);
-  }
+  if (type === "date") return adfDate(attrs(current)["timestamp"]);
   if (type === "status") return `\`${fieldText(attrs(current), "text")}\``;
   if (type === "inlineCard" || type === "blockCard" || type === "embedCard") {
     // The URL is shown as text; nothing here is ever fetched.

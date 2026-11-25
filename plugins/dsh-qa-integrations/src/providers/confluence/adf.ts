@@ -9,6 +9,8 @@
  * lets page content choose what happens next.
  */
 
+import { adfDate } from "../shared/adf-date.js";
+
 /** A node deeper than this is not walked; the wrapper is dropped instead. */
 const MAX_DEPTH = 64;
 
@@ -149,7 +151,7 @@ function inline(node: Node, depth: number): string {
   if (type === "inlineExtension" || type === "extension") {
     return macroPlaceholder(node);
   }
-  if (type === "date") return fieldText(attrs(node)["timestamp"]);
+  if (type === "date") return adfDate(attrs(node)["timestamp"]);
   // Everything else at text level is either unknown or a block that ended up
   // here; rendering its children keeps the words and loses only the wrapper.
   return inlineChildren(node, depth);

@@ -216,6 +216,18 @@ describe("Jira Server / Data Center reads", () => {
     expect(calls[0]?.url.searchParams.get("startAt")).toBe("20");
   });
 
+  it("ends an empty search page even when the index still reports more issues", async () => {
+    const { fetcher } = dataCenter(() => ({ json: { issues: [], total: 45 } }));
+    const provider = dcProviderFor(fetcher);
+    const result = await provider.execute(
+      { credential: dcCredentialFor(provider) },
+      "issues.search",
+      { projectKeys: ["PROJ"], cursor: "20" },
+    );
+    expect(result).toMatchObject({ pagination: { returned: 0, startAt: 20 } });
+    expect(result).not.toHaveProperty("pagination.nextCursor");
+  });
+
   it("refuses a cursor this product could not have minted", async () => {
     const { fetcher } = dataCenter(() => undefined);
     const provider = dcProviderFor(fetcher);

@@ -1,7 +1,51 @@
 import { adfToText, bodyText } from "../../src/providers/jira/adf.js";
 import { customFieldValue } from "../../src/providers/jira/operations.js";
+import { adfToText as confluenceText } from "../../src/providers/confluence/adf.js";
 
 describe("atlassian document format", () => {
+  it.each([
+    ["1582152559", "2020-02-19"],
+    ["1582152559000", "2020-02-19"],
+    [1582152559000, "2020-02-19"],
+    ["946684800", "2000-01-01"],
+    ["946684800000", "2000-01-01"],
+    [946684800, "1970-01-11"],
+    ["-2208988800", "1900-01-01"],
+    ["0", "1970-01-01"],
+    ["bogus", "[date]"],
+  ])(
+    "renders %s as the UTC calendar date %s in both products",
+    (timestamp, expected) => {
+      const doc = {
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [{ type: "date", attrs: { timestamp } }],
+          },
+        ],
+      };
+      expect(adfToText(doc, 100).text).toBe(expected);
+      expect(confluenceText(doc)).toBe(expected);
+    },
+  );
+
+  it("preserves the punctuation already supplied by Jira for mentions and emoji", () => {
+    const doc = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            { type: "mention", attrs: { id: "demo", text: "@Demo" } },
+            { type: "text", text: " " },
+            { type: "emoji", attrs: { shortName: ":grinning:" } },
+          ],
+        },
+      ],
+    };
+    expect(adfToText(doc, 100).text).toBe("@Demo :grinning:");
+  });
   it("renders the structure the model needs to read", () => {
     const doc = {
       type: "doc",
