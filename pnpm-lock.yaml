@@ -2509,6 +2509,9 @@ importers:
       eslint:
         specifier: catalog:tooling
         version: 10.9.1
+      jsdom:
+        specifier: catalog:tooling
+        version: 26.1.0
       react:
         specifier: catalog:frontend-dev
         version: 18.3.1

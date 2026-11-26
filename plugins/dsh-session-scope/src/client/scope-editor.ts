@@ -47,6 +47,16 @@ export function ScopeEditor(props: any) {
   });
   const snap = state[0];
   const setSnap = state[1];
+  const saveTimer = React.useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
+  React.useEffect(
+    () => () => {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = undefined;
+    },
+    [],
+  );
   const patch = function (part: any) {
     setSnap(function (prev: any) {
       return Object.assign({}, prev, part);
@@ -114,119 +124,73 @@ export function ScopeEditor(props: any) {
     [snap.root, snap.retryToken, props.workspaceRoot, props.projectedRoot],
   );
 
-  // Load the first level when the root is known.
+  const [navigation, setNavigation] = React.useState<{ path: string | null }>({
+    path: null,
+  });
+
+  // Only the most recent directory request may update the visible listing.
   React.useEffect(
     function () {
-      let cancelled = false;
-      let timer: any = null;
-      if (snap.root === null || snap.path !== null) return;
-      (async function () {
-        patch({
-          loading: true,
-          error: null,
-          phase: L("正在加载目录…", "Loading directories…"),
-        });
-        timer = setTimeout(function () {
-          if (cancelled || snap.path !== null) return;
-          patch({
-            loading: false,
+      if (snap.root === null) return;
+      const path = navigation.path ?? snap.root;
+      let active = true;
+      const settle = (result: Record<string, unknown>) => {
+        if (!active) return;
+        active = false;
+        clearTimeout(timer);
+        patch({ loading: false, phase: null, ...result });
+      };
+      const timer = setTimeout(
+        () =>
+          settle({
             error: L(
               "加载目录超时 — 请重试",
               "loading the directory timed out — please retry",
             ),
-            phase: null,
-          });
-        }, 12000);
-        const outcome = await listLevel(props.sessionId, snap.root);
-        if (cancelled) return;
-        if (timer !== null) {
-          clearTimeout(timer);
-          timer = null;
-        }
-        if (!outcome.ok) {
-          patch({ loading: false, error: outcome.error, phase: null });
-          return;
-        }
-        patch({
-          loading: false,
-          path: outcome.value.path,
-          listing: outcome.value,
-          source: outcome.source,
-          phase: null,
-        });
-      })();
-      return function () {
-        cancelled = true;
-        if (timer !== null) clearTimeout(timer);
+          }),
+        12000,
+      );
+      patch({
+        loading: true,
+        error: null,
+        phase: L("正在加载目录…", "Loading directories…"),
+      });
+      void listLevel(props.sessionId, path).then(
+        (outcome) =>
+          settle(
+            outcome.ok
+              ? {
+                  path: outcome.value.path,
+                  listing: outcome.value,
+                  source: outcome.source,
+                }
+              : { error: outcome.error },
+          ),
+        (error: unknown) =>
+          settle({
+            error:
+              L("加载失败：", "load failed: ") +
+              (error instanceof Error ? error.message : String(error)),
+          }),
+      );
+      return () => {
+        active = false;
+        clearTimeout(timer);
       };
     },
-    [snap.root, snap.path],
+    [snap.root, navigation, props.sessionId],
   );
 
-  // Retry from scratch after a failure.
   function retry() {
-    patch({
-      root: null,
-      path: null,
-      listing: null,
-      loading: false,
-      error: null,
-      phase: L("正在解析工作区…", "Resolving workspace…"),
-      retryToken: snap.retryToken + 1,
-    });
+    if (snap.root !== null) {
+      setNavigation({ path: navigation.path });
+      return;
+    }
+    patch({ error: null, retryToken: snap.retryToken + 1 });
   }
 
-  // Navigate into a directory.
   function enter(path: string) {
-    patch({
-      loading: true,
-      error: null,
-      phase: L("正在加载目录…", "Loading directories…"),
-    });
-    let settled = false;
-    const timer = setTimeout(function () {
-      if (settled) return;
-      settled = true;
-      patch({
-        loading: false,
-        error: L(
-          "加载目录超时 — 请重试",
-          "loading the directory timed out — please retry",
-        ),
-        phase: null,
-      });
-    }, 12000);
-    listLevel(props.sessionId, path).then(
-      function (outcome) {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        if (!outcome.ok) {
-          patch({ loading: false, error: outcome.error, phase: null });
-          return;
-        }
-        patch({
-          loading: false,
-          path: outcome.value.path,
-          listing: outcome.value,
-          source: outcome.source,
-          phase: null,
-        });
-      },
-      function (err) {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        console.error("[session-scope] directory listing failed:", err);
-        patch({
-          loading: false,
-          error:
-            L("加载目录失败：", "failed to load the directory: ") +
-            (err instanceof Error ? err.message : String(err)),
-          phase: null,
-        });
-      },
-    );
+    setNavigation({ path });
   }
 
   // Persist the whole pending draft. Called once from the Done button,
@@ -234,6 +198,7 @@ export function ScopeEditor(props: any) {
   // and a rejection handler both settle the flag and surface a visible
   // error, keeping the modal open with the draft intact.
   function save(mode: string, draft: string[]) {
+    if (saveTimer.current !== undefined) return;
     const effectiveMode =
       snap.root !== null && draft.indexOf(snap.root) !== -1 ? "full" : mode;
     const effectiveRoots =
@@ -247,24 +212,27 @@ export function ScopeEditor(props: any) {
       return;
     }
     patch({ saving: true, error: null });
-    let settled = false;
     const timer = setTimeout(function () {
-      if (settled) return;
-      settled = true;
+      saveTimer.current = undefined;
       patch({
         saving: false,
         error: L("保存超时 — 请重试", "saving timed out — please retry"),
       });
     }, 12000);
+    saveTimer.current = timer;
+    function settle(): boolean {
+      if (saveTimer.current !== timer) return false;
+      clearTimeout(timer);
+      saveTimer.current = undefined;
+      return true;
+    }
     const command =
       effectiveMode === "full"
         ? "/scope full"
         : "/scope " + effectiveMode + " " + JSON.stringify(draft);
     runCommand(props.sessionId, command).then(
       function (outcome) {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
+        if (!settle()) return;
         if (!outcome.ok) {
           patch({ saving: false, error: outcome.error });
           return;
@@ -273,9 +241,7 @@ export function ScopeEditor(props: any) {
         props.onClose();
       },
       function (err) {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
+        if (!settle()) return;
         const message = err instanceof Error ? err.message : String(err);
         console.error("[session-scope] save command failed:", err);
         patch({

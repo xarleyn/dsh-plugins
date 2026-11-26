@@ -288,6 +288,7 @@ function apply(ctx: any): () => void {
         : (!blank || heroChecked) && button,
       open &&
         React.createElement(ScopeEditor, {
+          key: props.sessionId,
           sessionId: props.sessionId,
           workspaceRoot: props.workspaceRoot,
           projectedRoot: projectedRoot,

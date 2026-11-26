@@ -157,6 +157,7 @@
     "@yadsh/dsh-plugin-scripts": "workspace:^",
     "@yadsh/dsh-test-kit": "workspace:^",
     "eslint": "catalog:tooling",
+    "jsdom": "catalog:tooling",
     "react": "catalog:frontend-dev",
     "react-dom": "catalog:frontend-dev",
     "tsdown": "catalog:tooling",
