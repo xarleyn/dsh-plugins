@@ -195,7 +195,8 @@ export function parseAttachmentCollection(
     readonly maxAttachments: number;
   },
 ): AttachmentCollection {
-  const results = asRecord(data)?.results;
+  const collection = asRecord(data);
+  const results = collection?.results;
   if (!Array.isArray(results)) return { entries: [], truncated: false };
   const entries: AttachmentEntry[] = [];
   for (const item of results) {
@@ -219,7 +220,10 @@ export function parseAttachmentCollection(
       ),
     });
   }
-  const truncated = entries.length > context.maxAttachments;
+  const next = asRecord(collection?._links)?.next;
+  const truncated =
+    entries.length > context.maxAttachments ||
+    (typeof next === "string" && next.trim().length > 0);
   return {
     entries: truncated ? entries.slice(0, context.maxAttachments) : entries,
     truncated,

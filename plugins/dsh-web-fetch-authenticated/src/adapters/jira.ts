@@ -9,6 +9,7 @@
  * @module adapters/jira
  */
 
+import { adfDate } from "@yadsh/dsh-plugin-kit/adf";
 import type { ResolvedAdapter, ResolvedRule } from "../types.js";
 import * as errors from "../errors.js";
 import type { ResolvedAuthSecrets } from "../auth/index.js";
@@ -509,6 +510,8 @@ interface AdfNode {
         readonly language?: unknown;
         readonly url?: unknown;
         readonly text?: unknown;
+        readonly shortName?: unknown;
+        readonly timestamp?: unknown;
       }
     | undefined;
   readonly marks?:
@@ -673,11 +676,23 @@ function adfInline(nodes: readonly AdfNode[]): string {
       continue;
     }
     if (node.type === "mention") {
-      out += `@${typeof node.attrs?.text === "string" ? node.attrs.text : "user"}`;
+      const label =
+        typeof node.attrs?.text === "string" ? node.attrs.text : "user";
+      out += label.startsWith("@") ? label : "@" + label;
       continue;
     }
     if (node.type === "emoji") {
-      out += typeof node.attrs?.text === "string" ? node.attrs.text : ":emoji:";
+      const name = node.attrs?.shortName;
+      out +=
+        typeof node.attrs?.text === "string" && node.attrs.text !== ""
+          ? node.attrs.text
+          : typeof name === "string" && name !== ""
+            ? ":" + name.replace(/^:|:$/gu, "") + ":"
+            : ":emoji:";
+      continue;
+    }
+    if (node.type === "date") {
+      out += adfDate(node.attrs?.timestamp);
       continue;
     }
     if (node.type === "text") {

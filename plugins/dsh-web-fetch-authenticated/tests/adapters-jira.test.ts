@@ -102,6 +102,18 @@ describe("jira wiki markup → markdown", () => {
 });
 
 describe("jira ADF → markdown (Cloud bodies)", () => {
+  test("preserves native mentions, named emoji and calendar dates in the fetched page", () => {
+    const content = [
+      { type: "mention", attrs: { text: "@Demo" } },
+      { type: "text", text: " " },
+      { type: "emoji", attrs: { shortName: ":wave:" } },
+      { type: "text", text: " " },
+      { type: "date", attrs: { timestamp: "946684800000" } },
+    ];
+    expect(
+      adfToMarkdown({ type: "doc", content: [{ type: "paragraph", content }] }),
+    ).toBe("@Demo :wave: 2000-01-01");
+  });
   test("paragraphs, headings, lists, and code blocks convert", () => {
     const doc = {
       type: "doc",

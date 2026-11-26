@@ -117,6 +117,31 @@ describe("confluence attachments", () => {
     expect(markdown).toContain("_[list capped at 2 attachments]_");
   });
 
+  test("reports a remaining page when Confluence honors the requested limit", async () => {
+    const { markdown } = await fetchPageMarkdown(
+      new URL("https://wiki.example.org/pages/7"),
+      adapterSettings({ type: "confluence", maxAttachments: 2 }),
+      async (url) =>
+        url.pathname.endsWith("/child/attachment")
+          ? {
+              statusCode: 200,
+              data: {
+                results: [{ title: "one" }, { title: "two" }],
+                _links: { next: "?start=2" },
+              },
+            }
+          : {
+              statusCode: 200,
+              data: {
+                id: "7",
+                title: "Demo",
+                body: { storage: { value: "" } },
+              },
+            },
+    );
+    expect(markdown).toContain("_[list capped at 2 attachments]_");
+  });
+
   test("a failed attachment listing never costs the page", async () => {
     const { markdown } = await fetchPageMarkdown(
       new URL("https://w.corp/pages/7"),
