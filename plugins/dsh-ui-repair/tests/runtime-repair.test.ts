@@ -13,6 +13,67 @@ afterEach(() => {
 });
 
 describe("UIRepairRuntime", () => {
+  it("stops the remaining automatic repairs when Observe is selected during layout verification", async () => {
+    document.body.innerHTML =
+      '<section data-dsh-ui-repair-root="fixture"><div data-dsh-ui-repair-scroll-x></div><div data-dsh-ui-repair-scroll-x></div></section>';
+    for (const panel of document.querySelectorAll<HTMLElement>(
+      "[data-dsh-ui-repair-scroll-x]",
+    )) {
+      dimensions(panel, {
+        clientHeight: 100,
+        scrollHeight: 100,
+        clientWidth: 200,
+        scrollWidth: 260,
+      });
+    }
+    let frameRequested!: () => void;
+    const started = new Promise<void>((resolve) => {
+      frameRequested = resolve;
+    });
+    const request = window.requestAnimationFrame.bind(window);
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frameRequested();
+      return request(callback);
+    });
+    const runtime = new UIRepairRuntime(
+      document,
+      { mode: "auto", observeMutations: false },
+      quietLogger(),
+    );
+    const pending = runtime.scan();
+    await started;
+    runtime.setMode("observe");
+    const report = await pending;
+    expect(report.applied).toEqual([]);
+    expect(document.querySelector("[data-dsh-ui-repair-style]")).toBeNull();
+    runtime.dispose();
+  });
+
+  it("cancels a manual repair when Observe is selected during the rescan", async () => {
+    document.body.innerHTML =
+      '<section data-dsh-ui-repair-root="fixture"><div id="panel" data-dsh-ui-repair-scroll-x></div></section>';
+    const panel = document.querySelector<HTMLElement>("#panel")!;
+    dimensions(panel, {
+      clientHeight: 100,
+      scrollHeight: 100,
+      clientWidth: 200,
+      scrollWidth: 260,
+    });
+    const runtime = new UIRepairRuntime(
+      document,
+      { mode: "suggest", observeMutations: false },
+      quietLogger(),
+    );
+    const issue = (await runtime.scan()).issues.find(
+      ({ ruleId }) => ruleId === "R005",
+    )!;
+    const pending = runtime.apply(issue.id);
+    runtime.setMode("observe");
+    expect(await pending).toBe(false);
+    expect(document.querySelector("[data-dsh-ui-repair-style]")).toBeNull();
+    runtime.dispose();
+  });
+
   it("repairs an explicitly safe horizontal scroll owner", async () => {
     document.body.innerHTML = `
       <section data-dsh-ui-repair-root="fixture">

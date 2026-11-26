@@ -298,8 +298,10 @@ export class UIRepairRuntime implements UIRepairService {
       .filter((candidate) => this.#isIgnored(candidate, this.#config.ignore))
       .map((candidate) => candidate.issue.id);
     const ignoredSet = new Set(ignored);
-    if (this.#config.mode === "auto") {
+    const config = this.#config;
+    if (config.mode === "auto") {
       for (const candidate of candidates) {
+        if (this.#config !== config || this.#disposed) break;
         const threshold = this.#isRisky(candidate.issue.ruleId)
           ? this.#config.dangerousConfidence
           : this.#config.autoConfidence;
@@ -364,7 +366,8 @@ export class UIRepairRuntime implements UIRepairService {
   }
 
   async apply(repairId: string): Promise<boolean> {
-    if (!this.#config.enabled || this.#config.mode !== "suggest") return false;
+    const config = this.#config;
+    if (!config.enabled || config.mode !== "suggest") return false;
     const knownCandidate = this.#candidates.get(repairId);
     if (
       knownCandidate === undefined ||
@@ -374,6 +377,7 @@ export class UIRepairRuntime implements UIRepairService {
       return false;
     }
     await this.scan(knownCandidate.root);
+    if (this.#config !== config || this.#disposed) return false;
     const candidate = this.#candidates.get(repairId);
     if (
       candidate === undefined ||
