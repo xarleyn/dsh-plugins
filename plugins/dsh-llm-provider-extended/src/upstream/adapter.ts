@@ -60,6 +60,7 @@ import type {
   ImageAttachmentRef,
 } from "@deepseek-ai/dsh-attachment";
 import { generationPayload, validateGeneration } from "../generation.js";
+import { resolveApiKeyWithSignal } from "../credential-resolution.js";
 import {
   privacyHistory,
   requestFilter,
@@ -462,7 +463,6 @@ export class PiAiAdapter extends LlmAdapter {
       options = privacyHistory(options, filter);
     }
     const reply = filter && new PrivacyReply(filter);
-    const apiKey = await this.config.resolveApiKey(options.provider, profile);
 
     const consumer = new AbortController();
     const upstream =
@@ -477,6 +477,26 @@ export class PiAiAdapter extends LlmAdapter {
     );
 
     try {
+      let apiKey: string | undefined;
+      try {
+        apiKey = await resolveApiKeyWithSignal(
+          () => this.config.resolveApiKey(options.provider, profile),
+          watchdog.signal,
+        );
+      } catch (error) {
+        if (!options.signal?.aborted) throw error;
+        yield {
+          type: "finish",
+          reason: {
+            kind: "aborted",
+            failure: {
+              code: "ABORTED",
+              message: "pi-ai request aborted by caller",
+            },
+          },
+        };
+        return;
+      }
       const containsImage = options.messages.some((message) =>
         contentHasImage(message.content),
       );

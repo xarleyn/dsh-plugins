@@ -49,6 +49,46 @@ beforeEach(() => {
 });
 
 describe("abort wiring", () => {
+  it("releases the caller before a pending credential lookup completes", async () => {
+    const started = Promise.withResolvers<void>();
+    const credential = Promise.withResolvers<string | undefined>();
+    const adapter = new PiAiAdapter({
+      profiles: () =>
+        resolveProfiles({ deepseek: { apiKeyEnv: "PI_TEST_KEY" } }),
+      resolveApiKey: () => {
+        started.resolve();
+        return credential.promise;
+      },
+      auth: memoryAuth(),
+    });
+    const stop = new AbortController();
+    const stream = adapter.stream({
+      provider: "deepseek",
+      model: "deepseek-v4-flash",
+      messages: [],
+      signal: stop.signal,
+    });
+    const finished = vi.fn();
+    const read = stream[Symbol.asyncIterator]().next().then(finished);
+    await started.promise;
+    stop.abort();
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(finished).toHaveBeenCalledWith(
+      expect.objectContaining({
+        value: {
+          type: "finish",
+          reason: {
+            kind: "aborted",
+            failure: expect.objectContaining({ code: "ABORTED" }),
+          },
+        },
+      }),
+    );
+    credential.reject(new Error("Lookup finished later"));
+    await read;
+    expect(finished).toHaveBeenCalledTimes(1);
+  });
+
   it("preserves an unknown pre-dispatch adapter Error exactly", async () => {
     const original = new Error("SDK context conversion exploded");
     const message = Object.defineProperty({}, "content", {

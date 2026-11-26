@@ -12,6 +12,7 @@ import type {
   ResolvedPiAiProviderProfile,
 } from "./upstream/config.js";
 import { cleanGeneration } from "./generation.js";
+import { resolveApiKeyWithSignal } from "./credential-resolution.js";
 import {
   validateDecisionRequest,
   validateDecisionResponse,
@@ -21,26 +22,6 @@ function hasSettings(value: unknown): boolean {
   if (value == null) return false;
   if (typeof value === "object") return Object.values(value).some(hasSettings);
   return true;
-}
-
-async function abortableKey(
-  resolve: () => Promise<string | undefined>,
-  signal: AbortSignal,
-): Promise<string | undefined> {
-  let onAbort: () => void = () => {};
-  try {
-    return await new Promise<string | undefined>((accept, reject) => {
-      onAbort = () => reject(new Error("Credential resolution aborted"));
-      signal.addEventListener("abort", onAbort, { once: true });
-      if (signal.aborted) {
-        onAbort();
-        return;
-      }
-      resolve().then(accept, reject);
-    });
-  } finally {
-    signal.removeEventListener("abort", onAbort);
-  }
 }
 
 /** Resolve native decision settings without passing them through a chat catalog. */
@@ -266,7 +247,7 @@ export async function* streamSystemOne(
   if (signal.aborted)
     throw new LlmError("System One request aborted", "ABORTED");
   try {
-    const key = await abortableKey(resolveApiKey, signal);
+    const key = await resolveApiKeyWithSignal(resolveApiKey, signal);
     const url = new URL(profile.baseURL!);
     url.pathname = url.pathname.replace(/\/$/u, "");
     if (!url.pathname.endsWith("/systemone")) url.pathname += "/systemone";
