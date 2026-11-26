@@ -7,6 +7,10 @@
   "main": "./lib/index.js",
   "types": "./lib/index.d.ts",
   "exports": {
+    "./adf": {
+      "types": "./lib/adf.d.ts",
+      "default": "./lib/adf.js"
+    },
     "./review-foreground": {
       "types": "./lib/review-foreground.d.ts",
       "default": "./lib/review-foreground.js"

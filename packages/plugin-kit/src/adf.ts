@@ -1,4 +1,4 @@
-/** Jira and Confluence store an ADF calendar date as a Unix timestamp string. */
+/** Read an Atlassian Document Format calendar date as a UTC date. */
 export function adfDate(timestamp: unknown): string {
   let milliseconds: number;
   if (typeof timestamp === "number") {

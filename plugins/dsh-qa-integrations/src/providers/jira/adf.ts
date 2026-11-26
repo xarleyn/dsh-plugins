@@ -10,7 +10,7 @@
  * transport caps the body it reads), so it can build the whole text and cut it
  * once, instead of threading a budget through every recursion.
  */
-import { adfDate } from "../shared/adf-date.js";
+import { adfDate } from "@yadsh/dsh-plugin-kit/adf";
 
 export interface AdfText {
   readonly text: string;

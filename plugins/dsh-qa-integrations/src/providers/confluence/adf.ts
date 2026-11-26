@@ -9,7 +9,7 @@
  * lets page content choose what happens next.
  */
 
-import { adfDate } from "../shared/adf-date.js";
+import { adfDate } from "@yadsh/dsh-plugin-kit/adf";
 
 /** A node deeper than this is not walked; the wrapper is dropped instead. */
 const MAX_DEPTH = 64;

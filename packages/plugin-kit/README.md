@@ -1,5 +1,12 @@
 # @yadsh/dsh-plugin-kit
 
+## Atlassian calendar dates
+
+The `@yadsh/dsh-plugin-kit/adf` entrypoint exports `adfDate(timestamp)`.
+It returns the UTC calendar date for Jira and Confluence rich text. String
+timestamps with up to ten digits use seconds, longer strings and numeric
+timestamps use milliseconds. Invalid input renders as `[date]`.
+
 ## Named code sources
 
 `@yadsh/dsh-plugin-kit/code-sources` exports the `CodeSource`,
