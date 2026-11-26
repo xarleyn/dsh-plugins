@@ -154,7 +154,7 @@ export function createGitBlameTool(deps: GitToolDeps) {
         // by every supported git even though it is undocumented.
         "--no-textconv",
         "-L",
-        `${range.from},${range.to}`,
+        `${range.from},${range.to + (defaultedTo ? 1 : 0)}`,
         ...(commit !== undefined ? [commit] : []),
         "--",
         file,
@@ -166,19 +166,14 @@ export function createGitBlameTool(deps: GitToolDeps) {
       });
       expectGitOk(result, "blame");
 
-      let lines = parsePorcelainBlame(result.stdout);
-      let outputTruncated = range.truncated;
-      if (result.truncated && lines.length > 0) {
-        lines = lines.slice(0, -1);
-        outputTruncated = true;
-      }
-      if (
-        !outputTruncated &&
-        defaultedTo &&
-        lines.length === range.to - range.from + 1
-      ) {
-        outputTruncated = true;
-      }
+      const complete = result.truncated
+        ? result.stdout.slice(0, result.stdout.lastIndexOf("\n") + 1)
+        : result.stdout;
+      const parsed = parsePorcelainBlame(complete);
+      const span = range.to - range.from + 1;
+      const lines = parsed.slice(0, span);
+      const outputTruncated =
+        result.truncated || range.truncated || parsed.length > span;
 
       deps.logger.debug("tool.call", {
         tool: "dsh_git_blame",

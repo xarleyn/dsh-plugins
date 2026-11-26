@@ -39,6 +39,15 @@ function makeTool(overrides: Record<string, unknown> = {}) {
 }
 
 describe("dsh_git_blame", () => {
+  it("finishes a file with exactly one full page without inviting a read past EOF", async () => {
+    const tool = makeTool({ blameMaxLines: 2 });
+    const last = (await tool.execute(
+      { file: "lines.txt", fromLine: 2 },
+      makeExec(repo.dir),
+    )) as GitBlameResult;
+    expect(last.lines.map((line) => line.line)).toEqual([2, 3]);
+    expect(last.truncated).toBe(false);
+  });
   it("attributes each line to the commit that introduced it", async () => {
     const tool = makeTool();
     const blame = (await tool.execute(
