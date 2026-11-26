@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { root } from "./host-pipeline.helpers.js";
 import {
   AUDIT_DIRECTORY,
+  OTHER_SESSION_ID,
   REPORT,
   SESSION_ID,
   analysis,
@@ -22,6 +23,62 @@ function watcherWithClose(close: () => Promise<void>) {
 }
 
 describe("AuditService stop barrier", () => {
+  it("picks up an audit published while a previous scan is processing the directory list", async () => {
+    const entered = Promise.withResolvers<void>();
+    const listing = Promise.withResolvers<readonly string[]>();
+    const { service } = testService(root, {
+      listSessionIds: () => {
+        entered.resolve();
+        return listing.promise;
+      },
+    });
+    await writeAudit(root, AUDIT_DIRECTORY, {
+      analysis: { schemaVersion: 7, trajectory: {} },
+      report: REPORT,
+    });
+    const first = service.refresh();
+    await entered.promise;
+    await writeAudit(root, "second-audit", {
+      analysis: analysis(OTHER_SESSION_ID),
+      report: REPORT,
+    });
+    const event = service.refresh();
+    listing.resolve([SESSION_ID, OTHER_SESSION_ID]);
+    await Promise.all([first, event]);
+    expect(
+      await service.getSessionAuditSummary(OTHER_SESSION_ID),
+    ).not.toBeNull();
+    await service.stop();
+  });
+
+  it("holds every concurrent start until the initial audit is visible", async () => {
+    const entered = Promise.withResolvers<void>();
+    const listing = Promise.withResolvers<readonly string[]>();
+    const { service } = testService(root, {
+      listSessionIds: () => {
+        entered.resolve();
+        return listing.promise;
+      },
+    });
+    await writeAudit(root, AUDIT_DIRECTORY, {
+      analysis: { schemaVersion: 7, trajectory: {} },
+      report: REPORT,
+    });
+    const first = service.start();
+    await entered.promise;
+    const second = service
+      .start()
+      .then(() => service.getSessionAuditSummary(SESSION_ID));
+    await setImmediate();
+    listing.resolve([SESSION_ID]);
+    try {
+      await first;
+      expect(await second).not.toBeNull();
+    } finally {
+      await service.stop();
+    }
+  });
+
   it.each([false, true])(
     "does not retain an interrupted scan (restart=%s)",
     async (restart) => {

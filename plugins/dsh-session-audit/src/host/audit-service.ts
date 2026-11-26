@@ -123,11 +123,13 @@ export class AuditService implements SessionAuditProvider {
   /** Whether the previous pass also failed to list the corpus. */
   private corpusListingBroken = false;
   private started = false;
+  private starting: Promise<void> | undefined;
   private stopped = false;
   private lifecycleGeneration = 0;
   private stopping: Promise<void> | undefined;
   private refreshing = false;
   private pendingRefresh: Promise<AuditRefreshStats> | undefined;
+  private queuedRefresh: Promise<AuditRefreshStats> | undefined;
 
   constructor(private readonly options: AuditServiceOptions) {
     this.logger = options.logger ?? AUDIT_LOGGER_NOOP;
@@ -156,10 +158,18 @@ export class AuditService implements SessionAuditProvider {
   }
 
   /** Startup scan, then the watcher (SPEC §19). */
-  async start(): Promise<void> {
-    if (this.started) return;
+  start(): Promise<void> {
+    if (this.started) return this.starting ?? Promise.resolve();
     this.started = true;
     const generation = ++this.lifecycleGeneration;
+    const starting = this.startGeneration(generation).finally(() => {
+      if (this.starting === starting) this.starting = undefined;
+    });
+    this.starting = starting;
+    return starting;
+  }
+
+  private async startGeneration(generation: number): Promise<void> {
     try {
       await this.stopping;
       if (generation !== this.lifecycleGeneration) return;
@@ -199,7 +209,7 @@ export class AuditService implements SessionAuditProvider {
     } finally {
       // A scan can still publish records after the watcher closes. Its caller
       // receives any scan failure, and teardown waits for its last write.
-      await this.pendingRefresh?.catch(() => undefined);
+      await Promise.allSettled([this.pendingRefresh, this.queuedRefresh]);
       this.registry.clear();
       this.seen.clear();
       this.lastGood.clear();
@@ -213,9 +223,8 @@ export class AuditService implements SessionAuditProvider {
   /**
    * One pass over the audit root.
    *
-   * Concurrent callers share one pass: an event storm during a `scp -r` would
-   * otherwise start a scan per event, and they would read the same
-   * half-copied directory at the same time.
+   * Requests arriving during a pass share the next pass. A change after the
+   * current directory listing is visible before those callers complete.
    */
   refresh(): Promise<AuditRefreshStats> {
     if (this.stopped) {
@@ -225,7 +234,16 @@ export class AuditService implements SessionAuditProvider {
         ...this.registry.counts(),
       });
     }
-    if (this.pendingRefresh !== undefined) return this.pendingRefresh;
+    if (this.pendingRefresh !== undefined) {
+      if (this.queuedRefresh === undefined) {
+        const rescan = () => {
+          this.queuedRefresh = undefined;
+          return this.refresh();
+        };
+        this.queuedRefresh = this.pendingRefresh.then(rescan, rescan);
+      }
+      return this.queuedRefresh;
+    }
     const run = this.runRefresh().finally(() => {
       this.pendingRefresh = undefined;
     });
