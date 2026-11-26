@@ -79,6 +79,31 @@ describe("documents", () => {
     status_counts: counts,
   });
 
+  it("returns each document once when an updated record crosses a page boundary", async () => {
+    const pages = [
+      Array.from({ length: 10 }, (_, index) => index),
+      [9, 10, 11, 12, 13],
+      [14],
+    ];
+    let n = 0;
+    const { client, calls } = testClient(() => {
+      const ids = pages[n++]!;
+      return jsonResponse(
+        page(
+          ids.map((id) => ({ id: String(id) })),
+          { total_count: 15, has_next: n < pages.length },
+          {},
+        ),
+      );
+    });
+    const result = await client.documents({ limit: 15 });
+    expect(result.documents.map((item) => item.id)).toEqual(
+      Array.from({ length: 15 }, (_, index) => String(index)),
+    );
+    expect(calls).toHaveLength(3);
+    expect(result.hasMore).toBe(false);
+  });
+
   it("sends a server-legal page size and asks for the widest page it can", async () => {
     const { client, calls } = testClient(() =>
       jsonResponse(
@@ -169,10 +194,11 @@ describe("documents", () => {
   });
 
   it("caps the page walk so one call cannot fan out forever", async () => {
+    let start = 0;
     const { client, calls } = testClient(() =>
       jsonResponse({
         documents: Array.from({ length: 200 }, (_unused, index) => ({
-          id: `doc-${index}`,
+          id: `doc-${start++}`,
           file_path: `docs/${index}.md`,
           status: "processed",
         })),
@@ -188,6 +214,17 @@ describe("documents", () => {
     const result = await client.documents({ limit: 1_000 });
     expect(calls).toHaveLength(5);
     expect(result.documents).toHaveLength(1_000);
+    expect(result.hasMore).toBe(true);
+  });
+
+  it("reports unread pages when short overlapping responses exhaust the page budget", async () => {
+    const { client, calls } = testClient(() =>
+      jsonResponse(page([{ id: "doc" }], { has_next: true }, {})),
+    );
+    const result = await client.documents({ limit: 10 });
+    expect(calls).toHaveLength(5);
+    expect(result.documents).toHaveLength(1);
+    expect(result.totalCount).toBe(1);
     expect(result.hasMore).toBe(true);
   });
 

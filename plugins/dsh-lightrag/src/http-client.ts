@@ -544,6 +544,7 @@ export function createLightRagClient(
       const limit = Math.max(1, Math.floor(documentsRequest.limit));
       const pageSize = Math.min(MAX_PAGE_SIZE, Math.max(MIN_PAGE_SIZE, limit));
       const documents: LightRagDocument[] = [];
+      const seen = new Set<string>();
       let totalCount = 0;
       let statusCounts: LightRagStatusCount[] = [];
       // Whether the server itself said another page follows, read on the last
@@ -577,8 +578,15 @@ export function createLightRagClient(
         }
         for (const entry of rawDocuments) {
           if (!isRecord(entry)) continue;
+          const id = readString(entry, "id");
+          // The live list is sorted by last update. A record can move between
+          // two page requests, so only its first appearance counts toward the limit.
+          if (id !== "") {
+            if (seen.has(id)) continue;
+            seen.add(id);
+          }
           documents.push({
-            id: readString(entry, "id"),
+            id,
             filePath: readString(entry, "file_path"),
             status: readString(entry, "status"),
             chunksCount: readNumber(entry, "chunks_count"),
@@ -602,12 +610,13 @@ export function createLightRagClient(
       const returned = documents.slice(0, limit);
       return {
         documents: returned,
-        totalCount,
+        totalCount: Math.max(totalCount, documents.length),
         statusCounts,
         // Either the server still has pages we did not read, or it reported
         // more matches than this result carries.
         hasMore:
-          (serverHasNext && documents.length >= limit) ||
+          serverHasNext ||
+          documents.length > returned.length ||
           totalCount > returned.length,
       };
     },
