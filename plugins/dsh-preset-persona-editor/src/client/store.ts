@@ -90,6 +90,7 @@ export class PersonaPageController {
   private state: PersonaPageSnapshot = INITIAL_STATE;
   private readonly listeners = new Set<() => void>();
   private openGeneration = 0;
+  private rosterGeneration = 0;
 
   constructor(private readonly face: PersonaFace) {}
 
@@ -117,12 +118,14 @@ export class PersonaPageController {
 
   /** Read the roster. Keeps the current list on screen while it refreshes. */
   async load(): Promise<void> {
+    const generation = ++this.rosterGeneration;
     // A refresh over a list that is already on screen changes no fact until the
     // answer arrives, so it sets nothing here: an empty patch would hand
     // `useSyncExternalStore` a new object to re-render for.
     const first = this.state.presets.length === 0;
     if (first) this.set({ status: "loading", error: "" });
     const result = await this.face.list();
+    if (generation !== this.rosterGeneration) return;
     if (!result.ok) {
       const reason = describeFailure(result.error);
       if (first) {

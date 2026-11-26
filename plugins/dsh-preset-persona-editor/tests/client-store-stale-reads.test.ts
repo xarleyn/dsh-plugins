@@ -6,7 +6,7 @@ import {
   PersonaPageController,
   type PersonaFace,
 } from "../src/client/store.js";
-import { documentOf, faceOf } from "./client-store.helpers.js";
+import { catalogOf, documentOf, faceOf } from "./client-store.helpers.js";
 
 type ReadResult = Awaited<ReturnType<PersonaFace["read"]>>;
 
@@ -30,6 +30,42 @@ const staleResults: ReadResult[] = [
 ];
 
 describe("persona read generations", () => {
+  it.each(["success", "failure"])(
+    "keeps the latest roster when an older %s arrives",
+    async (kind) => {
+      let resolve!: (value: Awaited<ReturnType<PersonaFace["list"]>>) => void;
+      const slow = new Promise<Awaited<ReturnType<PersonaFace["list"]>>>(
+        (done) => {
+          resolve = done;
+        },
+      );
+      const face = faceOf({
+        list: vi
+          .fn()
+          .mockReturnValueOnce(slow)
+          .mockResolvedValue({ ok: true, value: catalogOf() }),
+      });
+      const controller = new PersonaPageController(face);
+      const pending = controller.load();
+      await controller.refresh();
+      const current = controller.snapshot();
+      resolve(
+        kind === "success"
+          ? { ok: true, value: { presets: [] } }
+          : {
+              ok: false,
+              error: new RemoteError(
+                "gateway/internal",
+                "older request failed",
+                {},
+              ),
+            },
+      );
+      await pending;
+      expect(controller.snapshot()).toBe(current);
+    },
+  );
+
   for (const nextId of ["demo-a", "demo-b"]) {
     it.each(staleResults)(
       `ignores obsolete success and failure after opening ${nextId}: %j`,
