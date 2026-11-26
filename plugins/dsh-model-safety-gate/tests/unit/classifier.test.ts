@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   extractJsonPayload,
@@ -163,6 +163,41 @@ describe("classifier service", () => {
     });
     const result = await service.classifyInput("anything");
     expect(result.failure?.code).toBe("SAFETY_CLASSIFIER_INVALID_RESPONSE");
+  });
+
+  it("settles the timeout even if the provider returns a verdict much later", async () => {
+    vi.useFakeTimers();
+    try {
+      let signal: AbortSignal | undefined;
+      let respond!: (result: { text: string }) => void;
+      const service = new SafetyClassifierService({
+        ...base,
+        timeoutMs: 30,
+        transport: (request) => {
+          signal = request.signal;
+          return new Promise((resolve) => {
+            respond = resolve;
+          });
+        },
+      });
+      const completed = vi.fn();
+      const pending = service.classifyInput("Ordinary text").then(completed);
+      await vi.advanceTimersByTimeAsync(30);
+      expect(signal?.aborted).toBe(true);
+      expect(completed).toHaveBeenCalledWith(
+        expect.objectContaining({
+          verdict: null,
+          failure: expect.objectContaining({
+            code: "SAFETY_CLASSIFIER_TIMEOUT",
+          }),
+        }),
+      );
+      respond(await okTransport()());
+      await pending;
+      expect(completed).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("refuses re-entrant calls from inside the bypass context", async () => {

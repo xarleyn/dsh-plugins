@@ -7,17 +7,12 @@
  * service, so the plugin's own stream guard passes it through untouched.
  */
 
+import type { GenerateOptions } from "@deepseek-ai/dsh-llm";
 import type { ClassifierTransport, ClassifierUsage } from "./service.js";
 
 /** Structural surface of the host LLM runtime — kept narrow for testing. */
 export interface DshLlmRuntime {
-  stream(options: {
-    provider: string;
-    model: string;
-    temperature?: number;
-    maxTokens?: number;
-    signal?: AbortSignal;
-  }): AsyncIterable<DSHStreamChunk>;
+  stream(options: GenerateOptions): AsyncIterable<DSHStreamChunk>;
 }
 
 export interface DSHStreamChunk {
@@ -46,6 +41,10 @@ export function createDshClassifierTransport(
     const stream = llm.stream({
       provider: options.provider,
       model: options.model,
+      system: request.system,
+      messages: [
+        { role: "user", content: [{ type: "text", text: request.prompt }] },
+      ],
       temperature: request.temperature,
       maxTokens: request.maxTokens,
       signal: request.signal,

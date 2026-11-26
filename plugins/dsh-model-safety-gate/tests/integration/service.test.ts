@@ -6,6 +6,7 @@
 
 import { describe, expect, it } from "vitest";
 import { Context } from "@deepseek-ai/cordis";
+import type { GenerateOptions } from "@deepseek-ai/dsh-llm";
 import type { PluginLogger } from "@yadsh/dsh-plugin-log";
 
 import {
@@ -19,6 +20,8 @@ import type { GateMode, ModelSafetyGateEntryConfig } from "../../src/config.js";
 /** The classifier node as the entry configuration declares it. */
 type LiveClassifier = NonNullable<ModelSafetyGateEntryConfig["classifier"]>;
 import { runIsolated } from "../../src/classifier/isolation.js";
+import type { DshLlmRuntime } from "../../src/classifier/dsh-backend.js";
+import { CLASSIFIER_SYSTEM_PROMPT } from "../../src/classifier/prompt.js";
 import type { StreamChunk } from "../../src/stream/chunks.js";
 
 interface CapturedHost {
@@ -39,6 +42,7 @@ function wire(
     agents?: AgentRegistryFace;
     approval?: unknown;
     deferInject?: boolean;
+    llm?: DshLlmRuntime;
   },
 ): {
   captured: CapturedHost;
@@ -117,6 +121,7 @@ function wire(
   };
   if (options?.agents !== undefined) services.agents = options.agents;
   if (options?.approval !== undefined) services.approval = options.approval;
+  if (options?.llm !== undefined) services.llm = options.llm;
   shadow.get = (name: string) => services[name];
 
   const logger = {
@@ -144,6 +149,62 @@ function wire(
 }
 
 describe("ModelSafetyGate service wiring", () => {
+  it("sends the isolated instructions and the current input to the configured DSH model", async () => {
+    const calls: GenerateOptions[] = [];
+    const { captured } = wire(
+      {
+        mode: "enforce",
+        classifier: { backend: "dsh", provider: "local", model: "reader" },
+      },
+      {
+        llm: {
+          async *stream(options) {
+            calls.push(options);
+            yield {
+              type: "text-delta",
+              text: JSON.stringify({
+                decision: "allow",
+                confidence: 1,
+                categories: [],
+                summary: "Ordinary text",
+              }),
+            };
+          },
+        },
+      },
+    );
+    const preStep = captured.listeners.get("agent/pre-step")![0] as (
+      input: unknown,
+      next: () => Promise<unknown>,
+    ) => Promise<unknown>;
+    await preStep(
+      {
+        agent: { id: "chat" },
+        messages: [
+          { content: [{ type: "text", text: "The train is on time." }] },
+        ],
+      },
+      async () => ({ kind: "enter" }),
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({
+      provider: "local",
+      model: "reader",
+      system: CLASSIFIER_SYSTEM_PROMPT,
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: expect.stringContaining("The train is on time."),
+            },
+          ],
+        },
+      ],
+    });
+  });
+
   it("registers all four guard listeners", () => {
     const { captured } = wire();
     expect(captured.listeners.has("agent/pre-step")).toBe(true);

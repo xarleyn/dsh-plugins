@@ -144,10 +144,14 @@ export class SafetyClassifierService {
     }
 
     const controller = new AbortController();
-    const timer = setTimeout(
-      () => controller.abort(new Error("classifier timeout")),
-      this.timeoutMs,
-    );
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        const error = new Error("classifier timeout");
+        controller.abort(error);
+        reject(error);
+      }, this.timeoutMs);
+    });
     const startedAt = Date.now();
     try {
       const prompt = buildClassifierPrompt({
@@ -156,15 +160,18 @@ export class SafetyClassifierService {
         maxPayloadChars: CLASSIFIER_MAX_PAYLOAD_CHARS,
         toolName: options.toolName ?? null,
       });
-      const answer = await runIsolated(() =>
-        transport({
-          system: CLASSIFIER_SYSTEM_PROMPT,
-          prompt,
-          temperature: this.temperature,
-          maxTokens: this.maxTokens,
-          signal: controller.signal,
-        }),
-      );
+      const answer = await Promise.race([
+        runIsolated(() =>
+          transport({
+            system: CLASSIFIER_SYSTEM_PROMPT,
+            prompt,
+            temperature: this.temperature,
+            maxTokens: this.maxTokens,
+            signal: controller.signal,
+          }),
+        ),
+        deadline,
+      ]);
       const latencyMs = Date.now() - startedAt;
       const verdict = validateVerdict(extractJsonPayload(answer.text));
       return { verdict, failure: null, latencyMs, usage: answer.usage ?? null };
