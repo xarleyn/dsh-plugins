@@ -2,7 +2,7 @@
  * The scanner, the registry and the service: the SPEC §73 scenarios, plus the
  * §74 security cases that belong to the pipeline rather than to a component.
  */
-import { readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 import { readArtifactText } from "../src/host/audit-loader.js";
@@ -236,14 +236,9 @@ describe("readArtifactText containment", () => {
       const outside = await siblingRoot();
       await writeFile(join(outside, "REPORT.md"), OUTSIDE, "utf8");
       await rm(directory, { recursive: true, force: true });
-      // "../session-audit-test-…" is an ordinary child of the root to any
-      // comparison of the two strings; only the kernel knows where the file
-      // actually is, and a lexical check never asks it.
-      await symlink(
-        relative(dirname(root), outside),
-        join(root, AUDIT_DIRECTORY),
-        "dir",
-      );
+      // Resolve the target from the directory containing the new link.
+      await symlink(relative(dirname(directory), outside), directory, "dir");
+      expect(await realpath(directory)).toBe(await realpath(outside));
 
       const read = await readArtifactText(
         { path: join(directory, "REPORT.md"), size: 0, mtimeMs: 0 },
