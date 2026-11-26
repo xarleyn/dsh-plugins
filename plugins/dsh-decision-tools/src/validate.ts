@@ -55,9 +55,13 @@ export function questions(value: unknown, cfg: Config): Question[] {
           );
         json(level, "score level", 2000);
       }
+      const levels = q.criteria;
       if (
-        new Set(q.criteria.map((v) => JSON.stringify(v))).size !==
-        q.criteria.length
+        levels.some((level, index) =>
+          levels
+            .slice(0, index)
+            .some((prior) => isDeepStrictEqual(prior, level)),
+        )
       )
         throw new DecisionError(
           "INVALID_INPUT",

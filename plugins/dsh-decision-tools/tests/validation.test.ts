@@ -66,6 +66,13 @@ describe("configuration and input contracts", () => {
     };
     expect(questions([q], cfg)).toEqual([q]);
   });
+  it("rejects equivalent score levels even when their JSON keys arrive in a different order", () => {
+    const criteria = [
+      { label: "high", examples: [{ impact: "large", priority: "first" }] },
+      { examples: [{ priority: "first", impact: "large" }], label: "high" },
+    ];
+    expect(() => questions([{ ...score, criteria }], cfg)).toThrow("distinct");
+  });
 });
 describe("response contract", () => {
   it("preserves uncertain noul rather than forcing a boolean", () => {
