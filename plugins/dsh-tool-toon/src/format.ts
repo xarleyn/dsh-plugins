@@ -30,6 +30,7 @@ export function formatJsonText(
   )
     return null;
   let value: unknown;
+  let parsedMembers = 0;
   try {
     value = JSON.parse(
       text,
@@ -41,6 +42,8 @@ export function formatJsonText(
           context?.source !== JSON.stringify(item)
         )
           throw new Error("number normalization");
+        if (item !== null && typeof item === "object" && !Array.isArray(item))
+          parsedMembers += Object.keys(item).length;
         return item;
       },
     );
@@ -61,8 +64,17 @@ export function formatJsonText(
   );
   const outputBytes = Buffer.byteLength(candidate, "utf8");
   const savings = baseline - outputBytes;
-  return savings >= config.minSavingsBytes &&
-    savings / baseline >= config.minSavingsRatio
-    ? candidate
-    : null;
+  if (
+    savings < config.minSavingsBytes ||
+    savings / baseline < config.minSavingsRatio
+  )
+    return null;
+  // Each member of valid JSON contributes one colon outside a string. Parsing
+  // collapses repeated names, including equivalent escaped spellings, before
+  // the codec can see them. Preserve the source when any member disappeared.
+  let sourceMembers = 0;
+  for (const token of text.matchAll(/"(?:\\.|[^"\\])*"|:/gu)) {
+    if (token[0] === ":") sourceMembers++;
+  }
+  return sourceMembers === parsedMembers ? candidate : null;
 }

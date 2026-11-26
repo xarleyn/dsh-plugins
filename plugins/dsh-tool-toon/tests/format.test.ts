@@ -17,6 +17,19 @@ export const fields = {
 };
 
 describe("lossless TOON conversion", () => {
+  it("preserves the original text when parsing would discard a repeated member", () => {
+    const json =
+      JSON.stringify(fields).slice(0, -1) +
+      ',"detail":{"step":1,"st\\u0065p":2}}';
+    expect(formatJsonText(json, config)).toBeNull();
+  });
+  it("keeps table savings with the same keys in separate objects and colons inside strings", () => {
+    const text = formatJsonText(
+      JSON.stringify({ ...fields, detail: 'key":value' }),
+      config,
+    );
+    expect(text).toMatch(/^```toon/u);
+  });
   it("shrinks a Jira-shaped field catalogue and retains every row", () => {
     const json = JSON.stringify(fields);
     const text = formatJsonText(json, config)!;
