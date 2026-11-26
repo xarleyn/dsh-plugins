@@ -428,7 +428,10 @@ export class AnswerReviewGate {
     if (signal.aborted) round.abort(signal.reason);
     else signal.addEventListener("abort", forwardAbort, { once: true });
     const input: ReviewInput = {
-      onRecovery: () => this.publishReceipt(agent, state, hash, "recovering"),
+      onRecovery: () => {
+        if (!round.signal.aborted)
+          this.publishReceipt(agent, state, hash, "recovering");
+      },
       conversationContext: reviewConversationContext(agent.session),
       ...(primaryReviewTools(agent) === undefined
         ? {}
@@ -491,6 +494,7 @@ export class AnswerReviewGate {
               ),
           );
         let decision = await reviewCandidate();
+        round.signal.throwIfAborted();
         if (evidence) {
           const misnamed = targets.filter((t) => t.filenameMismatch);
           if (decision.verdict === "pass" && misnamed.length) {
@@ -517,6 +521,7 @@ export class AnswerReviewGate {
               );
               break;
             } catch (error) {
+              round.signal.throwIfAborted();
               if (
                 !(error instanceof ReviewerFailure) ||
                 error.reason !== "review-document-comparison-missing" ||
@@ -554,6 +559,7 @@ export class AnswerReviewGate {
               this.publishReceipt(agent, state, hash, "recovering");
               protocolAttemptCounted = false;
               decision = await reviewCandidate();
+              round.signal.throwIfAborted();
             }
           }
           await evidence.verifyOriginals(round.signal);
@@ -901,23 +907,28 @@ async function withRoundDeadline(
   timeoutMs: number,
   round: AbortController,
 ): Promise<ReviewVerdict> {
-  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return run;
+  const { signal } = round;
+  let onAbort!: () => void;
+  const stopped = new Promise<never>((_, reject) => {
+    onAbort = () => reject(signal.reason);
+    signal.addEventListener("abort", onAbort, { once: true });
+    if (signal.aborted) onAbort();
+  });
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    return await Promise.race([
-      run,
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => {
-          const failure = new ReviewerFailure(
+    if (Number.isFinite(timeoutMs) && timeoutMs > 0) {
+      timer = setTimeout(() => {
+        round.abort(
+          new ReviewerFailure(
             REVIEW_TIMEOUT_REASON,
             `the reviewer returned no verdict within ${Math.round(timeoutMs / 1000)}s`,
-          );
-          round.abort(failure);
-          reject(failure);
-        }, timeoutMs);
-      }),
-    ]);
+          ),
+        );
+      }, timeoutMs);
+    }
+    return await Promise.race([run, stopped]);
   } finally {
+    signal.removeEventListener("abort", onAbort);
     if (timer !== undefined) clearTimeout(timer);
   }
 }

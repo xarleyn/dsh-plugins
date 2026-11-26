@@ -294,6 +294,29 @@ describe("per-round review deadline", () => {
     expect(face.started).toHaveLength(1);
   });
 
+  it("releases a cancelled turn while the reviewer is still starting without a deadline", async () => {
+    vi.useFakeTimers();
+    const face = new ScriptedFace();
+    const { gate, steers, auditEntries } = makeGate(face);
+    const agent = {
+      ...agentOf(),
+      session: surfaceOf(request("the question"), answer(TEXT_A)),
+    };
+    const stop = new AbortController();
+    const completed = vi.fn();
+    void gate.handleTurnStopping(agent, 1, stop.signal).then(completed);
+    expect(face.started).toHaveLength(1);
+    stop.abort();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(completed).toHaveBeenCalledWith("failure");
+    const late = face.settle(PASS);
+    await vi.advanceTimersByTimeAsync(0);
+    await late;
+    expect(completed).toHaveBeenCalledTimes(1);
+    expect(steers).toEqual([]);
+    expect(auditEntries).toEqual([]);
+  });
+
   it("clamps the configured deadline", () => {
     const resolved = resolveAnswerReviewGateConfig({
       reviewer: { roundTimeoutMs: 50 },
