@@ -386,6 +386,44 @@ describe("failure fallback (SPEC §22, §39 AC11-AC12)", () => {
 });
 
 describe("concurrency bounds (SPEC §24)", () => {
+  it("retains both slots until a timed-out worker finishes cleaning up", async () => {
+    const globalGate = new Semaphore(1);
+    const agentGate = new KeyedLimiter(1);
+    let finish!: () => void;
+    const cleanup = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const counters = new OffloadCounters();
+    let starts = 0;
+    const listener = createPostExecuteListener({
+      readConfig: () => testConfig(),
+      counters,
+      logger: new CapturingLogger(),
+      globalGate,
+      agentGate,
+      runner: {
+        run: async (request) => {
+          starts++;
+          request.onPendingCleanup?.(cleanup);
+          return { kind: "timeout" };
+        },
+      },
+    });
+    const exec = fakeExec("read", { agent: fakeAgent() });
+    const call = () =>
+      listener(exec, successResult(makeText(40_000)), async () => accept);
+    await call();
+    expect(globalGate.inUse).toBe(1);
+    expect(agentGate.trackedKeys).toBe(1);
+    await call();
+    expect(starts).toBe(1);
+    finish();
+    await cleanup;
+    expect(globalGate.inUse).toBe(0);
+    expect(agentGate.trackedKeys).toBe(0);
+    await call();
+    expect(starts).toBe(2);
+  });
   it("routes results through untouched when the global budget is exhausted", async () => {
     const counters = new OffloadCounters();
     const logger = new CapturingLogger();

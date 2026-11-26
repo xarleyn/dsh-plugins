@@ -4,7 +4,7 @@
  * exact model config, timeout, cancellation, disposal).
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type {
   SubagentActivation,
@@ -295,5 +295,78 @@ describe("createSubagentRunner outcomes (SPEC §22)", () => {
     });
     const outcome = await createSubagentRunner(subagents).run(baseRequest());
     expect(outcome).toEqual({ kind: "failed", detail: "capability rejected" });
+  });
+  it.each(["timeout", "aborted"] as const)(
+    "settles a delayed activation on %s and disposes it if it starts later",
+    async (kind) => {
+      const controller = new AbortController();
+      let start!: (activation: SubagentActivation) => void;
+      const late = fakeActivation(
+        Promise.resolve({ output: [], stopReason: "completed" }),
+      );
+      const { subagents } = service({
+        startActivation: () =>
+          new Promise((resolve) => {
+            start = resolve;
+          }),
+      });
+      const run = createSubagentRunner(subagents).run(
+        baseRequest({
+          signal: controller.signal,
+          profile: presetProfile({ timeoutMs: kind === "timeout" ? 20 : 5000 }),
+        }),
+      );
+      if (kind === "aborted") controller.abort();
+      let watchdog: ReturnType<typeof setTimeout> | undefined;
+      try {
+        expect(
+          await Promise.race([
+            run,
+            new Promise((resolve) => {
+              watchdog = setTimeout(() => resolve("still pending"), 150);
+            }),
+          ]),
+        ).toEqual({ kind });
+      } finally {
+        clearTimeout(watchdog);
+        start(late.activation);
+        await run;
+      }
+      await vi.waitFor(() => expect(late.disposed()).toBe(true));
+    },
+  );
+  it("settles when cleanup stalls and keeps a handle on work that still owns the slot", async () => {
+    let finish!: () => void;
+    const release = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const activation = {
+      result: Promise.resolve({ output: [], stopReason: "completed" }),
+      dispose: () => release,
+    } as unknown as SubagentActivation;
+    const { subagents } = service({ startActivation: async () => activation });
+    const onPendingCleanup = vi.fn();
+    const request = {
+      ...baseRequest({ profile: presetProfile({ timeoutMs: 20 }) }),
+      onPendingCleanup,
+    };
+    const run = createSubagentRunner(subagents).run(request);
+    let watchdog: ReturnType<typeof setTimeout> | undefined;
+    try {
+      expect(
+        await Promise.race([
+          run,
+          new Promise((resolve) => {
+            watchdog = setTimeout(() => resolve("still pending"), 150);
+          }),
+        ]),
+      ).toEqual({ kind: "timeout" });
+      expect(onPendingCleanup).toHaveBeenCalledOnce();
+    } finally {
+      clearTimeout(watchdog);
+      finish();
+      await run;
+    }
+    await onPendingCleanup.mock.calls[0]![0];
   });
 });

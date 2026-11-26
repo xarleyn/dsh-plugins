@@ -72,7 +72,8 @@ export function createPostExecuteListener(
     options;
   return async (exec, result, next) => {
     const downstream = await next();
-    let attemptStarted = false;
+    let releaseSlot: (() => void) | undefined;
+    let pendingCleanup: Promise<void> | undefined;
     try {
       if (downstream.kind !== "accept") return downstream;
       const effective = resolvePostExecuteContent(downstream, result.content);
@@ -148,7 +149,10 @@ export function createPostExecuteListener(
         );
       }
 
-      attemptStarted = true;
+      releaseSlot = () => {
+        globalGate.release();
+        agentGate.release(agentKey);
+      };
       const profile =
         config.workers[route.worker] ?? config.workers[config.defaultWorker];
       if (!profile)
@@ -177,6 +181,9 @@ export function createPostExecuteListener(
         prompt,
         signal: exec.signal,
         profile,
+        onPendingCleanup: (cleanup) => {
+          pendingCleanup = cleanup;
+        },
       });
       const durationMs = Date.now() - startedAt;
       counters.increment("durationMsTotal", durationMs);
@@ -242,16 +249,16 @@ export function createPostExecuteListener(
         : validation.text;
       return { ...effective.decision, content: [{ type: "text", text }] };
     } catch (error) {
-      if (attemptStarted) counters.increment("failed");
+      if (releaseSlot) counters.increment("failed");
       logger.warn("offload.pipeline_failed", {
         tool: exec.name,
         error: error instanceof Error ? error.message : String(error),
       });
       return downstream;
     } finally {
-      if (attemptStarted) {
-        globalGate.release();
-        if (exec.agent) agentGate.release(sessionKey(exec.agent));
+      if (releaseSlot) {
+        if (pendingCleanup) void pendingCleanup.then(releaseSlot, releaseSlot);
+        else releaseSlot();
       }
     }
   };

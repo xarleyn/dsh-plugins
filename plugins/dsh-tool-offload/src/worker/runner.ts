@@ -16,8 +16,8 @@
  * - a merged cancellation signal (parent `exec.signal` + worker timeout).
  *
  * Every failure mode normalizes into a `WorkerOutcome`; nothing throws across
- * the integration seam. `activation.dispose()` is always awaited, including on
- * the timeout path, so no child agent outlives the tool call (SPEC §22).
+ * the integration seam. An expired call returns promptly while its worker
+ * retains its concurrency slot until activation and cleanup settle.
  */
 
 import type {
@@ -44,6 +44,8 @@ export interface WorkerRunRequest {
   /** Parent cancellation signal (`exec.signal`). */
   readonly signal: AbortSignal;
   readonly profile: ResolvedWorkerProfile;
+  /** Keep the worker's concurrency slot while a late start or disposal finishes. */
+  readonly onPendingCleanup?: (cleanup: Promise<void>) => void;
 }
 
 export type WorkerOutcome =
@@ -104,9 +106,7 @@ export function createSubagentRunner(
       }
       if (request.signal.aborted) return { kind: "aborted" };
 
-      // The worker timeout is bounded twice: the merged signal cancels the
-      // child's turn work, and the belt-and-braces race below guarantees the
-      // post-execute seam settles even if the runtime never resolves.
+      // A single deadline covers startup, generation, and shutdown.
       const signal = AbortSignal.any([
         request.signal,
         AbortSignal.timeout(request.profile.timeoutMs),
@@ -126,9 +126,14 @@ export function createSubagentRunner(
       if (request.profile.maxTokens !== null)
         agentOptions.maxTokens = request.profile.maxTokens;
 
-      let activation: SubagentActivation;
-      try {
-        activation = await subagents.startActivation({
+      let onAbort!: () => void;
+      const interrupted = new Promise<never>((_, reject) => {
+        onAbort = () => reject(signal.reason);
+        signal.addEventListener("abort", onAbort, { once: true });
+        if (signal.aborted) onAbort();
+      });
+      const perform = async (): Promise<WorkerOutcome> => {
+        const activation = await subagents.startActivation({
           provider: request.profile.subagentProvider,
           label: request.label,
           prompt: [{ type: "text", text: request.prompt }],
@@ -141,61 +146,53 @@ export function createSubagentRunner(
           // must not be notified of the child.
           delivery: "caller",
         });
-      } catch (error) {
-        return mapStartupFailure(request, error);
-      }
-
-      let timer: NodeJS.Timeout | undefined;
-      try {
-        const result = await Promise.race([
-          activation.result,
-          new Promise<never>((_, reject) => {
-            timer = setTimeout(
-              () => reject(new Error("worker-timeout-belt")),
-              request.profile.timeoutMs,
-            );
-            timer.unref?.();
-          }),
-        ]);
-        const outputText = joinTextBlocks(result.output);
-        if (result.stopReason === "completed") {
+        try {
+          const result = await Promise.race([activation.result, interrupted]);
+          signal.throwIfAborted();
+          const outputText = joinTextBlocks(result.output);
+          if (result.stopReason === "completed") {
+            return {
+              kind: "completed",
+              outputText,
+              stopReason: result.stopReason,
+            };
+          }
+          if (result.stopReason === "aborted") {
+            return request.signal.aborted
+              ? { kind: "aborted" }
+              : { kind: "timeout" };
+          }
           return {
-            kind: "completed",
-            outputText,
-            stopReason: result.stopReason,
+            kind: "failed",
+            detail: `worker stopped with reason "${String(result.stopReason)}"${result.diagnostic ? `: ${result.diagnostic}` : ""}`,
           };
+        } finally {
+          await activation.dispose().catch(() => undefined);
         }
-        if (result.stopReason === "aborted") {
+      };
+      const work = perform();
+      try {
+        return await Promise.race([work, interrupted]);
+      } catch (error) {
+        if (signal.aborted) {
+          request.onPendingCleanup?.(
+            work.then(
+              () => undefined,
+              () => undefined,
+            ),
+          );
           return request.signal.aborted
             ? { kind: "aborted" }
             : { kind: "timeout" };
         }
         return {
           kind: "failed",
-          detail: `worker stopped with reason "${String(result.stopReason)}"${result.diagnostic ? `: ${result.diagnostic}` : ""}`,
+          detail: error instanceof Error ? error.message : String(error),
         };
-      } catch {
-        return request.signal.aborted
-          ? { kind: "aborted" }
-          : { kind: "timeout" };
       } finally {
-        if (timer !== undefined) clearTimeout(timer);
-        // Teardown failures are reported on the activation itself, not by
-        // replacing an already captured result; this seam must not throw.
-        await activation.dispose().catch(() => undefined);
+        signal.removeEventListener("abort", onAbort);
       }
     },
-  };
-}
-
-function mapStartupFailure(
-  request: WorkerRunRequest,
-  error: unknown,
-): WorkerOutcome {
-  if (request.signal.aborted) return { kind: "aborted" };
-  return {
-    kind: "failed",
-    detail: error instanceof Error ? error.message : String(error),
   };
 }
 
