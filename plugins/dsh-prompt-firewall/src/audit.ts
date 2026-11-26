@@ -100,9 +100,19 @@ function cloneAudit(result: PromptAuditResult): PromptAuditResult {
   };
 }
 
+function limitPreviews(result: PromptAuditResult, limit: number): void {
+  for (const section of result.sections) {
+    if (section.preview === undefined) continue;
+    if (limit === 0) delete section.preview;
+    else if (section.preview.length > limit)
+      section.preview = section.preview.slice(0, limit);
+  }
+}
+
 export class AuditStore {
   private readonly history: PromptAuditResult[] = [];
   private readonly known = new Map<string, KnownSection>();
+  private previewLimit = Infinity;
 
   constructor(
     private historySize: number,
@@ -112,12 +122,17 @@ export class AuditStore {
   configure(
     historySize: number,
     highlightNewSections = this.highlightNewSections,
+    previewLimit = this.previewLimit,
   ): void {
     this.historySize = historySize;
     this.highlightNewSections = highlightNewSections;
     if (this.history.length > historySize) {
       this.history.splice(0, this.history.length - historySize);
     }
+    if (previewLimit < this.previewLimit) {
+      for (const entry of this.history) limitPreviews(entry, previewLimit);
+    }
+    this.previewLimit = previewLimit;
   }
 
   record(result: PromptAuditResult): void {
@@ -139,7 +154,9 @@ export class AuditStore {
     }
 
     if (this.historySize === 0) return;
-    this.history.push(cloneAudit(result));
+    const saved = cloneAudit(result);
+    limitPreviews(saved, this.previewLimit);
+    this.history.push(saved);
     if (this.history.length > this.historySize) this.history.shift();
   }
 

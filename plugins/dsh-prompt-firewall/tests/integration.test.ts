@@ -5,6 +5,62 @@ import { describe, expect, it } from "vitest";
 import PromptFirewall from "../src/index.js";
 
 describe("DSH system-prompt integration", () => {
+  it("applies preview changes to existing history and an assembly still in progress", async () => {
+    const ctx = new Context();
+    try {
+      await ctx.plugin(SystemPrompt);
+      let audit = { includePreview: true, previewChars: 15 };
+      const fiber = await ctx.plugin((host) => {
+        new PromptFirewall(host, { audit: { get: () => audit } });
+      });
+      ctx.systemPrompt.section({
+        name: "plugin:sample",
+        order: 1,
+        text: "Ordinary sample text",
+      });
+      const sample = () =>
+        ctx.promptFirewall
+          .inspectLast()
+          ?.sections.find((s) => s.name === "plugin:sample");
+      await ctx.systemPrompt.assemble();
+      expect(sample()?.preview).toBe("Ordinary sample");
+      const setPreview = (includePreview: boolean, previewChars: number) => {
+        audit = { includePreview, previewChars };
+        fiber.ctx.emit("loader/volatile-update", [["audit"]]);
+      };
+      setPreview(true, 4);
+      expect(sample()?.preview).toBe("Ordi");
+      let started!: () => void;
+      let release!: () => void;
+      const waiting = new Promise<void>((resolve) => {
+        started = resolve;
+      });
+      const resume = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      ctx.on("system-prompt/assemble", async (_assembly, _context, next) => {
+        started();
+        await resume;
+        return next();
+      });
+      const assembling = ctx.systemPrompt.assemble();
+      await waiting;
+      setPreview(false, 4);
+      expect(sample()).not.toHaveProperty("preview");
+      release();
+      await assembling;
+      setPreview(true, 15);
+      expect(
+        ctx.promptFirewall
+          .inspectHistory()
+          .flatMap((row) => row.sections)
+          .every((s) => s.preview === undefined),
+      ).toBe(true);
+    } finally {
+      await ctx.fiber.dispose();
+    }
+  });
+
   it("filters sections added by contributors while preserving core and tool guidance", async () => {
     const ctx = new Context();
     await ctx.plugin(SystemPrompt);

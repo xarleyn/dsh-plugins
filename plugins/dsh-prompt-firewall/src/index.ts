@@ -36,6 +36,10 @@ export * from "./rules.js";
 export * from "./types.js";
 
 declare module "@deepseek-ai/cordis" {
+  interface Events {
+    /** Emitted by the Host loader after it commits an entry's live values. */
+    "loader/volatile-update"(paths: readonly (readonly string[])[]): void;
+  }
   interface Context {
     /** Inspect and evaluate prompt firewall state without accessing internals. */
     promptFirewall: PromptFirewallService;
@@ -84,6 +88,15 @@ export class PromptFirewall
       ready.audit.historySize,
       ready.audit.highlightNewSections,
     );
+    const configureAudit = (audit: ResolvedPromptFirewallConfig["audit"]) =>
+      this.audits.configure(
+        audit.historySize,
+        audit.highlightNewSections,
+        audit.includePreview ? audit.previewChars : 0,
+      );
+    ctx.on("loader/volatile-update", () =>
+      configureAudit(this.snapshot().audit),
+    );
 
     // Cordis has registration order plus `prepend`, not numeric priorities.
     // Prepending makes this wrapper call downstream contributors first and
@@ -93,13 +106,13 @@ export class PromptFirewall
       async (_assembly, _context, next): Promise<PromptPresentation> => {
         const resolved = this.snapshot();
         const rules = compileRules(resolved);
-        this.audits.configure(
-          resolved.audit.historySize,
-          resolved.audit.highlightNewSections,
-        );
         const result = await next();
+        // Keep the request's filtering rules, but observe the audit consent in
+        // effect when a finished assembly is actually stored or logged.
+        const { audit } = this.snapshot();
+        configureAudit(audit);
         return applyFirewall(result, {
-          config: resolved,
+          config: { ...resolved, audit },
           auditStore: this.audits,
           metrics: this.metrics,
           logger: this.logger,
