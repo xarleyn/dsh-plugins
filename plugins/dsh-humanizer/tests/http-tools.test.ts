@@ -235,6 +235,25 @@ describe("HTTP tool integration", () => {
     expect(remote.requests).toHaveLength(1);
   });
 
+  it.each(["", "Model is loading"])(
+    "accepts a 503 readiness response with a non-JSON body %j",
+    async (body) => {
+      const remote = await rig((_request, response) => {
+        response.writeHead(503, { "Content-Type": "text/plain" });
+        response.end(body);
+      });
+      expect(
+        await createStatusTool(dependencies(remote.endpoint)).execute(
+          {},
+          execution(),
+        ),
+      ).toEqual({ status: "loading", contextTokens: 0, errorCode: "" });
+      expect(remote.requests.map((request) => request.path)).toEqual([
+        "/health",
+      ]);
+    },
+  );
+
   it("returns unavailable with a sanitized HTTP code", async () => {
     const remote = await rig((_request, response) =>
       json(response, { secret: "private server response" }, 401),

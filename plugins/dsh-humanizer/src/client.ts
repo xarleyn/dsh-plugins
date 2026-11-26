@@ -42,6 +42,10 @@ export class HumanizerClient {
         },
         ...(body ? { body: JSON.stringify(body) } : {}),
       });
+      if (path === "/health" && response.status === 503) {
+        await response.body?.cancel().catch(() => {});
+        return { status: response.status, data: null };
+      }
       // Bound even error bodies, which may contain arbitrary server output.
       const reader = response.body?.getReader();
       const buffers: Uint8Array[] = [];
@@ -62,7 +66,7 @@ export class HumanizerClient {
           reader.releaseLock();
         }
       }
-      if (!response.ok && !(path === "/health" && response.status === 503)) {
+      if (!response.ok) {
         throw new HumanizerError(`HTTP_${response.status}`);
       }
       let data: unknown;
