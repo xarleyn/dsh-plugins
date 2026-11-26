@@ -31,16 +31,25 @@ interface GitState {
 async function captureGitState(
   cwd: string,
   options: DetectorOptions,
+  baseline?: TurnBaseline,
 ): Promise<GitState> {
   const head = await resolveHead(cwd);
   const entries = await statusEntries(cwd);
 
   // Path → status entry; renames contribute both of their paths.
-  const dirty = new Map<string, { untracked: boolean }>();
+  // A formerly dirty file can be clean now because its contents were
+  // committed. Compare the bytes at both ends of the turn, even then.
+  const dirty = new Map<string, "untracked" | "added" | undefined>();
+  for (const path of baseline?.files.keys() ?? []) dirty.set(path, undefined);
   for (const entry of entries) {
     const untracked = entry.x === "?" && entry.y === "?";
-    for (const path of entry.paths) {
-      dirty.set(path, { untracked });
+    const added = [entry.x, entry.y].some((status) => "ARC".includes(status));
+    for (const [index, path] of entry.paths.entries()) {
+      if (index > 0 && (entry.x === "C" || entry.y === "C")) continue;
+      dirty.set(
+        path,
+        untracked ? "untracked" : index === 0 && added ? "added" : undefined,
+      );
     }
   }
   const ordered = [...dirty.entries()].sort(([left], [right]) =>
@@ -55,18 +64,15 @@ async function captureGitState(
   // The bounded set is what gets read: hashing every dirty path first would
   // turn `maxFiles` into a report-only cap instead of an I/O budget.
   const files = new Map<string, FileSnapshot>();
-  for (const [path, entry] of ordered) {
+  for (const [path, addition] of ordered) {
     // Reading the path settles existence for free: deleted entries hash to
     // undefined and are recorded as absent, no status-letter parsing needed.
     const hash = await hashFile(absoluteWorkspacePath(cwd, path));
-    files.set(
-      path,
-      hash === undefined
-        ? { exists: false }
-        : entry.untracked
-          ? { exists: true, hash, untracked: true }
-          : { exists: true, hash },
-    );
+    files.set(path, {
+      exists: hash !== undefined,
+      ...(hash === undefined ? {} : { hash }),
+      ...(addition === undefined ? {} : { [addition]: true }),
+    });
   }
 
   return { head, files, degraded };
@@ -92,9 +98,10 @@ export function createGitDetector(options: DetectorOptions): ChangeDetector {
       cwd: string,
       baseline: TurnBaseline,
     ): Promise<ChangeDiff> {
-      const current = await captureGitState(cwd, options);
+      const current = await captureGitState(cwd, options, baseline);
       const rangeKinds = new Map<string, ChangeKind>();
       const currentHead = current.head;
+      let degraded = baseline.degraded || current.degraded;
       if (currentHead !== undefined) {
         const from = baseline.head ?? EMPTY_TREE;
         if (from !== currentHead) {
@@ -107,7 +114,8 @@ export function createGitDetector(options: DetectorOptions): ChangeDetector {
                 if (toPath !== undefined) rangeKinds.set(toPath, "deleted");
               } else if (entry.status === "R" || entry.status === "C") {
                 if (toPath !== undefined) rangeKinds.set(toPath, "added");
-                if (fromPath !== undefined) rangeKinds.set(fromPath, "deleted");
+                if (entry.status === "R" && fromPath !== undefined)
+                  rangeKinds.set(fromPath, "deleted");
               } else if (toPath !== undefined) {
                 rangeKinds.set(toPath, "modified");
               }
@@ -115,12 +123,11 @@ export function createGitDetector(options: DetectorOptions): ChangeDetector {
           } catch {
             // Unreadable commit range (shallow clone, rewritten history):
             // degrade to worktree-only detection instead of failing the stop.
+            degraded = true;
           }
         }
       }
 
-      const headsDiffer =
-        (baseline.head ?? undefined) !== (current.head ?? undefined);
       const paths = new Set<string>([
         ...baseline.files.keys(),
         ...current.files.keys(),
@@ -133,13 +140,12 @@ export function createGitDetector(options: DetectorOptions): ChangeDetector {
           baseline.files.get(rawPath),
           current.files.get(rawPath),
           rangeKinds.get(rawPath),
-          headsDiffer,
         );
         if (kind !== undefined)
           changes.push({ path: normalizeWorkspacePath(rawPath), type: kind });
       }
 
-      return { changes, degraded: baseline.degraded || current.degraded };
+      return { changes, degraded };
     },
 
     async listFiles(cwd: string): Promise<string[]> {
@@ -154,26 +160,21 @@ export function createGitDetector(options: DetectorOptions): ChangeDetector {
  * - clean at baseline + dirty now           → the agent changed it;
  * - dirty at baseline + different hash now  → the agent changed it further;
  * - same hash                               → pre-existing user change, skip;
- * - dirty at baseline + clean now           → committed (range diff decides
- *   net change) or reverted (still a change when HEAD did not move).
+ * - a path already dirty at baseline is read again inside the same bounded
+ *   set even if a commit or revert made its git status clean.
  */
 function classifyChange(
   before: FileSnapshot | undefined,
   after: FileSnapshot | undefined,
   rangeKind: ChangeKind | undefined,
-  headsDiffer: boolean,
 ): ChangeKind | undefined {
   if (before === undefined && after === undefined) return rangeKind;
   if (before === undefined && after !== undefined) {
     // Absent from the baseline means clean-or-nonexistent at turn start:
     // an untracked path is brand new, a tracked path existed with HEAD content.
-    if (after.untracked === true) return "added";
+    if (after.untracked || after.added || rangeKind === "added")
+      return after.exists ? "added" : undefined;
     return after.exists ? "modified" : "deleted";
-  }
-  if (before !== undefined && after === undefined) {
-    if (before.untracked === true) return "deleted";
-    if (!headsDiffer) return before.exists ? "modified" : "added";
-    return rangeKind;
   }
   if (before !== undefined && after !== undefined) {
     if (before.exists && after.exists) {

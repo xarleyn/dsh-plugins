@@ -74,6 +74,29 @@ afterAll(async () => {
 });
 
 describe("git baseline detector", () => {
+  it("compares the user's existing files by content even after they are staged and committed", async () => {
+    const cwd = await initRepo();
+    repos.push(cwd);
+    await writeFile(join(cwd, "tracked.md"), "initial\n");
+    await commitAll(cwd, "initial");
+    await writeFile(join(cwd, "tracked.md"), "user draft\n");
+    await writeFile(join(cwd, "draft.md"), "user draft\n");
+    await writeFile(join(cwd, "edited.md"), "user draft\n");
+    const detector = createGitDetector(options);
+    const baseline = await detector.captureBaseline(cwd);
+    await writeFile(join(cwd, "edited.md"), "new text\n");
+    await writeFile(join(cwd, "new.md"), "new file\n");
+    await writeFile(join(cwd, "scratch.md"), "scratch\n");
+    await git(cwd, "add", "-A");
+    await unlink(join(cwd, "scratch.md"));
+    const expected = new Map([
+      ["edited.md", "modified"],
+      ["new.md", "added"],
+    ]);
+    expect(paths(await changed(detector, cwd, baseline))).toEqual(expected);
+    await commitAll(cwd, "save draft and changes");
+    expect(paths(await changed(detector, cwd, baseline))).toEqual(expected);
+  });
   it("uses session-relative paths for dirty files under a nested cwd", async () => {
     const root = await initRepo();
     repos.push(root);
@@ -96,6 +119,26 @@ describe("git baseline detector", () => {
     await commitAll(root, "commit nested and unrelated outside edits");
     expect(paths(await changed(detector, cwd, baseline))).toEqual(
       new Map([["src/code.ts", "modified"]]),
+    );
+  });
+
+  it("retains the correct end of staged moves across a nested workspace boundary", async () => {
+    const root = await initRepo();
+    repos.push(root);
+    const cwd = join(root, "nested");
+    await mkdir(cwd);
+    await writeFile(join(cwd, "leaves.md"), "inside\n");
+    await writeFile(join(root, "enters.md"), "outside\n");
+    await commitAll(root, "initial");
+    const detector = createGitDetector(options);
+    const baseline = await detector.captureBaseline(cwd);
+    await git(root, "mv", "nested/leaves.md", "leaves.md");
+    await git(root, "mv", "enters.md", "nested/enters.md");
+    expect(paths(await changed(detector, cwd, baseline))).toEqual(
+      new Map([
+        ["leaves.md", "deleted"],
+        ["enters.md", "added"],
+      ]),
     );
   });
 

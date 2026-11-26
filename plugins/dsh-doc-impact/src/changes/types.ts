@@ -12,8 +12,10 @@ export interface FileChange {
 export interface FileSnapshot {
   readonly exists: boolean;
   readonly hash?: string;
-  /** True when git reports the path as untracked (never committed). */
+  /** The path is untracked and has no entry in the index. */
   readonly untracked?: true;
+  /** The index records an addition relative to HEAD. */
+  readonly added?: true;
 }
 
 /**

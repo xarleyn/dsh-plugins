@@ -122,7 +122,17 @@ export async function statusEntries(cwd: string): Promise<GitStatusEntry[]> {
     const paths = entry.paths
       .filter((path) => path.startsWith(prefix))
       .map((path) => path.slice(prefix.length));
-    return paths.length === 0 ? [] : [{ ...entry, paths }];
+    if (paths.length === 0) return [];
+    if (entry.paths.length === 2 && paths.length === 1) {
+      // A move across the session root has only one visible end. Preserve
+      // whether that end was the new path or the old path before dropping it.
+      const incoming = entry.paths[0]!.startsWith(prefix);
+      if (!incoming && (entry.x === "C" || entry.y === "C")) return [];
+      const status = (letter: string): string =>
+        letter === "R" || letter === "C" ? (incoming ? "A" : "D") : letter;
+      return [{ x: status(entry.x), y: status(entry.y), paths }];
+    }
+    return [{ ...entry, paths }];
   });
 }
 
