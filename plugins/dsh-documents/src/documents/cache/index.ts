@@ -248,7 +248,7 @@ export class ConversionCache {
           sha256: output.sha256,
         });
       }
-      const existing = await cache.get(key);
+      const existing = await cache.get(key, this.now());
       const assets: DocumentCacheAsset[] = [];
       for (const asset of options.assets ?? []) {
         const details = await stat(asset.path);
@@ -308,7 +308,7 @@ export class ConversionCache {
   ): Promise<MaterializedHit | undefined> {
     const cache = this.cache;
     if (cache === undefined) return undefined;
-    const entry = await cache.get(key);
+    const entry = await cache.get(key, this.now());
     if (entry === undefined) return undefined;
     const materialized = await materializeCacheHit({
       store: this.store,

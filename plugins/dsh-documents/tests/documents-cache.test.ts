@@ -50,6 +50,26 @@ async function cacheEntries(workspace: string): Promise<string[]> {
 }
 
 describe("conversion cache", () => {
+  test("a conversion after an idle period longer than maxAgeDays reruns its backend", async () => {
+    const source = await writeInput(
+      "report.docx",
+      docxBytes({ headings: ["Example"] }),
+    );
+    const config = { cache: { enabled: true, maxAgeDays: 1 } };
+    let now = new Date("2026-09-21T00:00:00Z");
+    const documents = runtime({ config, now: () => now });
+    const convert = () =>
+      documents.convert({ file: source, targetFormat: "md" }, scope());
+    const first = await convert();
+    now = new Date("2026-09-23T00:00:00Z");
+    const next = await convert();
+    expect(next.files[0]?.sha256).toBe(first.files[0]?.sha256);
+    expect((await manifestOf(next.manifestPath)).cache?.hit).toBeUndefined();
+    expect((await manifestOf((await convert()).manifestPath)).cache?.hit).toBe(
+      true,
+    );
+    expect(stub.calls.extract).toHaveLength(2);
+  });
   test.each([
     "intact",
     "missing",
@@ -364,6 +384,7 @@ describe("conversion cache", () => {
 });
 
 describe("CacheStore budgets", () => {
+  const now = new Date("2026-09-21T10:00:00Z");
   const entry = (key: string, accessedAt: string, bytes: number) => ({
     version: CACHE_ENTRY_VERSION,
     key,
@@ -395,10 +416,12 @@ describe("CacheStore budgets", () => {
       maxEntries: 10,
       maxBytes: 1_000_000,
     });
-    await store.put(entry("old", "2020-01-01T00:00:00.000Z", 10));
-    await store.put(entry("new", new Date().toISOString(), 10));
-    expect(await store.get("old")).toBeUndefined();
-    expect(await store.get("new")).toBeDefined();
+    const earlier = new Date("2026-09-18T00:00:00Z");
+    await store.put(entry("old", earlier.toISOString(), 10), earlier);
+    expect(await store.get("old", earlier)).toBeDefined();
+    await store.put(entry("new", now.toISOString(), 10), now);
+    expect(await store.get("old", now)).toBeUndefined();
+    expect(await store.get("new", now)).toBeDefined();
   });
 
   test("the count budget evicts least-recently-accessed entries", async () => {
@@ -409,13 +432,12 @@ describe("CacheStore budgets", () => {
       maxEntries: 2,
       maxBytes: 1_000_000,
     });
-    const now = new Date().toISOString();
-    await store.put(entry("a", "2026-01-01T00:00:00.000Z", 10));
-    await store.put(entry("b", "2026-01-02T00:00:00.000Z", 10));
-    await store.put(entry("c", now, 10));
-    expect(await store.get("a")).toBeUndefined();
-    expect(await store.get("b")).toBeDefined();
-    expect(await store.get("c")).toBeDefined();
+    await store.put(entry("a", "2026-01-01T00:00:00.000Z", 10), now);
+    await store.put(entry("b", "2026-01-02T00:00:00.000Z", 10), now);
+    await store.put(entry("c", now.toISOString(), 10), now);
+    expect(await store.get("a", now)).toBeUndefined();
+    expect(await store.get("b", now)).toBeDefined();
+    expect(await store.get("c", now)).toBeDefined();
   });
 
   test("the byte budget evicts until the total fits", async () => {
@@ -426,11 +448,11 @@ describe("CacheStore budgets", () => {
       maxEntries: 100,
       maxBytes: 25,
     });
-    await store.put(entry("a", "2026-01-01T00:00:00.000Z", 10));
-    await store.put(entry("b", "2026-01-02T00:00:00.000Z", 10));
-    await store.put(entry("c", new Date().toISOString(), 10));
-    expect(await store.get("a")).toBeUndefined();
-    expect(await store.get("c")).toBeDefined();
+    await store.put(entry("a", "2026-01-01T00:00:00.000Z", 10), now);
+    await store.put(entry("b", "2026-01-02T00:00:00.000Z", 10), now);
+    await store.put(entry("c", now.toISOString(), 10), now);
+    expect(await store.get("a", now)).toBeUndefined();
+    expect(await store.get("c", now)).toBeDefined();
   });
 
   test("a hit is recorded as one", async () => {
@@ -441,13 +463,10 @@ describe("CacheStore budgets", () => {
       maxEntries: 10,
       maxBytes: 1_000_000,
     });
-    const first = entry("k", new Date().toISOString(), 10);
-    await store.put(first);
-    await store.refresh(
-      (await store.get("k"))!,
-      new Date("2026-09-21T10:00:00Z"),
-    );
-    const stored = await store.get("k");
+    const first = entry("k", now.toISOString(), 10);
+    await store.put(first, now);
+    await store.refresh((await store.get("k", now))!, now);
+    const stored = await store.get("k", now);
     expect(stored?.hitCount).toBe(1);
     expect(stored?.accessedAt).toBe("2026-09-21T10:00:00.000Z");
   });

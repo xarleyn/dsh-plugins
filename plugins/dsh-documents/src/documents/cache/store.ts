@@ -80,7 +80,10 @@ export class CacheStore {
   }
 
   /** Read one entry; `undefined` covers absent, unreadable and stale entries. */
-  async get(key: string): Promise<DocumentCacheEntry | undefined> {
+  async get(
+    key: string,
+    now: Date = new Date(),
+  ): Promise<DocumentCacheEntry | undefined> {
     let raw: string;
     try {
       raw = await readFile(this.entryPath(key), "utf8");
@@ -94,7 +97,8 @@ export class CacheStore {
         parsed.key !== key ||
         !Array.isArray(parsed.outputs) ||
         !Array.isArray(parsed.assets) ||
-        parsed.outputs.length === 0
+        parsed.outputs.length === 0 ||
+        this.expired(parsed, now)
       ) {
         return undefined;
       }
@@ -102,6 +106,11 @@ export class CacheStore {
     } catch {
       return undefined;
     }
+  }
+
+  private expired(entry: DocumentCacheEntry, now: Date): boolean {
+    const age = now.getTime() - Date.parse(entry.accessedAt);
+    return !Number.isFinite(age) || age > this.maxAgeMs;
   }
 
   /**
@@ -164,8 +173,7 @@ export class CacheStore {
         await rm(candidate.file, { force: true }).catch(() => undefined);
         continue;
       }
-      const age = now.getTime() - Date.parse(candidate.entry.accessedAt);
-      if (Number.isFinite(age) && age > this.maxAgeMs) {
+      if (this.expired(candidate.entry, now)) {
         expired += 1;
         await rm(candidate.file, { force: true }).catch(() => undefined);
         continue;

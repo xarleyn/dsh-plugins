@@ -31,12 +31,13 @@ export function runtime(
   options: {
     providers?: StubProviders;
     config?: Parameters<typeof resolveDocumentsConfig>[0];
+    now?: () => Date;
   } = {},
 ): DocumentRuntime {
   return new DocumentRuntime({
     config: resolveDocumentsConfig(options.config ?? {}),
     providers: (options.providers ?? stub).providers,
-    now: () => FIXED_NOW,
+    now: options.now ?? (() => FIXED_NOW),
   });
 }
 
