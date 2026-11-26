@@ -225,12 +225,6 @@ export async function humanNewTab(
   await ensureSession(kernel, sessionId);
   const record = kernel.requireSession(sessionId);
   return runHumanSessionMutation(kernel, record, clientId, async () => {
-    if (record.tabs.size >= kernel.options.config.session.maxTabs) {
-      throw new QaBrowserError(
-        "BROWSER_TOO_MANY_TABS",
-        `Browser session reached its ${kernel.options.config.session.maxTabs}-tab limit.`,
-      );
-    }
     const tab = await createTab(kernel, record);
     record.selectedTabId = tab.id;
     kernel.touch(record);

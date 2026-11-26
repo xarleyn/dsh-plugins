@@ -50,6 +50,7 @@ export interface SessionRecord {
   readonly sessionId: string;
   readonly context: BrowserContextHandle;
   readonly tabs: Map<string, TabRecord>;
+  openingTabs: number;
   status: BrowserSessionInfo["status"];
   selectedTabId: string | null;
   readonly createdAt: number;

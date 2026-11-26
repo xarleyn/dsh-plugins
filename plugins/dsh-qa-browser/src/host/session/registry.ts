@@ -20,7 +20,30 @@ export async function createTab(
   kernel: SessionKernel,
   record: SessionRecord,
 ): Promise<TabRecord> {
-  const page = await record.context.newPage();
+  const maxTabs = kernel.options.config.session.maxTabs;
+  if (record.tabs.size + record.openingTabs >= maxTabs) {
+    throw new QaBrowserError(
+      "BROWSER_TOO_MANY_TABS",
+      `Browser session reached its ${maxTabs}-tab limit.`,
+    );
+  }
+  record.openingTabs++;
+  let page;
+  try {
+    page = await record.context.newPage();
+  } finally {
+    record.openingTabs--;
+  }
+  if (
+    kernel.sessions.get(record.sessionId) !== record ||
+    kernel.isLost(record)
+  ) {
+    await page.close().catch(() => undefined);
+    throw new QaBrowserError(
+      "BROWSER_CONTEXT_CLOSED",
+      "Browser session closed while the tab was opening.",
+    );
+  }
   const url = page.url();
   const tab: TabRecord = {
     id: tabId(),
@@ -51,6 +74,12 @@ export async function createTab(
   // A page that cannot report its title is still a page; refusing to create
   // the tab over it would leave a running page with no way to see it.
   tab.title = await page.title().catch(() => "");
+  if (record.tabs.get(tab.id) !== tab) {
+    throw new QaBrowserError(
+      "BROWSER_CONTEXT_CLOSED",
+      "Browser tab closed while it was opening.",
+    );
+  }
   return tab;
 }
 

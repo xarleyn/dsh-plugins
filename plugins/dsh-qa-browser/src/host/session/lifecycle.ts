@@ -142,6 +142,7 @@ async function createSession(
     sessionId,
     context,
     tabs: new Map(),
+    openingTabs: 0,
     status: "starting",
     selectedTabId: null,
     createdAt: now,
@@ -168,7 +169,8 @@ async function createSession(
   } catch (error) {
     // A session that could not open its first tab is not a session: leaving
     // it in the map would answer the panel with a dead browser.
-    kernel.sessions.delete(sessionId);
+    if (kernel.sessions.get(sessionId) === record)
+      kernel.sessions.delete(sessionId);
     await kernel.options.provider
       .closeContext(context.id)
       .catch(() => undefined);

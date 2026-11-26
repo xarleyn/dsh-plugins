@@ -5,6 +5,75 @@ import { QaBrowserError } from "../src/errors.js";
 import { createHarness, type FakeContext } from "./session-manager.helpers.js";
 
 describe("QaBrowserSessionManager", () => {
+  it("closes a page that finishes opening after the session has already closed", async () => {
+    const { manager, provider } = createHarness();
+    await manager.ensureSession("demo");
+    const context = [...provider.contexts.values()][0]!;
+    let enter!: () => void;
+    let resume!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      enter = resolve;
+    });
+    const hold = new Promise<void>((resolve) => {
+      resume = resolve;
+    });
+    const newPage = context.newPage.bind(context);
+    context.newPage = async () => {
+      enter();
+      await hold;
+      return newPage();
+    };
+    const opening = manager.newTab("demo");
+    await entered;
+    await manager.closeSession("demo");
+    resume();
+    await expect(opening).rejects.toMatchObject({
+      code: "BROWSER_CONTEXT_CLOSED",
+    });
+    expect(context.pages.at(-1)?.closed).toBe(true);
+    expect(manager.getSession("demo")).toBeNull();
+    await manager.dispose();
+  });
+
+  it("releases a reserved tab slot if the provider cannot open it", async () => {
+    const { manager, provider } = createHarness({ maxTabs: 2 });
+    await manager.ensureSession("demo");
+    const context = [...provider.contexts.values()][0]!;
+    const newPage = context.newPage.bind(context);
+    context.newPage = async () => {
+      throw new Error("temporary provider failure");
+    };
+    await expect(manager.newTab("demo")).rejects.toThrow(
+      "temporary provider failure",
+    );
+    context.newPage = newPage;
+    await manager.newTab("demo");
+    expect(await manager.listTabs("demo")).toHaveLength(2);
+    await manager.dispose();
+  });
+
+  it.each(["agent", "human"])(
+    "reserves the final tab slot while a %s page is opening",
+    async (actor) => {
+      const { manager } = createHarness({ maxTabs: 2 });
+      await manager.ensureSession("demo");
+      if (actor === "human") manager.acquireHumanControl("demo", "panel");
+      const open = () =>
+        actor === "human"
+          ? manager.humanNewTab("demo", "panel")
+          : manager.newTab("demo");
+      const results = await Promise.allSettled([open(), open()]);
+      expect(
+        results.filter((result) => result.status === "fulfilled"),
+      ).toHaveLength(1);
+      expect(
+        results.find((result) => result.status === "rejected"),
+      ).toMatchObject({ reason: { code: "BROWSER_TOO_MANY_TABS" } });
+      expect(await manager.listTabs("demo")).toHaveLength(2);
+      await manager.dispose();
+    },
+  );
+
   it("creates one isolated context per DSH session and keeps independent tabs", async () => {
     const { manager, provider } = createHarness();
     const [left, right] = await Promise.all([
