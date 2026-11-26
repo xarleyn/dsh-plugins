@@ -23,6 +23,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
 } from "react";
@@ -179,6 +180,8 @@ function PluginLogSettingsCard({
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [holding, setHolding] = useState(false);
+  const changingLevel = useRef(false);
+  const inspection = useRef<symbol | null>(null);
   const [holdPlugin, setHoldPlugin] = useState("");
   const [holdLevel, setHoldLevel] = useState<ManagedPluginLogLevel>(
     DEFAULT_TEMPORARY_LEVEL,
@@ -202,8 +205,12 @@ function PluginLogSettingsCard({
   );
 
   const refresh = useCallback(async () => {
+    if (changingLevel.current || inspection.current !== null) return;
+    const request = Symbol();
+    inspection.current = request;
     try {
       const result = await inspect();
+      if (inspection.current !== request) return;
       if (result.ok) {
         setSnapshot(result.value);
         setError(null);
@@ -211,7 +218,9 @@ function PluginLogSettingsCard({
         setError(errorText(result.error));
       }
     } catch (cause) {
-      setError(errorText(cause));
+      if (inspection.current === request) setError(errorText(cause));
+    } finally {
+      if (inspection.current === request) inspection.current = null;
     }
   }, [inspect]);
 
@@ -219,7 +228,11 @@ function PluginLogSettingsCard({
     // While the namespace answers `unavailable` the body renders the reason and no
     // registry data, so the poll would be timer work whose result nothing reads.
     if (settings.status === "unavailable") return undefined;
-    return startVisibilityAwarePolling(refresh, REFRESH_INTERVAL_MS);
+    const stop = startVisibilityAwarePolling(refresh, REFRESH_INTERVAL_MS);
+    return () => {
+      inspection.current = null;
+      stop();
+    };
   }, [refresh, settings.status]);
 
   /**
@@ -229,7 +242,9 @@ function PluginLogSettingsCard({
    * test holds that to be true.
    */
   const hold = useCallback(async () => {
-    if (holdPlugin === "") return;
+    if (holdPlugin === "" || changingLevel.current) return;
+    changingLevel.current = true;
+    inspection.current = null;
     setHolding(true);
     setError(null);
     try {
@@ -240,12 +255,16 @@ function PluginLogSettingsCard({
     } catch (cause) {
       setError(errorText(cause));
     } finally {
+      changingLevel.current = false;
       setHolding(false);
     }
   }, [holdLevel, holdPlugin, holdWindow, setTemporaryLevel]);
 
   const release = useCallback(
     async (pluginId: string) => {
+      if (changingLevel.current) return;
+      changingLevel.current = true;
+      inspection.current = null;
       setHolding(true);
       setError(null);
       try {
@@ -255,6 +274,7 @@ function PluginLogSettingsCard({
       } catch (cause) {
         setError(errorText(cause));
       } finally {
+        changingLevel.current = false;
         setHolding(false);
       }
     },
@@ -271,6 +291,7 @@ function PluginLogSettingsCard({
         if (!(await settingsForm.set(field, value))) {
           throw new TypeError("The Host refused the settings write.");
         }
+        inspection.current = null;
         await refresh();
       } catch (cause) {
         setError(errorText(cause));

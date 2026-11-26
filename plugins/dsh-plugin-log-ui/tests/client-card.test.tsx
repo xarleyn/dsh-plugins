@@ -22,6 +22,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -29,8 +30,9 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { createElement } from "react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import * as clientModule from "../src/client/index.js";
+import type { PluginLogUiSnapshot } from "../src/types.js";
 import { harnessOf, rowConfigRegistration } from "./helpers/client-harness.js";
 
 const { apply } = clientModule;
@@ -144,6 +146,63 @@ afterEach(() => {
 });
 
 describe("the row-config card", () => {
+  it("keeps a confirmed temporary level when an earlier inspection completes", async () => {
+    const harness = harnessOf({ settingsForm: storedForm([]) });
+    await apply(harness.ctx);
+    const seat = rowConfigRegistration(harness)!;
+    const inspect = seat.props.inspect as () => Promise<{
+      ok: true;
+      value: PluginLogUiSnapshot;
+    }>;
+    const old = await inspect();
+    let resolve!: () => void;
+    const pending = new Promise<typeof old>((done) => {
+      resolve = () => done(old);
+    });
+    const read = vi
+      .fn(inspect)
+      .mockResolvedValueOnce(old)
+      .mockReturnValueOnce(pending);
+    render(
+      createElement(seat.component, {
+        ...seat.props,
+        inspect: read,
+        view: "page",
+        form: PAGE_FORM,
+      }),
+    );
+    await screen.findByTestId("log-card-plugin-row");
+    fireEvent(document, new Event("visibilitychange"));
+    expect(read).toHaveBeenCalledTimes(2);
+    fireEvent.change(screen.getByTestId("log-card-hold-plugin"), {
+      target: { value: "dsh-sample" },
+    });
+    fireEvent.click(screen.getByTestId("log-card-hold-apply"));
+    await screen.findByTestId("log-card-hold-marker");
+    await act(async () => {
+      resolve();
+      await pending;
+    });
+    expect(screen.queryByTestId("log-card-hold-marker")).not.toBeNull();
+
+    const held = await inspect();
+    let finish!: () => void;
+    const earlier = new Promise<typeof held>((done) => {
+      finish = () => done(held);
+    });
+    read.mockReturnValueOnce(earlier);
+    fireEvent(document, new Event("visibilitychange"));
+    fireEvent.click(screen.getByTestId("log-card-hold-revert"));
+    await waitFor(() =>
+      expect(screen.queryByTestId("log-card-hold-marker")).toBeNull(),
+    );
+    await act(async () => {
+      finish();
+      await earlier;
+    });
+    expect(screen.queryByTestId("log-card-hold-marker")).toBeNull();
+  });
+
   /*
    * The state the page shows the moment the row opens. The configuration section is
    * mounted eagerly and the Host's own control is what expands it, so a body that
