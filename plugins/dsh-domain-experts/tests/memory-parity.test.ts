@@ -58,6 +58,20 @@ function pairOf(records = productionShapedRecords()): {
 }
 
 describe("memory parity: reads", () => {
+  it("keeps the same top-ranked memory for tied full-width and supplementary keys after migration", async () => {
+    const pair = pairOf([]);
+    for (const provider of [pair.builtin, pair.sqlite]) {
+      for (const key of ["🚀", "Ａ"])
+        await provider.remember("domain/demo", key, "match");
+    }
+    const query = { namespaces: ["domain/demo"], query: "match", limit: 1 };
+    expect(await pair.sqlite.retrieve(query)).toEqual(
+      await pair.builtin.retrieve(query),
+    );
+    expect(await pair.sqlite.inspect("domain/demo")).toEqual(
+      await pair.builtin.inspect("domain/demo"),
+    );
+  });
   it("imports the fixture and answers with every record unchanged", async () => {
     const { builtin, sqlite } = pairOf();
     for (const namespace of ["domain/answer-reviewer", "domain/payments"]) {

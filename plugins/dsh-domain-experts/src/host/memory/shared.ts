@@ -129,8 +129,8 @@ export function clampLimit(limit: number): number {
  * The tie-break is deliberate and it is not locale-aware: records written in
  * the same millisecond are common (one session records several findings), so an
  * order that depends on insertion history makes a migration look like it
- * changed the answer. Code-unit comparison is what SQLite's own `ORDER BY`
- * does, so both backends break the tie the same way.
+ * changed the answer. SQLite's default binary collation compares the UTF-8
+ * bytes of the keys, including supplementary characters.
  */
 export function compareRecords(
   left: MemoryRecord,
@@ -139,8 +139,12 @@ export function compareRecords(
   if (left.updatedAt !== right.updatedAt)
     return right.updatedAt - left.updatedAt;
   if (left.namespace !== right.namespace)
-    return left.namespace < right.namespace ? -1 : 1;
-  if (left.key !== right.key) return left.key < right.key ? -1 : 1;
+    return Buffer.compare(
+      Buffer.from(left.namespace),
+      Buffer.from(right.namespace),
+    );
+  if (left.key !== right.key)
+    return Buffer.compare(Buffer.from(left.key), Buffer.from(right.key));
   return 0;
 }
 

@@ -7,6 +7,7 @@ import { createBuiltinMemoryProvider } from "../src/host/memory/builtin.js";
 import { createSqliteMemoryProvider } from "../src/host/memory/sqlite.js";
 import { fixedClock } from "./helpers/fakes.js";
 import {
+  fixtureMemoryTable,
   recordsForSize,
   rewritingJsonTable,
 } from "./helpers/memory-fixture.js";
@@ -90,7 +91,7 @@ describe.skipIf(!measure)("memory scale", () => {
         filePath: tempFile("memory.db"),
         now: fixedClock(1_758_000_000_000, 0),
       });
-      sqlite.importFromUnit(jsonTable);
+      sqlite.importFromUnit(fixtureMemoryTable(records));
       const sqliteMs = await asyncTimed(async () => {
         for (let index = 0; index < point.writes; index += 1) {
           await sqlite.remember(
@@ -127,18 +128,22 @@ describe.skipIf(!measure)("memory scale", () => {
         jsonTable,
         fixedClock(1_758_000_000_000, 0),
       );
+      let jsonRemoved = 0;
       const jsonMs = await asyncTimed(async () => {
-        await builtin.clear("domain/answer-reviewer");
+        jsonRemoved = await builtin.clear("domain/answer-reviewer");
       });
       const sqlite = createSqliteMemoryProvider({
         filePath: tempFile("clear.db"),
         now: fixedClock(1_758_000_000_000, 0),
       });
-      sqlite.importFromUnit(jsonTable);
+      sqlite.importFromUnit(fixtureMemoryTable(records));
+      let sqliteRemoved = 0;
       const sqliteMs = await asyncTimed(async () => {
-        await sqlite.clear("domain/answer-reviewer");
+        sqliteRemoved = await sqlite.clear("domain/answer-reviewer");
       });
       sqlite.close();
+      expect(jsonRemoved).toBe(point.size);
+      expect(sqliteRemoved).toBe(point.size);
       rows.push(
         `clear(${String(point.size)}) json ${jsonMs.toFixed(0)} ms | sqlite ${sqliteMs.toFixed(
           0,
