@@ -147,12 +147,12 @@ export class SingleSlotCoordinator {
       return this.#runAuxiliary(input);
     }
     const sessionId: string = input.sessionId;
-    this.#ensureRuntime(sessionId, input);
     const release = await this.#mutex.acquire();
     try {
       if (this.#disposed)
         throw new KvCoordinatorDisposedError(COORDINATOR_DISPOSED);
       this.#cancelIdleTimer();
+      await this.#selectRoute(sessionId, input);
       if (this.#breaker.isOpen(this.#now())) {
         this.#metrics.counters.circuitSkips += 1;
         this.#logger.debug("kv.persistence.circuit_open", { sessionId });
@@ -804,18 +804,33 @@ export class SingleSlotCoordinator {
 
   // ——— internals ———————————————————————————————————————————————————————
 
-  #ensureRuntime(
+  /** The slot and its route change under one lease. A queued model switch
+   * must never relabel a stream that is still finishing on the old model. */
+  async #selectRoute(
     sessionId: string,
     route: { provider: string; model: string },
-  ): SessionRuntime {
+  ): Promise<void> {
     const existing = this.#sessions.get(sessionId);
-    if (existing !== undefined) {
-      existing.route = { provider: route.provider, model: route.model };
-      return existing;
+    if (
+      existing?.route.provider === route.provider &&
+      existing.route.model === route.model
+    )
+      return;
+    if (existing && this.#slot.ownerSessionId === sessionId) {
+      if (
+        !this.#breaker.isOpen(this.#now()) &&
+        this.#policy.shouldCheckpoint(existing, "switch")
+      )
+        await this.#saveOwnedSession(sessionId, "switch", sessionId);
+      this.#loseSlotTracking();
     }
-    const runtime = createSessionRuntime(sessionId, route);
-    this.#sessions.set(sessionId, runtime);
-    return runtime;
+    this.#sessions.set(
+      sessionId,
+      createSessionRuntime(sessionId, {
+        provider: route.provider,
+        model: route.model,
+      }),
+    );
   }
 
   #requireRuntime(sessionId: string): SessionRuntime {

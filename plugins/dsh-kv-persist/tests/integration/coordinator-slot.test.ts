@@ -9,6 +9,34 @@ import {
 } from "../fixtures/harness.js";
 
 describe("single-slot coordinator: slot lifecycle (SPEC §69-§75)", () => {
+  it("checkpoints and restores each route when one session changes model while its previous request still owns the slot", async () => {
+    const h = await createHarness();
+    try {
+      const sessionId = "session-a";
+      const first = await h.coordinator.runSessionRequest(
+        makeRequest({ sessionId }),
+      );
+      const queued = h.coordinator.runSessionRequest(
+        makeRequest({ sessionId, model: "second-model" }),
+      );
+      expect(h.coordinator.getSessionState(sessionId)?.route.model).toBe(
+        "qwen-test",
+      );
+      await consume(first);
+      await consume(await queued);
+      const original = buildIdentity(h, sessionId);
+      expect((await h.repository.load(original))?.model).toBe(original.model);
+      expect(h.backend.eraseCount).toBe(2);
+      await run(h, sessionId);
+      expect(
+        (await h.repository.load({ ...original, model: "second-model" }))
+          ?.model,
+      ).toBe("second-model");
+      expect(h.backend.restoreCount).toBe(1);
+    } finally {
+      await h.cleanup();
+    }
+  });
   it("cold start: request succeeds, slot assigned, state dirty, nothing saved yet", async () => {
     const harness = await createHarness();
     try {
