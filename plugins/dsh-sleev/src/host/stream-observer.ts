@@ -19,6 +19,7 @@ function errorCode(error: unknown): string | undefined {
 export async function* observeStream(
   downstream: AsyncIterable<StreamChunk>,
   observation: StreamObservation,
+  signal?: AbortSignal,
 ): AsyncIterable<StreamChunk> {
   let terminal = false;
   try {
@@ -49,10 +50,18 @@ export async function* observeStream(
     if (!terminal) {
       terminal = true;
       const code = errorCode(error);
-      observation.finish({
-        kind: "error",
-        ...(code === undefined ? {} : { code }),
-      });
+      if (
+        signal?.aborted ||
+        code === "ABORTED" ||
+        (error instanceof Error && error.name === "AbortError")
+      ) {
+        observation.finish({ kind: "aborted" });
+      } else {
+        observation.finish({
+          kind: "error",
+          ...(code === undefined ? {} : { code }),
+        });
+      }
     }
     throw error;
   } finally {

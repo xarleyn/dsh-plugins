@@ -107,4 +107,41 @@ describe("real DSH llm waterfall integration", () => {
 
     await ctx.fiber.dispose();
   });
+
+  it("records a caller stop thrown by a downstream stream listener", async () => {
+    const ctx = new Context();
+    try {
+      await ctx.plugin(LlmRuntime);
+      await ctx.plugin(SleevIntegrationService, { logLevel: "off" });
+      const stop = new AbortController();
+      const reason = new Error("The caller stopped the reply");
+      ctx.on(
+        "llm/stream",
+        async function* (_options, next) {
+          for await (const chunk of next()) {
+            yield chunk;
+            stop.abort(reason);
+            throw reason;
+          }
+        },
+        { global: true },
+      );
+      ctx.llm.registerAdapter(["sleev-test"], new ScriptedAdapter());
+      await expect(
+        drain(
+          ctx.llm.stream({
+            provider: "sleev-test",
+            model: "model-a",
+            messages: [],
+            signal: stop.signal,
+          }),
+        ),
+      ).rejects.toBe(reason);
+      expect(ctx.sleev.listRecentCalls()).toMatchObject([
+        { result: { kind: "aborted" } },
+      ]);
+    } finally {
+      await ctx.fiber.dispose();
+    }
+  });
 });

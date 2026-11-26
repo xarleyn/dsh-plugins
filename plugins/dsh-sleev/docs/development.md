@@ -48,6 +48,9 @@ route prefixes, recent-call retention, and logging level. Values are staged
 until Save and then read through by the Host on the next matching request. The
 card does not edit `llm-pi-ai` provider endpoints or Sleev routing headers.
 
+The call history records caller cancellation as `aborted` whether the stream
+yields a terminal chunk or a downstream listener throws while the request is stopping.
+
 ## Compatibility caveat
 
 Sleev currently documents harness ids for several first-party integrations but

@@ -80,7 +80,7 @@ export class SleevIntegrationService extends Service {
         const config = readConfig();
         if (!matchesOptimizedRoute(options.provider, config)) return next();
         const handle = this.telemetry.begin(options, classifyRequest(options));
-        return observeStream(next(), handle);
+        return observeStream(next(), handle, options.signal);
       },
       { global: true },
     );
