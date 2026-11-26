@@ -40,15 +40,10 @@ function emptyCursor(key: string): ScanCursor {
   return { workspaceKey: key, sessionWatermarks: {}, updatedAt: 0 };
 }
 
-function abortReason(signal: AbortSignal): unknown {
-  return signal.reason instanceof Error
-    ? signal.reason
-    : new Error("The operation was aborted");
-}
-
 export class CorrectionMinerEngine {
   private readonly pending = new Map<string, PendingSession>();
   private readonly workspaceQueues = new Map<string, Promise<unknown>>();
+  private readonly lifetime = new AbortController();
 
   constructor(
     private readonly source: SessionSourceLike,
@@ -60,11 +55,14 @@ export class CorrectionMinerEngine {
 
   scan(request: ScanRequest, signal?: AbortSignal): Promise<ScanReport> {
     const key = workspaceKey(request.cwd);
-    return this.enqueue(key, () => this.runHistoricalScan(request, signal));
+    const active = signal
+      ? AbortSignal.any([signal, this.lifetime.signal])
+      : this.lifetime.signal;
+    return this.enqueue(key, () => this.runHistoricalScan(request, active));
   }
 
   observeEvent(session: Session, event: SessionEvent): void {
-    if (!this.config.enabled) return;
+    if (!this.config.enabled || this.lifetime.signal.aborted) return;
     const observedAt = this.now();
     this.evictExpired(observedAt);
     const sessionId = String(session.id);
@@ -91,12 +89,13 @@ export class CorrectionMinerEngine {
   }
 
   observeDisposed(session: Session): void {
-    if (!this.config.enabled) return;
+    if (!this.config.enabled || this.lifetime.signal.aborted) return;
     this.evictExpired(this.now());
     this.scheduleLiveSession(session);
   }
 
   dispose(): void {
+    this.lifetime.abort();
     this.pending.clear();
   }
 
@@ -125,10 +124,12 @@ export class CorrectionMinerEngine {
     const snapshot: SessionSnapshot = {
       session: session.header,
       events: session.snapshotEvents(),
+      inheritedEventCount: session.inheritedEventCount,
     };
     const key = workspaceKey(cwd);
     void this.enqueue(key, () => this.runSnapshot(snapshot, key, true)).catch(
       (error: unknown) => {
+        if (this.lifetime.signal.aborted) return;
         this.logger.warn("incremental_scan.failed", {
           sessionId,
           reason: error instanceof Error ? error.message : String(error),
@@ -139,10 +140,12 @@ export class CorrectionMinerEngine {
 
   private async runHistoricalScan(
     request: ScanRequest,
-    signal?: AbortSignal,
+    signal: AbortSignal,
   ): Promise<ScanReport> {
+    signal.throwIfAborted();
     const key = workspaceKey(request.cwd);
     const sessions = await this.source.list(request, signal);
+    signal.throwIfAborted();
     let sessionsScanned = 0;
     let sessionsFailed = 0;
     let eventsScanned = 0;
@@ -150,19 +153,21 @@ export class CorrectionMinerEngine {
     let correctionsAdded = 0;
 
     for (const record of sessions) {
-      if (signal?.aborted === true) throw abortReason(signal);
+      signal.throwIfAborted();
       try {
         const snapshot = await this.source.read(String(record.header.id));
         const report = await this.runSnapshot(
           snapshot,
           key,
           request.incremental !== false,
+          signal,
         );
         sessionsScanned += 1;
         eventsScanned += report.eventsScanned;
         correctionsFound += report.correctionsFound;
         correctionsAdded += report.correctionsAdded;
       } catch (error) {
+        signal.throwIfAborted();
         sessionsFailed += 1;
         this.logger.warn("historical_scan.session_failed", {
           sessionId: String(record.header.id),
@@ -188,11 +193,13 @@ export class CorrectionMinerEngine {
     snapshot: SessionSnapshot,
     key: string,
     incremental: boolean,
+    signal: AbortSignal = this.lifetime.signal,
   ): Promise<{
     eventsScanned: number;
     correctionsFound: number;
     correctionsAdded: number;
   }> {
+    signal.throwIfAborted();
     const cursor = this.store.getCursor(key) ?? emptyCursor(key);
     const sessionId = String(snapshot.session.id);
     const afterSeq = incremental
@@ -201,6 +208,7 @@ export class CorrectionMinerEngine {
     const result = scanSession(snapshot, afterSeq, this.config.analysis);
     let correctionsAdded = 0;
     for (const evidence of result.evidence) {
+      signal.throwIfAborted();
       const record = this.toRecord(evidence, key);
       const existed = this.store.hasCorrection(record.id);
       await this.store.putCorrection(
@@ -224,7 +232,9 @@ export class CorrectionMinerEngine {
       },
       updatedAt: this.now(),
     };
+    signal.throwIfAborted();
     await this.store.putCursor(nextCursor);
+    signal.throwIfAborted();
     return {
       eventsScanned: result.eventsScanned,
       correctionsFound: result.evidence.length,

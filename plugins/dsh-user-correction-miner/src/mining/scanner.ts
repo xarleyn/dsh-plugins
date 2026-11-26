@@ -10,6 +10,7 @@ import { prefilterCorrection } from "./prefilter.js";
 export interface SessionSnapshot {
   readonly session: SessionHeader;
   readonly events: readonly SessionEvent[];
+  readonly inheritedEventCount?: number;
 }
 
 export interface SessionScanResult {
@@ -25,7 +26,13 @@ export function scanSession(
 ): SessionScanResult {
   const evidence: CorrectionEvidence[] = [];
   let eventsScanned = 0;
-  for (let index = 0; index < snapshot.events.length; index += 1) {
+  // Fork-inherited events provide context, but their corrections belong to
+  // the parent session. Index into the full log so context offsets stay valid.
+  for (
+    let index = snapshot.inheritedEventCount ?? 0;
+    index < snapshot.events.length;
+    index += 1
+  ) {
     const event = snapshot.events[index];
     if (event === undefined || event.seq <= afterSeq) continue;
     eventsScanned += 1;

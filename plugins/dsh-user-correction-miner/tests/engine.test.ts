@@ -79,6 +79,85 @@ function liveEngine(
 }
 
 describe("CorrectionMinerEngine", () => {
+  it("attributes a fork's own corrections to the child without mining its inherited messages again", async () => {
+    const parent = header("parent");
+    const child = {
+      ...header("child"),
+      isSeeded: true,
+      parentSession: parent.id,
+    };
+    const inherited = userEvent(0, "Не используй npm, используй pnpm.");
+    const own = userEvent(1, "Не запускай сборку.");
+    const store = new MemoryCorrectionStore();
+    const engine = new CorrectionMinerEngine(
+      {
+        list: async () =>
+          [parent, child].map(
+            (header) =>
+              ({ header, persisted: true, live: false }) as SessionRecord,
+          ),
+        read: async (id) =>
+          id === parent.id
+            ? {
+                session: parent,
+                inheritedEventCount: SessionLogOffset(0),
+                events: [inherited],
+              }
+            : {
+                session: child,
+                inheritedEventCount: SessionLogOffset(1),
+                events: [inherited, own],
+              },
+      },
+      store,
+      resolveConfig(),
+      logger,
+    );
+    const report = await engine.scan({ cwd: parent.cwd! });
+    expect(report).toMatchObject({
+      sessionsScanned: 2,
+      correctionsAdded: 2,
+      eventsScanned: 2,
+    });
+    expect(
+      engine.list(parent.cwd!).map((row) => [row.sessionId, row.eventSeq]),
+    ).toEqual(
+      expect.arrayContaining([
+        [parent.id, 0],
+        [child.id, 1],
+      ]),
+    );
+  });
+
+  it("honors cancellation during the last session read before writing evidence or its cursor", async () => {
+    const record = header();
+    const cancel = new AbortController();
+    const store = new MemoryCorrectionStore();
+    const cursor = vi.spyOn(store, "putCursor");
+    const engine = new CorrectionMinerEngine(
+      {
+        list: async () => [
+          { header: record, persisted: true, live: false } as SessionRecord,
+        ],
+        read: async () => {
+          cancel.abort(new Error("scan cancelled"));
+          return {
+            session: record,
+            inheritedEventCount: SessionLogOffset(0),
+            events: [userEvent(0, "Не запускай сборку.")],
+          };
+        },
+      },
+      store,
+      resolveConfig(),
+      logger,
+    );
+    await expect(
+      engine.scan({ cwd: record.cwd! }, cancel.signal),
+    ).rejects.toThrow("scan cancelled");
+    expect(engine.count(record.cwd!)).toBe(0);
+    expect(cursor).not.toHaveBeenCalled();
+  });
   it("scans incrementally, deduplicates, and sanitizes persisted snippets", async () => {
     const sessionHeader = header();
     const snapshot = {
