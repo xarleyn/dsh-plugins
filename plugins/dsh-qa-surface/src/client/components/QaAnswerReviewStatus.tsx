@@ -121,5 +121,5 @@ export const QA_REVIEW_STYLES = `
 .dsh-qa-review-row{padding:4px 0 12px}
 .dsh-qa-review{display:inline-flex;align-items:center;gap:6px;max-width:100%;margin:8px 0 0;padding:4px 9px;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-2);font-size:12px;line-height:18px}
 .dsh-qa-review-icon{width:14px;height:14px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
-.dsh-qa-review[data-status=pass]{color:var(--dsw-alias-state-success-primary,var(--dsw-alias-label-primary))}
+.dsh-qa-review[data-status=pass]{color:var(--dsh-qa-success-ink,var(--dsw-alias-label-secondary))}
 `;

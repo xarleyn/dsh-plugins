@@ -607,8 +607,7 @@ export function QaSourcesPanel({
           */}
           {complete && sources.length === 0 ? (
             <p className="dsh-qa-sources__empty" data-testid="qa-sources-empty">
-              {pinned ? "Для этого ответа" : "В этом чате"} пока нет
-              зарегистрированных источников.
+              {pinned ? "Для этого ответа" : "В этом чате"} пока нет источников
             </p>
           ) : null}
           {groups.map((group) => {

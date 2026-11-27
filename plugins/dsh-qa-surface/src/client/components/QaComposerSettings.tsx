@@ -30,6 +30,18 @@ export interface QaComposerSettingsProps {
 }
 type Page = "root" | "model" | "code";
 
+/** Keep the model identity; inference-file details remain in the menu and title. */
+function compactModelLabel(label: string): string {
+  return (
+    label
+      .replace(/\.gguf$/iu, "")
+      .replace(
+        /[-_](?:UD[-_])?(?:I?Q\d(?:_[A-Z0-9]+)*|BF16|F16|FP16|FP32)$/iu,
+        "",
+      ) || label
+  );
+}
+
 function Chevron({ back = false }: { readonly back?: boolean }) {
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">
@@ -152,6 +164,10 @@ export function QaComposerSettings(props: QaComposerSettingsProps) {
   const modelLabel =
     model.selected?.label ?? (props.model === undefined ? "" : "Модель");
   const summary =
+    [compactModelLabel(modelLabel), showCode ? sourceLabel : ""]
+      .filter(Boolean)
+      .join(" · ") || "Параметры чата";
+  const fullSummary =
     [modelLabel, showCode ? sourceLabel : ""].filter(Boolean).join(" · ") ||
     "Параметры чата";
   const codeDisabled =
@@ -240,7 +256,7 @@ export function QaComposerSettings(props: QaComposerSettingsProps) {
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? popupId : undefined}
-        title={summary}
+        title={fullSummary}
         onClick={() => {
           setPage("root");
           setOpen(!open);

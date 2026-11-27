@@ -7,8 +7,17 @@
  * which is why the tick is never the thing that carries the quality.
  */
 import type { ReactNode } from "react";
-import { findingsLabel, verdictLabel, verdictTone } from "@yadsh/dsh-audit-ui";
+import { verdictLabel, verdictTone } from "@yadsh/dsh-audit-ui";
 import type { QaAuditMark } from "./types.js";
+
+const verdictLabels: Readonly<Record<string, string>> = {
+  excellent: "Отлично",
+  good: "Хорошо",
+  mixed: "Есть замечания",
+  poor: "Плохо",
+  failed: "Неудачно",
+  insufficient_evidence: "Мало данных",
+};
 
 export interface QaAuditRowBadgeProps {
   readonly mark: QaAuditMark;
@@ -20,13 +29,20 @@ export interface QaAuditRowBadgeProps {
 export function QaAuditRowBadge(props: QaAuditRowBadgeProps): ReactNode {
   const { mark } = props;
   const tone = verdictTone(mark.verdict);
-  const counts = `Проведён: ${verdictLabel(mark.verdict)} · ${findingsLabel({
-    critical: mark.critical,
-    major: mark.major,
-    minor: mark.minor,
-    observation: mark.observation,
-    other: mark.other,
-  })}`;
+  const label = verdictLabels[mark.verdict] ?? verdictLabel(mark.verdict);
+  const findings = (
+    [
+      [mark.critical, "критичных"],
+      [mark.major, "существенных"],
+      [mark.minor, "небольших"],
+      [mark.observation, "наблюдений"],
+      [mark.other, "прочих"],
+    ] as const
+  )
+    .filter(([count]) => count > 0)
+    .map(([count, kind]) => `${kind}: ${count}`)
+    .join(" · ");
+  const counts = `Проведён: ${label} · ${findings || "Замечаний нет"}`;
   return (
     <button
       type="button"
@@ -60,7 +76,7 @@ export function QaAuditRowBadge(props: QaAuditRowBadgeProps): ReactNode {
         className={`dsh-qa-sidebar__item-audit-verdict dsh-qa-sidebar__item-audit-verdict--${tone}`}
         data-testid="qa-audit-badge-verdict"
       >
-        {verdictLabel(mark.verdict)}
+        {label}
       </span>
     </button>
   );

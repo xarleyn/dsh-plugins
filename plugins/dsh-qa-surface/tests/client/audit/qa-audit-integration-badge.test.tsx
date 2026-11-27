@@ -27,7 +27,7 @@ describe("QaAuditRowBadge", () => {
     const check = screen.getByTestId("qa-audit-badge-check");
     expect(check.querySelector("path")).not.toBeNull();
     const verdict = screen.getByTestId("qa-audit-badge-verdict");
-    expect(verdict.textContent).toBe("Poor");
+    expect(verdict.textContent).toBe("Плохо");
     expect(verdict.className).toContain("--bad");
   });
 
@@ -48,8 +48,8 @@ describe("QaAuditRowBadge", () => {
     );
 
     const button = screen.getByRole("button", { name: /Открыть аудит/u });
-    expect(button.getAttribute("title")).toContain("Good");
-    expect(button.getAttribute("title")).toContain("1 major");
+    expect(button.getAttribute("title")).toContain("Хорошо");
+    expect(button.getAttribute("title")).toContain("существенных: 1");
   });
 
   it("opens on click", () => {

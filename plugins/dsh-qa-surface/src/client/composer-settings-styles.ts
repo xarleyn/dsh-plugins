@@ -1,6 +1,6 @@
 export const composerSettingsStyles = String.raw`
 .dsh-qa-composer-settings{display:inline-flex;min-width:0;max-width:100%}
-.dsh-qa-composer-settings__trigger{display:inline-flex;align-items:center;gap:4px;min-width:0;max-width:100%;min-height:32px;padding:4px 8px;border:0;border-radius:8px;background:transparent;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:12px;line-height:16px;cursor:pointer}
+.dsh-qa-composer-settings__trigger{display:inline-flex;align-items:center;gap:4px;min-width:0;max-width:100%;min-height:32px;padding:4px 8px;border:0;border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;line-height:16px;cursor:pointer}
 .dsh-qa-composer-settings__summary{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dsh-qa-composer-settings__trigger:hover,.dsh-qa-composer-settings__trigger[aria-expanded="true"]{background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-primary)}
 .dsh-qa-composer-settings__trigger:active{transform:translateY(1px)}

@@ -101,6 +101,61 @@ function enterCode() {
 }
 
 describe("one nested menu for chat model and code version", () => {
+  it.each([
+    ["Qwen3.6-35B-A3B-UD-Q6_K_XL.gguf", "Qwen3.6-35B-A3B"],
+    ["Qwen3-8B-IQ4_XS", "Qwen3-8B"],
+    ["DeepSeek-V3.2", "DeepSeek-V3.2"],
+    ["GPT-4.1", "GPT-4.1"],
+    ["Qwen2.5-7B-Instruct", "Qwen2.5-7B-Instruct"],
+    ["Support team", "Support team"],
+  ])(
+    "keeps %s available when the trigger displays %s",
+    async (label, compact) => {
+      const api = vi.fn(async () => ({
+        ok: true as const,
+        value: {
+          models: [{ ...deepseek, label, reasoningEfforts: [] }, models[0]!],
+          choices: [deepseek, local],
+          defaultModel: deepseek,
+          selected: deepseek,
+        } satisfies QaModelOptions,
+      }));
+      render(
+        <QaComposerSettings
+          model={{
+            api,
+            token: "demo-token",
+            sessionId: "chat-demo",
+            subroleId: "general",
+            preview: false,
+            disabled: false,
+            onSelect: vi.fn(async () => "chat-demo"),
+          }}
+        />,
+      );
+      const trigger = screen.getByRole("button", {
+        name: "Параметры чата: модель и версия кода",
+      });
+      await waitFor(() => expect(trigger.textContent).toBe(compact));
+      expect(trigger.getAttribute("title")).toBe(label);
+      fireEvent.click(trigger);
+      expect(
+        screen.getByTestId("qa-composer-settings-model").textContent,
+      ).toContain(label);
+      enterModel();
+      expect(
+        screen
+          .getByRole("menuitemradio", {
+            name: new RegExp(
+              label.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"),
+              "u",
+            ),
+          })
+          .getAttribute("aria-checked"),
+      ).toBe("true");
+    },
+  );
+
   it("shows a compact summary and two nested entries, without separate selects", async () => {
     const f = fixture();
     await ready(f);

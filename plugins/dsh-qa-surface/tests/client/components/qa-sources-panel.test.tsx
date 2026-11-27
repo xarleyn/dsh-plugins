@@ -131,9 +131,7 @@ describe("sources panel", () => {
       />,
     );
     const empty = screen.getByTestId("qa-sources-empty");
-    expect(empty.textContent).toBe(
-      "В этом чате пока нет зарегистрированных источников.",
-    );
+    expect(empty.textContent).toBe("В этом чате пока нет источников");
     expect(screen.queryByTestId("qa-sources-incomplete")).toBeNull();
   });
 

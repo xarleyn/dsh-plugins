@@ -29,6 +29,8 @@ export function QaComposerStatus({
       data-state={activity}
       role="status"
       aria-atomic="true"
+      aria-label={activity === "pass" ? `${title}. ${detail}` : undefined}
+      title={activity === "pass" ? detail : undefined}
     >
       <span
         className="dsh-qa-composer-status__mark"
@@ -45,7 +47,9 @@ export function QaComposerStatus({
       </span>
       <div>
         <strong>{title}</strong>
-        <p>{activity === "writing" ? (writingHint ?? detail) : detail}</p>
+        {activity === "pass" ? null : (
+          <p>{activity === "writing" ? (writingHint ?? detail) : detail}</p>
+        )}
       </div>
     </div>
   );
