@@ -260,7 +260,10 @@ describe("source-aware code and documentation tools", () => {
     });
     const hit = explicitEdition.hits[0]!;
     const exactPath = { path: hit.path, from: hit.line };
-    const passage = (await reader.execute(exactPath, toolExec())) as QaDocsReadResult;
+    const passage = (await reader.execute(
+      exactPath,
+      toolExec(),
+    )) as QaDocsReadResult;
     expect(passage).toMatchObject({
       version: "2.1",
       text: "source edition preview",
