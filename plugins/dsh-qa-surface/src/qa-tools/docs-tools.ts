@@ -1147,11 +1147,15 @@ export function createDocsReadTool(
     name: "docs_read",
     description: `Read one documentation file of the stand's documentation, which lives ${docsLayout(options)}, at a bounded window of lines. Use it after docs_search reports a path, to read the passage a hit belongs to. Only files inside ${QA_DOCS_DIRECTORY}/ can be read; directories, paths outside the tree and paths that leave it through a symbolic link are refused with the reason.`,
     parameters: {
-      source: CODE_SOURCE_PARAMETER,
+      source: {
+        ...CODE_SOURCE_PARAMETER,
+        description:
+          "Optional source id from the same docs_search response as the file path. Omit if search returned no source; the file path then selects the edition.",
+      },
       path: {
         type: "string",
         required: true,
-        description: `Copy the file path from docs_search unchanged, e.g. ${QA_DOCS_DIRECTORY}/platform/2.0/guide.md. Put the source id in source and the line number in from. Corpus-relative paths and absolute paths inside the configured documentation root also work.`,
+        description: `Copy the file path from docs_search unchanged, e.g. ${QA_DOCS_DIRECTORY}/platform/2.0/guide.md. Set from to the hit's line. Set source only when the search returned a source id. Corpus-relative paths and absolute paths inside the configured documentation root also work.`,
       },
       from: {
         type: "number",
@@ -1204,10 +1208,13 @@ export function createDocsReadTool(
     },
     execute: async (args, exec) => {
       const root = await docsRootOf(exec as QaDocsExecution, options);
-      const source = selectCodeSource(
-        options.codeSources?.(exec) ?? EMPTY_CODE_SOURCES,
-        args.source,
-      );
+      const catalog = options.codeSources?.(exec) ?? EMPTY_CODE_SOURCES;
+      const source =
+        args.source !== undefined ||
+        catalog.defaultSource ||
+        catalog.entries.length === 1
+          ? selectCodeSource(catalog, args.source)
+          : undefined;
       if (args.source !== undefined && source?.docsVersion === undefined)
         throw new Error(
           "Selected source has no docsVersion mapping; read the explicit path without source.",
@@ -1217,16 +1224,20 @@ export function createDocsReadTool(
         from: args.from,
         lines: args.lines,
       });
-      if (
+      // A hit from a search scoped by path or version can have no source ID.
+      // Its exact path selects the edition unless the caller names a source.
+      const matchesSource =
         source?.docsVersion !== undefined &&
-        !versionMatches(result, source.docsVersion)
-      )
+        versionMatches(result, source.docsVersion);
+      if (args.source !== undefined && !matchesSource)
         throw new Error(
-          "Documentation path does not belong to the selected source's edition. Use code_sources to find a source whose docsVersion matches the file's version.",
+          "Documentation path does not belong to the explicit source's edition. Reuse the source and path from the same search hit, or pass the exact documentation path alone for an explicit edition lookup.",
         );
       return {
         ...result,
-        ...(source === undefined ? {} : { source: source.id }),
+        ...(source === undefined || !matchesSource
+          ? {}
+          : { source: source.id }),
       };
     },
   });

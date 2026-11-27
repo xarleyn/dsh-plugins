@@ -43,13 +43,23 @@ export class QaToolDiscovery {
             if (!args.browse)
               for (const { name } of page.matches) this.opened.add(name);
             this.hidden = this.toHide(candidates);
+            const empty = page.matches.length === 0;
             return JSON.stringify({
-              status: args.browse ? "listed" : "available_next_step",
+              status: empty
+                ? "no_matches"
+                : args.browse
+                  ? "listed"
+                  : "available_next_step",
               matches: page.matches.map(({ name, description }) => ({
                 name,
                 description: description.slice(0, 160),
               })),
               nextOffset: page.nextOffset,
+              ...(empty
+                ? {
+                    hint: "No matches in this catalog. For Jira or Confluence, activate search-jira or search-confluence if needed. Then use the matching callable jira_* or confluence_* tool directly.",
+                  }
+                : {}),
             });
           }),
         );

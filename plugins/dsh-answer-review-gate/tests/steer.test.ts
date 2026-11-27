@@ -66,6 +66,11 @@ describe("renderRevisionSteer", () => {
     expect(steer).not.toMatch(/must state/iu);
   });
 
+  it("preserves directly verified claims when the reviewer cannot open the source", () => {
+    expect(steer).toContain("direct evidence");
+    expect(steer).toContain("counterevidence");
+  });
+
   it("carries no concealment rule", () => {
     expectNoConcealmentRule(steer);
   });
@@ -148,6 +153,8 @@ describe("failure-policy steers", () => {
   it("ask for an honest qualification, not for concealment", () => {
     const steer = renderQualificationSteer("provider down");
     expect(steer).toContain("did not complete");
+    expect(steer).toContain("complete answer");
+    expect(steer).toContain("requested output format");
     expectNoConcealmentRule(steer);
   });
 

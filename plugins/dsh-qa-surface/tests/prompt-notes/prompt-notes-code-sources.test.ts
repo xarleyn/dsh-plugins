@@ -26,8 +26,9 @@ describe("code source routing note", () => {
       '{"source":"release-demo","path":"src/main.ts","from":42}',
     );
     expect(text).toContain("path unchanged");
+    expect(text).toContain("Pass source only if that search returned it");
     expect(text).toContain("verify one call before retrying a batch");
-    expect(text).toContain("subsequent code, docs and Git calls");
+    expect(text).toContain("subsequent code and Git calls");
     expect(text).toContain("pass it to subagents");
     const other = await h.step(h.createSession("unmanaged"));
     expect(other.flatMap(noteNames)).not.toContain(QA_CODE_SOURCES_NOTE);

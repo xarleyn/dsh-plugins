@@ -256,10 +256,10 @@ export class QaPromptNotes {
         text: [
           source === ""
             ? "Use code_sources to choose a readable source and verify its docsVersion."
-            : `Current chat source: ${JSON.stringify(source)}. Omitted source arguments use the chat selection. Use code_sources to resolve another id or docsVersion.`,
+            : `Current chat source: ${JSON.stringify(source)}. Code and Git use the chat selection when source is omitted. Use code_sources to resolve another id or docsVersion.`,
           'For code_search/code_read, put the id in source and use the exact path inside the checkout. A hit [release-demo] src/main.ts:42 becomes code_read({"source":"release-demo","path":"src/main.ts","from":42}). Search when the path is unknown.',
-          "For published documentation, use docs_search with a keyword and an edition or source filter. Open the hit with docs_read, copying its docs/<module>/<version>/… path unchanged and passing the source id and from separately.",
-          "If a path lookup fails, correct the locator and verify one call before retrying a batch. Keep an explicit source on subsequent code, docs and Git calls and pass it to subagents. Use dsh_git_context to verify branch and HEAD when needed.",
+          "For published documentation, use docs_search with a keyword and an edition or source filter. Open the hit with docs_read, copying its docs/<module>/<version>/… path unchanged and the hit's line to from. Pass source only if that search returned it.",
+          "If a path lookup fails, correct the locator and verify one call before retrying a batch. Keep the source on subsequent code and Git calls and pass it to subagents working on that checkout. Use dsh_git_context to verify branch and HEAD when needed.",
         ].join(" "),
       },
     ];

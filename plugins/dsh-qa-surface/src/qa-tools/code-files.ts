@@ -69,7 +69,11 @@ export async function codeScope(
 }
 
 /** Refuse traversal and every nested link, including links that stay in-tree. */
-async function target(scope: CodeScope, input: unknown): Promise<string> {
+async function target(
+  scope: CodeScope,
+  input: unknown,
+  repairSourcePrefix = true,
+): Promise<string> {
   if (
     typeof input !== "string" ||
     input.includes("\0") ||
@@ -87,20 +91,20 @@ async function target(scope: CodeScope, input: unknown): Promise<string> {
     cursor = resolve(cursor, part);
     const entry = await lstat(cursor).catch((error: unknown) => {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      return undefined;
+    });
+    if (entry === undefined) {
       const source = scope.source.id;
-      if (index === 0 && part === source && parts.length > 1) {
-        const locator = JSON.stringify({
-          source,
-          path: parts.slice(1).join("/"),
-        });
-        throw new Error(
-          `The path repeats the selected source id. Retry with ${locator} and keep the other arguments.`,
-        );
-      }
+      const hasCodePrefix = parts[0] === "code" && parts[1] === source;
+      const prefix = hasCodePrefix ? 2 : Number(parts[0] === source);
+      // A real nested directory keeps its meaning. Recover only from a
+      // missing source prefix and recheck the path inside the same scope.
+      if (repairSourcePrefix && index < prefix && parts.length > prefix)
+        return target(scope, parts.slice(prefix).join("/"), false);
       throw new Error(
         `No code file or directory at this path in source ${JSON.stringify(source)}. Use code_search in that source to locate the path.`,
       );
-    });
+    }
     if (entry.isSymbolicLink())
       throw new Error("Code paths through symbolic links are refused.");
   }

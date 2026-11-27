@@ -290,6 +290,17 @@ it("reveals only searched native tools on the next step without touching another
   expect(JSON.stringify(list)).not.toContain(forbidden);
   const denied = await t.call(FIND_TOOLS, { query: forbidden }, a.toolSet);
   expect(JSON.stringify(denied)).not.toContain(forbidden);
+  const jira = await t.call(
+    FIND_TOOLS,
+    { query: "jira_search_issues" },
+    a.toolSet,
+  );
+  expect(jira.content[0]).toMatchObject({
+    text: expect.stringContaining("use the matching callable jira_*"),
+  });
+  expect(jira.content[0]).toMatchObject({
+    text: expect.stringContaining('"status":"no_matches"'),
+  });
   expect((await t.step()).names).not.toContain(write);
   expect((await t.call(FIND_TOOLS, { query: write }, a.toolSet)).isError).toBe(
     false,

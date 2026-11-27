@@ -251,7 +251,11 @@ export function deriveVerdictFromExpertResult(
   ];
   return {
     verdict: issues.length === 0 ? "pass" : "revise",
-    summary: result.summary,
+    // The expert's heading can disagree with its blocking structured fields.
+    summary:
+      issues.length === 0
+        ? result.summary
+        : result.summary.replace(/^([ \t]*VERDICT:[ \t]*)PASS\b/iu, "$1REVISE"),
     ...comparisonResult(result.comparisons),
     issues,
     confidence: "medium",

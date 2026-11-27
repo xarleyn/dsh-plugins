@@ -13,6 +13,8 @@ import { createCodeSourcesTool } from "../../src/qa-tools/code-tools.js";
 import {
   createDocsSearchTool,
   createDocsReadTool,
+  type QaDocsReadResult,
+  type QaDocsSearchResult,
 } from "../../src/qa-tools/docs-tools.js";
 import { createCodeReadTool } from "../../src/qa-tools/code-tools.js";
 import { readFileExtractor } from "../../src/provenance/extractors.js";
@@ -104,9 +106,9 @@ describe("source-aware code and documentation tools", () => {
       root: join(root, "docs"),
       ...optionsForSession,
     });
-    await expect(
-      reader.execute({ path: "module/2.0/guide.md" }, toolExec()),
-    ).rejects.toThrow(/edition/u);
+    expect(
+      await reader.execute({ path: "module/2.1/guide.md" }, toolExec()),
+    ).toMatchObject({ source: "preview", version: "2.1" });
   });
   it("never mixes same-path files from different sources", async () => {
     const stable = await codeScope(options(), exec());
@@ -123,15 +125,21 @@ describe("source-aware code and documentation tools", () => {
       hits: [expect.objectContaining({ text: "shared preview" })],
     });
   });
-  it("provides a corrected locator when a missing path repeats the selected id", async () => {
+  it("reads within the selected source when a missing prefix repeats its id", async () => {
     const scope = await codeScope(options(), exec());
-    const correction = '{"source":"stable","path":"file.ts"}';
-    await expect(readCode(scope, { path: "stable/file.ts" })).rejects.toThrow(
-      correction,
-    );
-    await expect(
-      searchCode(scope, { path: "stable/file.ts", query: "shared" }),
-    ).rejects.toThrow(correction);
+    expect(await readCode(scope, { path: "stable/file.ts" })).toMatchObject({
+      source: "stable",
+      path: "file.ts",
+      text: expect.stringContaining("shared stable"),
+    });
+    expect(
+      await searchCode(scope, { path: "code/stable/file.ts", query: "shared" }),
+    ).toMatchObject({
+      source: "stable",
+      hits: [
+        expect.objectContaining({ path: "file.ts", text: "shared stable" }),
+      ],
+    });
     await expect(readCode(scope, { path: "preview/file.ts" })).rejects.toThrow(
       'No code file or directory at this path in source "stable"',
     );
@@ -234,9 +242,12 @@ describe("source-aware code and documentation tools", () => {
       version: "2.1",
       hits: [expect.objectContaining({ text: "source edition preview" })],
     });
-    expect(
-      await tool.execute({ query: "edition", version: "2.1" }, toolExec()),
-    ).toMatchObject({ version: "2.1" });
+    const explicitEdition = (await tool.execute(
+      { query: "edition", version: "2.1" },
+      toolExec(),
+    )) as QaDocsSearchResult;
+    expect(explicitEdition).toMatchObject({ version: "2.1" });
+    expect(explicitEdition.source).toBeUndefined();
     await expect(
       tool.execute(
         { query: "edition", source: "stable", version: "2.1" },
@@ -247,6 +258,21 @@ describe("source-aware code and documentation tools", () => {
       root: join(root, "docs"),
       ...options(),
     });
+    const hit = explicitEdition.hits[0]!;
+    const exactPath = { path: hit.path, from: hit.line };
+    const passage = (await reader.execute(exactPath, toolExec())) as QaDocsReadResult;
+    expect(passage).toMatchObject({
+      version: "2.1",
+      text: "source edition preview",
+    });
+    expect(passage.source).toBeUndefined();
+    const readerWithoutDefault = createDocsReadTool({
+      root: join(root, "docs"),
+      ...options(""),
+    });
+    expect(await readerWithoutDefault.execute(exactPath, toolExec())).toEqual(
+      passage,
+    );
     expect(
       await reader.execute(
         { path: "docs/module/2.1/guide.md", source: "preview", from: 1 },

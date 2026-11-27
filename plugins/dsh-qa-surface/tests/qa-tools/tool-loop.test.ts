@@ -318,6 +318,34 @@ it("applies configured warnings, blocks and a finish to repeated results across 
   expect(ran).toEqual([lookup, catalog, lookup, lookup, lookup, lookup]);
 });
 
+it("blocks repeated empty lookups for one turn while still allowing a different tool", async () => {
+  const rules = resolveToolLoopRules([
+    {
+      tool: lookup,
+      thresholds: [
+        { calls: 2, action: "warn", message: "Look for a known path." },
+        { calls: 4, action: "block", message: "Switch to another tool." },
+      ],
+    },
+  ]);
+  const { ctx, agent, ran } = await harness(
+    [
+      [{ tool: lookup, query: "first" }],
+      [{ tool: lookup, query: "second" }],
+      [{ tool: lookup, query: "third" }],
+      [{ tool: lookup, query: "fourth" }],
+      [catalog],
+      "answer",
+    ],
+    {
+      rules: () => rules,
+      lookupResults: Array<string>(3).fill("No matches found"),
+    },
+  );
+  expect(await send(ctx, agent)).toEqual({ kind: "completed" });
+  expect(ran).toEqual([lookup, lookup, lookup, catalog]);
+});
+
 it("warns at the configured character difference and resets when output moves away from the first result", async () => {
   const reminder = "Use the similar status already received.";
   const { ctx, agent, adapter } = await harness(

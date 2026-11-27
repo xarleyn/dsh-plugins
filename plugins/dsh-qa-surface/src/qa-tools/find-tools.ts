@@ -74,7 +74,7 @@ export function createFindTools(owner: Agent, search: (args: Query) => string) {
   return defineTool({
     name: FIND_TOOLS,
     description:
-      "Find available GitLab, TeamCity, Test IT, Weblate or Bitrix24 tools by topic, family or exact tool name. Matches become native tools on the next step. Browse to list without loading; call again with an exact name to load it.",
+      "Find available GitLab, TeamCity, Test IT, Weblate or Bitrix24 tools by topic, family or exact tool name. Matches become native tools on the next step. Browse to list without loading; call again with an exact name to load it. For Jira or Confluence, activate search-jira or search-confluence and then call the matching native tool directly.",
     parameters: {
       query: {
         type: "string",

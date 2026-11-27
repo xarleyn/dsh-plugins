@@ -152,12 +152,15 @@ describe("deriveVerdictFromExpertResult", () => {
       const verdict = deriveVerdictFromExpertResult({
         status: "completed",
         structured: true,
-        summary: "Checked the available evidence.",
+        summary: "VERDICT: PASS. Checked the available evidence.",
         findings: [],
         conflicts: [],
         [field]: ["Missing verification for the claimed date."],
       });
       expect(verdict.verdict).toBe("revise");
+      expect(verdict.summary).toBe(
+        "VERDICT: REVISE. Checked the available evidence.",
+      );
       expect(verdict.issues.map((issue) => issue.claim)).toContain(
         "Missing verification for the claimed date.",
       );

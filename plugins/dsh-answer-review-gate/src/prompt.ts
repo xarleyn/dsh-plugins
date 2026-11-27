@@ -148,6 +148,7 @@ function reviewContext(input: {
   return [
     "Your catalog is not the primary agent's catalog. Do not infer that a primary capability is absent from your own smaller tool/skill surface. When the primary manifest is unavailable, capability-absence claims are unverifiable, not hallucination findings.",
     "The primary tool manifest establishes tool visibility, not credentials, source connectivity or that a tool was actually called. A document artifact must be checked in its own content; a PASS for its accompanying prose is not proof of the file's contents.",
+    "To contradict a cited code or documentation claim, check the same file, module and version. An empty search, a rejected path, or a source you cannot read leaves the claim unverified. Record that gap as uncertainty; use a contradiction finding only when you can point to contrary evidence.",
     // Keep the manifest separate from human prose, one name per line. A
     // filesystem reader can shorten an oversized individual line even when
     // the complete packet fits its requested line window.
@@ -283,8 +284,8 @@ export function renderExpertReviewTask(input: {
     "</candidate_answer>",
     "",
     "Report every objection as a finding (claim, evidence, confidence); record contradicting sources as conflicts. " +
-      "Reserve assumptions for unsupported premises and followUps for required corrections or missing evidence. " +
-      "A pass requires all four objection lists to be empty. Do not rewrite the answer.",
+      "Reserve assumptions and followUps for material gaps that require a change in the answer. Keep observations that require no change in the summary. " +
+      "Label the summary PASS only when findings, conflicts, assumptions and followUps are all empty. Do not rewrite the answer.",
     "Finish by calling structured_output exactly once with summary, comparisons, findings, conflicts, assumptions and followUps. comparisons must contain the requested document evidence pairs, or [] when none were requested. " +
       "A text verdict or fenced JSON block does not deliver this run's result.",
   ].join("\n");
@@ -406,7 +407,8 @@ export function renderRevisionSteer(
     ),
     "</review_notes>",
     "",
-    "Check every finding against your own evidence, then answer the user's request again. The reply is exactly " +
+    "Check every finding against your own evidence, using the same file, module and version where relevant. " +
+      "Retain conclusions supported by direct evidence from a successful read unless stronger counterevidence overturns them. Then answer the user's request again. The reply is exactly " +
       "one artifact: the corrected answer, in the shape that request asked for. A finding your evidence confirms " +
       "is fixed inside it; a finding your evidence disproves leaves the answer as it was. Neither is argued with: " +
       "the block above is this turn's working material, and the user's own request is what the reply serves.",
@@ -432,8 +434,7 @@ export function renderAnswerShapeSteer(): string {
 export function renderQualificationSteer(reason: string): string {
   return [
     `Independent answer verification could not be completed (${reason}).`,
-    "Your current answer will be delivered as-is. State explicitly, in the answer, that independent verification " +
-      "did not complete and the result must not be treated as verified. Do not claim verification you do not have.",
+    "Deliver the complete answer with its supported findings, sources and requested artifacts. Add the qualification that independent verification did not complete beside the affected claims, while keeping the requested output format. A warning alone does not answer the request. Use the evidence already collected and do not restart the tool work just to add the qualification.",
   ].join("\n");
 }
 
