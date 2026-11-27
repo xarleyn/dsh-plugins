@@ -6,6 +6,7 @@ import {
   type CodeSourcesCatalog,
 } from "@yadsh/dsh-plugin-kit/code-sources";
 import { pathIsInside } from "../user-workspace.js";
+import { searchCodeNative, type CodeHit } from "./code-search-native.js";
 
 export interface CodeExecution {
   readonly agent?: {
@@ -199,7 +200,9 @@ export async function readCode(
 export async function searchCode(
   scope: CodeScope,
   args: { query?: unknown; path?: unknown; limit?: unknown },
+  signal?: AbortSignal,
 ) {
+  signal?.throwIfAborted();
   if (
     typeof args.query !== "string" ||
     args.query.trim() === "" ||
@@ -211,7 +214,22 @@ export async function searchCode(
   const query = args.query.toLowerCase();
   const start = await target(scope, args.path ?? "");
   const limit = boundedInteger(args.limit, 20, 100);
-  const hits: { path: string; line: number; text: string }[] = [];
+  const identity = {
+    source: scope.source.id,
+    label: scope.source.label,
+    root: scope.root,
+    query: args.query,
+  };
+  const native = await searchCodeNative(
+    scope.root,
+    relative(scope.root, start),
+    query,
+    limit,
+    signal,
+  );
+  signal?.throwIfAborted();
+  if (native) return { ...identity, ...native };
+  const hits: CodeHit[] = [];
   const pending = [start];
   let entries = 0,
     filesScanned = 0,
@@ -221,6 +239,7 @@ export async function searchCode(
     truncated = false;
   const deadline = Date.now() + 3000;
   outer: while (pending.length > 0) {
+    signal?.throwIfAborted();
     if (
       ++entries > 10_000 ||
       filesScanned >= 1000 ||
@@ -239,6 +258,7 @@ export async function searchCode(
     if (info.isDirectory()) {
       const directory = await opendir(next);
       for await (const child of directory) {
+        signal?.throwIfAborted();
         if (++entries > 10_000 || Date.now() > deadline) {
           truncated = true;
           break outer;
@@ -286,11 +306,9 @@ export async function searchCode(
       hits.push(hit);
     }
   }
+  signal?.throwIfAborted();
   return {
-    source: scope.source.id,
-    label: scope.source.label,
-    root: scope.root,
-    query: args.query,
+    ...identity,
     hits,
     filesScanned,
     skipped,

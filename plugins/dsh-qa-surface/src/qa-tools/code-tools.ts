@@ -192,6 +192,7 @@ export function createCodeSearchTool(
       searchCode(
         await codeScope(options, exec as CodeExecution, args.source),
         args,
+        exec.signal,
       ),
   });
 }

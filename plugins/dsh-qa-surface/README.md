@@ -703,6 +703,20 @@ returns at most 400 lines and 32 KiB. Both tools refuse traversal and nested
 symbolic links. Results carry the source id, label and root; file provenance
 preserves the source id and actual file address.
 
+On Linux, the QA deployment image sets `QA_CODE_SEARCH_BIN` to an absolute path
+to its Rust worker. The host authorizes the source and initial path first, then
+passes the request over stdin. The worker opens entries relative to the
+authorized directory handle and applies the same scan and output limits. The
+host stops it when the tool call is cancelled. Deployments with an empty
+`QA_CODE_SEARCH_BIN` use the built-in JavaScript search.
+
+After building the plugin, run the synthetic parity check and benchmark on Linux
+with the native worker from the QA deployment build:
+
+```sh
+QA_CODE_SEARCH_BIN=/path/to/dsh-code-search node --test scripts/verify-native-code-search-linux.mjs
+```
+
 `docs_search` accepts `source` and uses its optional `docsVersion` mapping.
 When neither `source`, `version` nor `path` is given, the default source's
 mapping takes precedence over `tools.docsDefaultVersion`. Without a mapping,
