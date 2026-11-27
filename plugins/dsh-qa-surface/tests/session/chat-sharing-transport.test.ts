@@ -356,6 +356,27 @@ describe("authenticated QA chat transport", () => {
       );
     },
   );
+  it("reconciles the control stream without repeating the catalog every second", async () => {
+    const f = fixture();
+    const abort = new AbortController();
+    const frames = f.transport.control(f.owner.token, abort.signal);
+    const stream = frames[Symbol.asyncIterator]();
+    vi.useFakeTimers();
+    try {
+      expect((await stream.next()).value.type).toBe("baseline");
+      const next = stream.next();
+      await vi.advanceTimersByTimeAsync(9_999);
+      expect(f.native.list).toHaveBeenCalledOnce();
+      await vi.advanceTimersByTimeAsync(1);
+      expect((await next).value.type).toBe("baseline");
+      expect(f.native.list).toHaveBeenCalledTimes(2);
+    } finally {
+      abort.abort();
+      await stream.return?.();
+      vi.useRealTimers();
+    }
+  });
+
   it("rechecks current grants as one synchronous batch immediately before a control frame", async () => {
     const f = fixture();
     f.native.list.mockResolvedValue({

@@ -219,8 +219,8 @@ const SLASH_CATALOG_STALE_MS = 3_000;
  * forwarded-event push of its own — the row rides on the account's chat
  * listing — and a listing that lands right after the create pays for the
  * Host's shared catalog scan the create itself invalidated, which on a loaded
- * stand takes longer than a round trip. The interval keeps asking for the
- * listing while this waits, so the window only has to outlast one slow scan.
+ * stand takes longer than a round trip. During this window the adoption can
+ * request a new listing after a pull that started before the chat existed.
  * A row that misses it loses the chat, and the plate's «Повторить» re-runs
  * the adoption on a catalog that has had the pull.
  */
@@ -2334,7 +2334,20 @@ export class QaSessionController {
     // here, because the push still carries the row and the refusal the caller
     // reads has to be the retain's own. The rejection would otherwise reach the
     // browser as an unhandled one.
-    this.sessions.refresh().catch((cause: unknown) => {
+    let waiting = true;
+    const pull = async () => {
+      await this.sessions.refresh();
+      // The first refresh may have joined a pull started before creation.
+      if (
+        waiting &&
+        !this.disposed &&
+        operation === this.generation &&
+        !this.catalogLists(id)
+      ) {
+        await this.sessions.refresh();
+      }
+    };
+    void pull().catch((cause: unknown) => {
       // The patience below now rests on the Host's own push alone, which is a
       // narrower window than this waited for. Say so, because a chat lost in
       // this shape reads as a slow catalog and is really an unreadable one.
@@ -2351,6 +2364,8 @@ export class QaSessionController {
       );
     } catch {
       throw failure;
+    } finally {
+      waiting = false;
     }
     console.warn("dsh-qa-surface: session catalog row landed", {
       sessionId: id,

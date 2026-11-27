@@ -17,6 +17,31 @@ import { until } from "../helpers/settle.js";
  * case here opens its chat with a send rather than with the bootstrap.
  */
 describe("QA session controller: a retain that raced the session catalog", () => {
+  it("pulls again when the first catalog refresh predates the chat", async () => {
+    const world = harness();
+    world.createSession.mockImplementation(async () => ({
+      ok: true as const,
+      value: String(await world.serverSession()),
+    }));
+    world.refresh
+      .mockResolvedValueOnce(undefined)
+      .mockImplementationOnce(async () => {
+        world.publishRow("created-1");
+      });
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+    });
+    try {
+      await controller.ensureSession();
+      expect(await controller.send("First question")).toBe(true);
+      expect(world.refresh).toHaveBeenCalledTimes(2);
+      expect(world.createSession).toHaveBeenCalledOnce();
+    } finally {
+      controller.dispose();
+    }
+  });
+
   it("retries adoption of a successful create instead of creating an orphan on every send", async () => {
     vi.useFakeTimers();
     const world = harness();

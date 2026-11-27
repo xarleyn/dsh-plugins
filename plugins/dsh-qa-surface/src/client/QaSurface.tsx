@@ -2290,6 +2290,7 @@ export function QaSurface(props: QaSurfaceProps) {
                       policy={config.forms}
                       session={state.sessionId}
                       token={accounts?.token() ?? ""}
+                      activeTurn={state.phase === "running"}
                       canStop={state.canStop}
                       onStop={handleStop}
                       onResume={(id) => {

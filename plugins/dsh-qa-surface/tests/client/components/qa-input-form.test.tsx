@@ -67,6 +67,26 @@ function setup() {
   return { f, props, view };
 }
 describe("strict form interaction", () => {
+  it("polls promptly during a turn and sparsely when the chat is idle", async () => {
+    const { props } = setup();
+    const list = vi.spyOn(props.api, "list");
+    vi.useFakeTimers();
+    try {
+      const mounted = render(<QaInputForms {...props} canStop={false} />);
+      await act(async () => vi.advanceTimersByTimeAsync(1_500));
+      expect(list).toHaveBeenCalledOnce();
+      await act(async () => vi.advanceTimersByTimeAsync(13_500));
+      expect(list).toHaveBeenCalledTimes(2);
+
+      mounted.rerender(<QaInputForms {...props} canStop={false} activeTurn />);
+      expect(list).toHaveBeenCalledTimes(3);
+      await act(async () => vi.advanceTimersByTimeAsync(1_500));
+      expect(list).toHaveBeenCalledTimes(4);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("does not poll owner-only forms while viewing a subagent", () => {
     const { props } = setup();
     const list = vi.spyOn(props.api, "list");

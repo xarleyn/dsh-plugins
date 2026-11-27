@@ -40,6 +40,8 @@ import {
   type QaDocumentDelivery,
 } from "../shared/document-redelivery.js";
 
+const CHAT_CONTROL_REFRESH_MS = 10_000;
+
 function indexSessions(listing: SessionListValue) {
   return new Map(listing.items.map((item) => [String(item.sessionId), item]));
 }
@@ -216,8 +218,8 @@ export class QaChatTransport {
     token: string,
     signal: AbortSignal,
   ): AsyncIterable<SessionControlFrame> {
-    // Polling a bounded catalog also surfaces grants/revocations on idle chats.
-    // No native Host-wide baseline or delta is exposed to a QA account.
+    // A sparse baseline reconciles idle chats. An open chat gets live events
+    // from follow(), while each baseline still enforces account visibility.
     while (!signal.aborted) {
       const listing = await this.list(token, signal);
       const rows = indexSessions(listing);
@@ -258,7 +260,7 @@ export class QaChatTransport {
           signal.removeEventListener("abort", done);
           resolve();
         };
-        const timer = setTimeout(done, 1000);
+        const timer = setTimeout(done, CHAT_CONTROL_REFRESH_MS);
         timer.unref();
         signal.addEventListener("abort", done, { once: true });
         if (signal.aborted) done();

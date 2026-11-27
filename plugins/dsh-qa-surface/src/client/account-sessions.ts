@@ -9,6 +9,8 @@ import type {
 } from "@deepseek-ai/dsh-api-session-controller/types";
 import type { ConnectionGenerationState } from "@deepseek-ai/dsh-client-connection/client";
 
+export const ACCOUNT_CHAT_REFRESH_MS = 15_000;
+
 interface NativeSessions extends QaSessions {
   handleControlFrame(frame: SessionControlFrame): void;
   handleSessionAdded(summary: SessionSummary): void;
@@ -37,20 +39,20 @@ export function createQaAccountSessions(
   let listed: readonly string[] = [];
   function replay(value: SessionListValue): SessionListValue {
     const items = [...value.items];
+    const ids = new Set(items.map((item) => String(item.sessionId)));
     for (const [id, entry] of created) {
-      if (
-        items.some((item) => String(item.sessionId) === id) ||
-        entry.until <= Date.now()
-      ) {
+      if (ids.has(id) || entry.until <= Date.now()) {
         created.delete(id);
-      } else items.push(entry.summary);
+      } else {
+        items.push(entry.summary);
+        ids.add(id);
+      }
     }
-    const ids = items.map((item) => String(item.sessionId));
     for (const item of items) facadeSessions.handleSessionAdded(item);
     for (const id of listed) {
-      if (!ids.includes(id)) facadeSessions.handleSessionRemoved(SessionId(id));
+      if (!ids.has(id)) facadeSessions.handleSessionRemoved(SessionId(id));
     }
-    listed = ids;
+    listed = [...ids];
     return { ...value, items };
   }
   const session = {
@@ -191,17 +193,23 @@ export function createQaAccountSessions(
     control = undefined;
     reconcile();
   });
-  const refresh = setInterval(() => {
-    if (token() !== null) {
+  const refresh = () => {
+    if (token() !== null && generation.getSnapshot() !== undefined) {
       void sessions.refresh();
       startControl();
     }
-  }, 1000);
+  };
+  const onVisible = () => {
+    if (document.visibilityState === "visible") refresh();
+  };
+  const refreshTimer = setInterval(refresh, ACCOUNT_CHAT_REFRESH_MS);
+  globalThis.document?.addEventListener("visibilitychange", onVisible);
   ctx.effect(
     () => () => {
       disposed = true;
       epoch += 1;
-      clearInterval(refresh);
+      clearInterval(refreshTimer);
+      globalThis.document?.removeEventListener("visibilitychange", onVisible);
       unsubscribe();
       unsubscribeGeneration();
       control?.abort();

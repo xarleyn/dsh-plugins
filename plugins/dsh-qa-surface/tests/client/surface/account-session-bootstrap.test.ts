@@ -27,8 +27,9 @@ describe("account Session bootstrap", () => {
   it("does not reset an in-flight catalog on repeated account notifications", () => {
     vi.useFakeTimers();
     const connected = vi.fn();
+    const refresh = vi.fn(async () => undefined);
     class NativeSessions {
-      refresh = vi.fn(async () => undefined);
+      refresh = refresh;
       handleConnected = connected;
       handleSessionAdded = vi.fn();
       handleSessionRemoved = vi.fn();
@@ -75,9 +76,17 @@ describe("account Session bootstrap", () => {
       expect(connected).toHaveBeenCalledTimes(1);
       for (let index = 0; index < 5; index++) notifyAccount();
       expect(connected).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(14_999);
+      expect(refresh).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(refresh).toHaveBeenCalledOnce();
       snapshot = { generation: 2 };
       notifyGeneration();
       expect(connected).toHaveBeenCalledTimes(2);
+      snapshot = undefined;
+      notifyGeneration();
+      vi.advanceTimersByTime(15_000);
+      expect(refresh).toHaveBeenCalledOnce();
     } finally {
       for (const dispose of disposers) dispose();
     }

@@ -27,7 +27,10 @@ import { QaConfigController } from "./QaConfigController.js";
 import { matchesQaRoute, QaRouteController } from "./QaRouteController.js";
 import { QaAccountsController } from "./QaAccountsController.js";
 import { createQaOidcBrowser } from "./oidc-browser.js";
-import { createQaAccountSessions } from "./account-sessions.js";
+import {
+  ACCOUNT_CHAT_REFRESH_MS,
+  createQaAccountSessions,
+} from "./account-sessions.js";
 import { createQaAccountUpload } from "./account-upload.js";
 import type { QaUploadCarrier } from "./account-upload.js";
 import { createQaAccountConversation } from "./account-conversation.js";
@@ -1073,11 +1076,20 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
         set: (token, id, email, mode) =>
           sharingRemote.chatSetGrant(token, id, email, mode),
       };
-      const refreshSharing = setInterval(() => {
-        if (accounts.token() !== null) void accounts.refreshOwned();
-      }, 1000);
+      const refreshSharing = () => {
+        if (ctx.connection.generation.getSnapshot() !== undefined)
+          void accounts.refreshOwned();
+      };
+      const onSharingVisible = () => {
+        if (document.visibilityState === "visible") refreshSharing();
+      };
+      const sharingTimer = setInterval(refreshSharing, ACCOUNT_CHAT_REFRESH_MS);
+      document.addEventListener("visibilitychange", onSharingVisible);
       ctx.effect(
-        () => () => clearInterval(refreshSharing),
+        () => () => {
+          clearInterval(sharingTimer);
+          document.removeEventListener("visibilitychange", onSharingVisible);
+        },
         "qa.shared-chat-catalog",
       );
       const route = new QaRouteController();

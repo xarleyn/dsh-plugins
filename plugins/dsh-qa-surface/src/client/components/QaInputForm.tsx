@@ -10,6 +10,9 @@ import { validateForm } from "../../forms/validation.js";
 import { QaFormClientError, unwrapForm, type QaFormApi } from "../forms.js";
 import { QaFormItem, formFileSize } from "./QaFormItem.js";
 
+const ACTIVE_FORM_REFRESH_MS = 1_500;
+const IDLE_FORM_REFRESH_MS = 15_000;
+
 interface Props {
   policy?: Readonly<import("../../forms/types.js").QaFormPolicy>;
   api: QaFormApi;
@@ -597,19 +600,22 @@ export function QaInputForm(props: Props) {
   );
 }
 
+type FormListProps = Omit<Props, "form"> & { activeTurn?: boolean };
+
 /** Session/identity-keyed parent discards account-local state and aborts transfers on switch. */
-export function QaInputForms(
-  props: Omit<Props, "form"> & { enabled?: boolean },
-) {
+export function QaInputForms(props: FormListProps & { enabled?: boolean }) {
   // A subagent transcript is a read-only view, not an owner form session.
   // Unmount the poller and form together, releasing timers and any takeover.
   return props.enabled === false ? null : <ActiveInputForms {...props} />;
 }
 
-function ActiveInputForms(props: Omit<Props, "form">) {
+function ActiveInputForms(props: FormListProps) {
   const [forms, setForms] = useState<QaFormView[]>([]);
   const [loadError, setLoadError] = useState(false);
   const [retry, setRetry] = useState(0);
+  const refreshInterval = props.activeTurn
+    ? ACTIVE_FORM_REFRESH_MS
+    : IDLE_FORM_REFRESH_MS;
   const dismissKey = `dsh-qa-surface:forms:hidden:${props.session}`;
   const [dismissed, setDismissed] = useState<Set<string>>(() => {
     try {
@@ -648,7 +654,7 @@ function ActiveInputForms(props: Omit<Props, "form">) {
     void refresh();
     const timer = setInterval(() => {
       void refresh();
-    }, 1500);
+    }, refreshInterval);
     const onVisible = () => {
       if (document.visibilityState === "visible") void refresh();
     };
@@ -660,7 +666,7 @@ function ActiveInputForms(props: Omit<Props, "form">) {
       window.removeEventListener("focus", onVisible);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [props.api, props.token, props.session, retry]);
+  }, [props.api, props.token, props.session, retry, refreshInterval]);
   const form = forms.find((r) => r.status === "draft") ?? forms[0];
   return (
     <>
