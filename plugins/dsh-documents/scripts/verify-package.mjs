@@ -35,6 +35,8 @@ await runVerifyPackage({
     injectIncludes: ["@deepseek-ai/dsh-client-ui-plugin-manager"],
   },
   files: [
+    "native/edit-distance.wasm",
+    "native/rapidfuzz.LICENSE",
     "skills",
     "locale/*.json",
     "cordis.patch.yml",
@@ -43,6 +45,8 @@ await runVerifyPackage({
     "LICENSE",
   ],
   requiredFiles: [
+    "native/edit-distance.wasm",
+    "native/rapidfuzz.LICENSE",
     "lib/index.js",
     "lib/client.js",
     "lib/types/index.d.ts",
@@ -86,6 +90,20 @@ await runVerifyPackage({
     },
   },
   extra: async ({ manifest, readFile: readFromRoot }) => {
+    const wasmBytes = await readFile(
+      new URL("native/edit-distance.wasm", root),
+    );
+    assert.doesNotMatch(
+      wasmBytes.toString("latin1"),
+      /[A-Z]:[\\/](?:Users|repos)[\\/]|\/home\/[^/]+\/\.cargo\//iu,
+      "build the WASM module with remapped source paths",
+    );
+    const wasm = new globalThis.WebAssembly.Module(wasmBytes);
+    assert.deepEqual(globalThis.WebAssembly.Module.imports(wasm), []);
+    const { wasmEditDistance } =
+      await import("../lib/documents/comparison/alignment/edit-distance-wasm.js");
+    assert.equal(wasmEditDistance("поставка 🚚", "доставка 🚚"), 1);
+
     // The card's seat is drawn by the Plugins page, so that page's package is
     // both an activation dependency of the client half (`dsh.client.inject`,
     // checked above) and a peer a consumer can install against.

@@ -14,6 +14,7 @@
  */
 
 import { significantTokens } from "../canonical/tokenizer.js";
+import { CHARACTER_LIMIT, wasmEditDistance } from "./edit-distance-wasm.js";
 
 /** Above this, two nodes are treated as the same node edited hand-in-hand. */
 export const REPLACE_THRESHOLD = 0.55;
@@ -56,20 +57,18 @@ export function releaseTokenCache(): void {
  * which reads as "different" to Dice and as "obviously the same sentence" to a
  * person. Normalized edit distance answers the second question.
  *
- * Bounded: beyond `CHAR_LIMIT` characters the distance is skipped and the
- * token score stands alone, because the cost is quadratic in the text length.
+ * Beyond the existing UTF-16 limit, the token score stands alone.
  */
-const CHAR_LIMIT = 512;
-
 export function characterSimilarity(left: string, right: string): number {
   if (left === right) return 1;
-  if (left.length > CHAR_LIMIT || right.length > CHAR_LIMIT) return 0;
-  const distance = editDistance(left, right);
+  if (left.length > CHARACTER_LIMIT || right.length > CHARACTER_LIMIT) return 0;
+  const distance = wasmEditDistance(left, right) ?? editDistance(left, right);
   const longest = Math.max(left.length, right.length);
   return longest === 0 ? 1 : 1 - distance / longest;
 }
 
-function editDistance(left: string, right: string): number {
+// Preserve comparisons on runtimes where Wasm code generation is disabled.
+export function editDistance(left: string, right: string): number {
   const previous = new Uint32Array(right.length + 1);
   const current = new Uint32Array(right.length + 1);
   for (let column = 0; column <= right.length; column += 1) {

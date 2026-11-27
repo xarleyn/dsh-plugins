@@ -291,6 +291,37 @@ Refusals carry codes instead of degrading: `COMPARE_UNSUPPORTED_FORMAT`,
 `COMPARE_LOW_EXTRACTION_QUALITY`, `COMPARE_ARTIFACT_NOT_FOUND`. There is no
 fallback to a shell and no request that the model compare the documents itself.
 
+### Comparison kernel
+
+Paragraph alignment computes Levenshtein distance in a packaged Rust WebAssembly
+module. It uses the original UTF-16 units and 512-unit limit. Node loads the
+module in-process on the first applicable comparison. The JavaScript
+implementation remains available when WebAssembly code generation is disabled.
+
+From this package directory, rebuild the checked-in module with the pinned Rust
+image. The compiler rewrites build paths to keep workstation paths out of the
+published module.
+
+```sh
+docker run --rm --mount "type=bind,source=$PWD/native,target=/native" \
+  -w /native/edit-distance rust:1.99.1-bookworm sh -ec '
+    rustup target add wasm32-unknown-unknown
+    CARGO_TARGET_DIR=/tmp/target \
+    RUSTFLAGS="--remap-path-prefix=/native/edit-distance=/src/edit-distance --remap-path-prefix=/usr/local/cargo/registry/src=/cargo" \
+      cargo build --release --locked --target wasm32-unknown-unknown
+    cp /tmp/target/wasm32-unknown-unknown/release/dsh_edit_distance.wasm /native/edit-distance.wasm
+  '
+pnpm run check
+```
+
+Both benchmark modes use the same built plugin and compare the same 180 edited
+paragraphs. Their result hashes should match.
+
+```sh
+node scripts/benchmark-alignment.mjs js
+node scripts/benchmark-alignment.mjs wasm
+```
+
 ## Configuration
 
 The namespace is `documents`, edited in the plugin's own card — the configuration
