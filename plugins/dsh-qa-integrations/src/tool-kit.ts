@@ -62,7 +62,7 @@ const OUTPUT = {
  * `@yadsh/dsh-qa-surface`, which owns it. `tests/tools/tool-timeout.test.ts`
  * recomputes both bounds from the resolvers rather than from this number.
  */
-const TOOL_TIMEOUT_MS = 300_000;
+export const INTEGRATION_TOOL_TIMEOUT_MS = 300_000;
 
 /**
  * What a provider's tool factory takes from the deployment. One type for all
@@ -85,7 +85,9 @@ export interface ProviderToolFactoryOptions {
 }
 
 export interface ToolKitOptions extends ProviderToolFactoryOptions {
-  readonly provider: IntegrationProviderId;
+  readonly provider:
+    | IntegrationProviderId
+    | ((input: Readonly<Record<string, unknown>>) => IntegrationProviderId);
   /**
    * The provider's own catalog. A tool reads its operation's classification from
    * it and warns in its description when the managed service credential will
@@ -125,7 +127,10 @@ export function createToolKit(options: ToolKitOptions) {
       );
     }
     return options.broker.call(principal, {
-      provider: options.provider,
+      provider:
+        typeof options.provider === "string"
+          ? options.provider
+          : options.provider(input),
       operation,
       input,
       sourceSessionId: sessionId,
@@ -134,7 +139,8 @@ export function createToolKit(options: ToolKitOptions) {
 
   /**
    * One tool = one catalog operation with a validated, read-only argument set.
-   * No tool may accept a user, credential, integration or tenant selector.
+   * The broker resolves credentials from the session owner and the registered
+   * provider. A configured provider alias never names a user or a credential.
    */
   const tool = <const S extends ParameterSchemaSpec>(definition: {
     readonly name: string;
@@ -157,7 +163,7 @@ export function createToolKit(options: ToolKitOptions) {
       // Without this the harness arms no deadline at all: a tool that declares
       // no budget is delegated unchanged, and a chat turn waits on the upstream
       // for as long as the upstream likes.
-      timeoutMs: TOOL_TIMEOUT_MS,
+      timeoutMs: INTEGRATION_TOOL_TIMEOUT_MS,
       execute: (args, exec) =>
         run(
           exec,

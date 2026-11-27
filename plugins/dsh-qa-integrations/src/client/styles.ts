@@ -111,6 +111,7 @@ export const styles: string =
 .qai-op__row-value{color:var(--dsw-alias-label-primary);font-size:12.5px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .qai-op__row-add{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .qai-op__row-add .qai-op__input{width:auto;flex:1;min-width:120px}
+.qai-op__directus-json{resize:vertical;font-family:ui-monospace,monospace;line-height:1.5}
 .qai-op__row-remove{border:0;background:0 0;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:11.5px;cursor:pointer;padding:2px 4px;flex:none}
 .qai-op__row-remove:hover{color:var(--dsw-alias-state-error-primary)}
 .qai-op__instances,.qai-op__profiles{display:flex;flex-direction:column;gap:10px;margin:0;padding:0;list-style:none}

@@ -84,6 +84,12 @@ for (const file of [
   "lib/providers/weblate/config.js",
   "lib/providers/weblate/query.js",
   "lib/providers/weblate/tools.js",
+  "lib/providers/directus/config.js",
+  "lib/providers/directus/catalog.js",
+  "lib/providers/directus/identity.js",
+  "lib/providers/directus/index.js",
+  "lib/providers/directus/query.js",
+  "lib/providers/directus/tools.js",
   "cordis.patch.yml",
   "compatibility.json",
   "README.md",
@@ -143,6 +149,13 @@ assert.match(client, /"teamcity"/u);
 assert.match(client, /"jira"/u);
 assert.match(client, /"testit"/u);
 assert.match(client, /"weblate"/u);
+assert.match(client, /"directus:"/u);
+const directusSkill = await readFile(
+  new URL("skills/directus-read/SKILL.md", root),
+  "utf8",
+);
+assert.match(directusSkill, /disable-model-invocation: true/u);
+assert.match(directusSkill, /directus_item_get/u);
 // The Confluence site is operator configuration too: the connect form picks one
 // and asks for the account e-mail next to the secret, never for an address.
 assert.match(client, /Почта аккаунта Atlassian/u);

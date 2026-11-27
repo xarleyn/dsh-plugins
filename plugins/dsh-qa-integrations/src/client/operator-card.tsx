@@ -35,6 +35,7 @@ import { serviceReachNoteForPath } from "./operator-service-reach.js";
 import { Bitrix24Section } from "./operator-sections/bitrix24.js";
 import { ConfluenceSection } from "./operator-sections/confluence.js";
 import { CredentialHelpSection } from "./operator-sections/credential-help.js";
+import { DirectusSection } from "./operator-sections/directus.js";
 import { GeneralSection } from "./operator-sections/general.js";
 import { GitlabSection } from "./operator-sections/gitlab.js";
 import { JiraSection } from "./operator-sections/jira.js";
@@ -328,6 +329,7 @@ export function OperatorCard({
           <JiraSection form={sections} />
           <TestitSection form={sections} />
           <WeblateSection form={sections} />
+          <DirectusSection form={sections} />
           <ServiceAccessSection form={sections} />
 
           <Section

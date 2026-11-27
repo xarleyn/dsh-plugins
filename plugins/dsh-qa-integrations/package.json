@@ -44,6 +44,7 @@
     "lib/**/*.js.map",
     "lib/**/*.d.ts",
     "locale/*.json",
+    "skills/directus-read/SKILL.md",
     "cordis.patch.yml",
     "compatibility.json",
     "README.md",

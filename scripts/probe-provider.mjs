@@ -87,6 +87,12 @@ export const PROVIDERS = Object.freeze({
     addressField: "baseUrl",
     instanceOption: "instanceId",
   },
+  directus: {
+    slice: "directus",
+    identityOperation: "connection.get",
+    addresses: "instances",
+    addressField: "baseUrl",
+  },
   testit: {
     slice: "testit",
     identityOperation: "connection.get",
@@ -307,6 +313,7 @@ export function probeConfig({
   baseUrl,
   deployment,
   allowInsecureHttp = false,
+  args = {},
 }) {
   if (description.single === true) {
     const slice = { [description.addressField]: baseUrl };
@@ -325,6 +332,18 @@ export function probeConfig({
 
   const entry = { id: "probe", label: "probe" };
   entry[description.addressField] = baseUrl;
+  if (provider === "directus") {
+    const primaryKey = args.primaryKey ?? "id";
+    const fileFields = typeof args.field === "string" ? [args.field] : [];
+    entry.collections = [
+      {
+        name: args.collection ?? "demo_records",
+        primaryKey,
+        fields: args.fields ?? [primaryKey, ...fileFields],
+        fileFields,
+      },
+    ];
+  }
   if (deployment !== undefined) entry.deploymentType = deployment;
   const config = {
     [description.slice]: { [description.addresses]: [entry] },
@@ -568,10 +587,11 @@ async function main() {
   const Provider = await loadProvider(BUILT_ENTRY, options.provider);
   const configModule = await import(pathToFileURL(BUILT_ENTRY).href);
 
-  const instance = new Provider(
-    configModule.resolveConfig(probeConfig(options)),
-    dialer,
-  );
+  const config = configModule.resolveConfig(probeConfig(options));
+  const instance =
+    options.provider === "directus"
+      ? new Provider(config.directus.instances[0], config, dialer)
+      : new Provider(config, dialer);
   const credentialOptions = {};
   if (options.description.instanceOption !== undefined) {
     credentialOptions[options.description.instanceOption] = "probe";

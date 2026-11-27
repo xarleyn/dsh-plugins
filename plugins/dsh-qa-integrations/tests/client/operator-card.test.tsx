@@ -289,6 +289,54 @@ const RESOLVED = {
 };
 
 describe("integrations operator card", () => {
+  it("shows the configured Directus server and saves only a valid allowlist", () => {
+    const instance = {
+      id: "demo",
+      label: "Демо-портал",
+      baseUrl: "https://directus.example.corp/directus",
+      collections: [
+        {
+          name: "demo_records",
+          primaryKey: "id",
+          fields: ["id", "document"],
+          fileFields: ["document"],
+        },
+      ],
+    };
+    const stub = renderCard({ value: { directus: { instances: [instance] } } });
+    const section = within(sectionOf("directus"));
+    expect(section.getByText("Демо-портал")).toBeDefined();
+    expect(section.getByText("1 коллекция")).toBeDefined();
+    fireEvent.click(
+      section.getByRole("button", { name: "Редактировать серверы" }),
+    );
+    const field = section.getByRole("textbox", {
+      name: "Конфигурация серверов (JSON)",
+    });
+    const apply = section.getByRole("button", { name: "Применить" });
+    fireEvent.change(field, {
+      target: { value: JSON.stringify([{ ...instance, collections: [] }]) },
+    });
+    fireEvent.click(apply);
+    expect(section.getByRole("alert")).toBeDefined();
+    expect(stub.writes).toEqual([]);
+
+    const next = {
+      ...instance,
+      label: "Портал",
+      baseUrl: instance.baseUrl + "/",
+    };
+    fireEvent.change(field, { target: { value: JSON.stringify([next]) } });
+    fireEvent.click(apply);
+    expect(stub.writes).toEqual([
+      {
+        op: "set",
+        path: ["directus", "instances"],
+        value: [{ ...next, baseUrl: instance.baseUrl }],
+      },
+    ]);
+  });
+
   it("says so when the namespace is not exposed to this browser", () => {
     const { container } = render(
       <Card settingsForm={scopeStub({ status: "unavailable" }).settingsForm} />,

@@ -1173,6 +1173,23 @@ export class QaSurface extends TypertRemoteService {
     return this.integrationPrincipals.resolve(sessionId, userId);
   }
 
+  /** Shared credentials use the current role assignment even in an older chat. */
+  serviceCredentialRoleForSession(sessionId: string): string | undefined {
+    const principal = this.principalForSession(sessionId);
+    const accounts = this.accountRemotes.resolve(this.getConfig());
+    if (principal === undefined || accounts === undefined) return undefined;
+    const record = accounts.sessionAccess(sessionId);
+    const role = record?.subroleId;
+    if (role === undefined || record?.adminPreview === true) return undefined;
+    const assigned = accounts.accessOf(principal.userId)?.allowedSubroles;
+    return assigned?.includes(role) &&
+      this.access.roles
+        .snapshot()
+        .subroles.some((entry) => entry.id === role && entry.enabled)
+      ? role
+      : undefined;
+  }
+
   /** Admit tools that independently enforce the same QA principal boundary. */
   registerPrincipalScopedTools(names: readonly string[]): () => void {
     return this.admission.registerPrincipalScopedTools(names);

@@ -27,6 +27,11 @@ import {
   createWeblateTools,
   WEBLATE_TOOL_NAMES,
 } from "./providers/weblate/tools.js";
+import { isDirectusProviderId } from "./providers/directus/identity.js";
+import {
+  createDirectusTools,
+  DIRECTUS_TOOL_NAMES,
+} from "./providers/directus/tools.js";
 
 export interface IntegrationToolOptions {
   readonly broker: IntegrationBroker;
@@ -66,6 +71,7 @@ export const INTEGRATION_TOOL_NAMES = [
   ...JIRA_TOOL_NAMES,
   ...TESTIT_TOOL_NAMES,
   ...WEBLATE_TOOL_NAMES,
+  ...DIRECTUS_TOOL_NAMES,
 ] as const;
 
 /** The providers in mount order, each with the tool names it contributes. */
@@ -107,6 +113,9 @@ export function integrationToolNames(
       names.push(BITRIX24_COMMENT_TOOL_NAME);
     }
   }
+  if (enabled === undefined || enabled.some(isDirectusProviderId)) {
+    names.push(...DIRECTUS_TOOL_NAMES);
+  }
   return names;
 }
 
@@ -136,5 +145,8 @@ export function createIntegrationTools(
     ...(mounted("jira") ? createJiraTools(shared) : []),
     ...(mounted("testit") ? createTestitTools(shared) : []),
     ...(mounted("weblate") ? createWeblateTools(shared) : []),
+    ...(enabled === undefined || enabled.some(isDirectusProviderId)
+      ? createDirectusTools(shared)
+      : []),
   ];
 }

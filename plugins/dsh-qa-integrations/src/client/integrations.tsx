@@ -17,6 +17,8 @@ import { createJiraCard, type JiraRemote } from "./jira.js";
 import { createTeamcityCard, type TeamcityRemote } from "./teamcity.js";
 import { createTestitCard, type TestitRemote } from "./testit.js";
 import { createWeblateCard, type WeblateRemote } from "./weblate.js";
+import { DirectusCard, type DirectusRemote } from "./directus.js";
+import { isDirectusProviderId } from "../providers/directus/identity.js";
 
 /** The provider list arrives with each provider's credential help on it. */
 export interface CredentialHelpRemote {
@@ -41,7 +43,8 @@ export type IntegrationsClientRemote = CredentialHelpRemote &
   TeamcityRemote &
   JiraRemote &
   TestitRemote &
-  WeblateRemote;
+  WeblateRemote &
+  DirectusRemote;
 
 /** What every mount of the provider cards needs. */
 export interface ProviderCardsProps {
@@ -157,6 +160,16 @@ export function createProviderCards(remote: IntegrationsClientRemote) {
         {shown("weblate") ? (
           <WeblateCard token={token} help={helpFor("weblate")} />
         ) : null}
+        {providers
+          .filter((id) => isDirectusProviderId(id) && shown(id))
+          .map((id) => (
+            <DirectusCard
+              key={id}
+              provider={id}
+              remote={remote}
+              token={token}
+            />
+          ))}
       </>
     );
   };

@@ -14,6 +14,10 @@ import {
   type ConfluenceFlags,
 } from "./providers/confluence/config.js";
 import {
+  resolveDirectusConfig,
+  type DirectusConfig,
+} from "./providers/directus/config.js";
+import {
   gitlabConfigSchema,
   resolveGitlabConfig,
   type GitlabFlags,
@@ -74,6 +78,7 @@ export interface QaIntegrationsConfig {
   readonly credentialHelp?: Readonly<Record<string, CredentialHelpOverride>>;
   readonly bitrix24?: Partial<Bitrix24Flags>;
   readonly confluence?: ConfluenceConfigInput;
+  readonly directus?: DirectusConfig;
   readonly gitlab?: Partial<GitlabFlags>;
   readonly teamcity?: TeamCityConfigInput;
   readonly jira?: JiraConfigInput;
@@ -112,6 +117,7 @@ export interface ResolvedQaIntegrationsConfig {
   >;
   readonly bitrix24: Bitrix24Flags;
   readonly confluence: ConfluenceFlags;
+  readonly directus: DirectusConfig;
   readonly gitlab: GitlabFlags;
   readonly teamcity: TeamCityFlags;
   readonly jira: JiraFlags;
@@ -143,6 +149,7 @@ export interface LiveQaIntegrationsConfig {
   >;
   readonly bitrix24: Volatile<Partial<Bitrix24Flags> | undefined>;
   readonly confluence: Volatile<ConfluenceConfigInput | undefined>;
+  readonly directus: Volatile<DirectusConfig | undefined>;
   readonly gitlab: Volatile<Partial<GitlabFlags> | undefined>;
   readonly teamcity: Volatile<TeamCityConfigInput | undefined>;
   readonly jira: Volatile<JiraConfigInput | undefined>;
@@ -152,6 +159,26 @@ export interface LiveQaIntegrationsConfig {
     ManagedServiceCredentialsInput | undefined
   >;
 }
+
+const directusConfigSchema = z.object({
+  instances: z
+    .array(
+      z.object({
+        id: z.string(),
+        label: z.string(),
+        baseUrl: z.string(),
+        collections: z.array(
+          z.object({
+            name: z.string(),
+            primaryKey: z.string(),
+            fields: z.array(z.string()),
+            fileFields: z.array(z.string()),
+          }),
+        ),
+      }),
+    )
+    .default([]),
+}) as unknown as z<DirectusConfig>;
 
 export const ConfigSchema: z<QaIntegrationsConfig, LiveQaIntegrationsConfig> =
   z.object({
@@ -178,6 +205,7 @@ export const ConfigSchema: z<QaIntegrationsConfig, LiveQaIntegrationsConfig> =
     credentialHelp: credentialHelpOverridesSchema.volatile(),
     bitrix24: bitrix24ConfigSchema.volatile(),
     confluence: confluenceConfigSchema.volatile(),
+    directus: directusConfigSchema.volatile(),
     gitlab: gitlabConfigSchema.volatile(),
     teamcity: teamcityConfigSchema.volatile(),
     jira: jiraConfigSchema.volatile(),
@@ -218,6 +246,7 @@ export function snapshotConfig(
     credentialHelp: read(config.credentialHelp),
     bitrix24: read(config.bitrix24),
     confluence: read(config.confluence),
+    directus: read(config.directus),
     gitlab: read(config.gitlab),
     teamcity: read(config.teamcity),
     jira: read(config.jira),
@@ -255,6 +284,7 @@ export function resolveConfig(
     credentialHelp: Object.freeze({ ...input.credentialHelp }),
     bitrix24: resolveBitrix24Config(input.bitrix24),
     confluence: resolveConfluenceConfig(input.confluence),
+    directus: resolveDirectusConfig(input.directus),
     gitlab: resolveGitlabConfig(input.gitlab),
     teamcity: resolveTeamCityConfig(input.teamcity),
     jira: resolveJiraConfig(input.jira),

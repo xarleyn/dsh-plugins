@@ -32,6 +32,9 @@ import { networkAllowsNothing } from "./providers/teamcity/config.js";
 import { TEAMCITY_INSTANCE_ID } from "./providers/teamcity/catalog.js";
 import TestitProvider from "./providers/testit/index.js";
 import WeblateProvider from "./providers/weblate/index.js";
+import DirectusProvider from "./providers/directus/index.js";
+import { isDirectusProviderId } from "./providers/directus/identity.js";
+export { DirectusProvider };
 import { IntegrationRepository } from "./repository.js";
 import { DockerSecretKeyProvider } from "./secrets/key-provider.js";
 import { SecretStore } from "./secrets/secret-store.js";
@@ -195,7 +198,10 @@ export class QaIntegrations extends TypertRemoteService {
       this.secrets,
       new IntegrationProviderRegistry(),
       this.logger,
-      {},
+      {
+        serviceCredentialRoleForSession: (sessionId) =>
+          this.owner.qaSurface.serviceCredentialRoleForSession?.(sessionId),
+      },
     );
     this.applyConfig(boot);
     this.watchSettings();
@@ -262,6 +268,9 @@ export class QaIntegrations extends TypertRemoteService {
     }
     if (config.weblate.enabled) {
       providers.register(new WeblateProvider(config));
+    }
+    for (const instance of config.directus.instances) {
+      providers.register(new DirectusProvider(instance, config));
     }
     this.providerRegistry = providers;
     this.defaultForNewConnections =
@@ -500,6 +509,78 @@ export class QaIntegrations extends TypertRemoteService {
   @Remote("list")
   list(token: string): readonly IntegrationSummary[] {
     return this.run(token, (principal) => this.broker.list(principal));
+  }
+
+  private directusProvider(provider: string): string {
+    if (
+      !isDirectusProviderId(provider) ||
+      this.providerRegistry.find(provider) === undefined
+    ) {
+      throw new IntegrationError(
+        "InvalidRequest",
+        "Directus instance is unavailable",
+      );
+    }
+    return provider;
+  }
+
+  @Remote("getDirectus")
+  getDirectus(token: string, provider: string): IntegrationSummary {
+    return this.run(token, (principal) =>
+      this.broker.summary(principal, this.directusProvider(provider)),
+    );
+  }
+
+  @Remote("putDirectusCredential")
+  async putDirectusCredential(
+    token: string,
+    input: {
+      readonly provider: string;
+      readonly token: string;
+    },
+  ): Promise<IntegrationSummary> {
+    return this.runAsync(token, (principal) =>
+      this.broker.connect(
+        principal,
+        this.directusProvider(input.provider),
+        { token: input.token },
+        { useServiceCredential: false },
+      ),
+    );
+  }
+
+  @Remote("testDirectus")
+  async testDirectus(
+    token: string,
+    provider: string,
+  ): Promise<IntegrationSummary> {
+    return this.runAsync(token, (principal) =>
+      this.broker.validate(principal, this.directusProvider(provider)),
+    );
+  }
+
+  @Remote("patchDirectusPolicy")
+  patchDirectusPolicy(
+    token: string,
+    input: {
+      readonly provider: string;
+      readonly patch: PolicyPatch;
+    },
+  ): IntegrationSummary {
+    return this.run(token, (principal) =>
+      this.broker.patchPolicy(
+        principal,
+        this.directusProvider(input.provider),
+        input.patch,
+      ),
+    );
+  }
+
+  @Remote("disconnectDirectus")
+  disconnectDirectus(token: string, provider: string): boolean {
+    return this.run(token, (principal) =>
+      this.broker.disconnect(principal, this.directusProvider(provider)),
+    );
   }
 
   @Remote("getBitrix24")
@@ -897,9 +978,21 @@ export class QaIntegrations extends TypertRemoteService {
       readonly instanceId: string;
     },
   ): Promise<ServiceCredentialHealth | null> {
-    return this.runAsync(token, () =>
-      this.broker.serviceCredentialHealth(input.provider, input.instanceId),
-    );
+    return this.runAsync(token, () => {
+      if (isDirectusProviderId(input.provider)) {
+        const identity = this.owner.qaSurface.accountsWhoami(token);
+        if (!identity.authenticated || identity.user.role !== "admin") {
+          throw new IntegrationError(
+            "OperationDeniedByPolicy",
+            "Only an operator can check the Directus service credential outside an admitted chat",
+          );
+        }
+      }
+      return this.broker.serviceCredentialHealth(
+        input.provider,
+        input.instanceId,
+      );
+    });
   }
 
   /** The safe alias of the managed credential bound to one instance, if any. */

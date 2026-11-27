@@ -1,6 +1,7 @@
 import type { ToolDefinition, ToolRunContext } from "@deepseek-ai/dsh-tools";
 import { BITRIX_OPERATIONS } from "../../src/providers/bitrix24/catalog.js";
 import { CONFLUENCE_OPERATIONS } from "../../src/providers/confluence/catalog.js";
+import { DIRECTUS_OPERATIONS } from "../../src/providers/directus/catalog.js";
 import { GITLAB_OPERATIONS } from "../../src/providers/gitlab/catalog.js";
 import { JIRA_OPERATIONS } from "../../src/providers/jira/catalog.js";
 import { TEAMCITY_OPERATIONS } from "../../src/providers/teamcity/catalog.js";
@@ -178,6 +179,22 @@ const MINIMAL_ARGS: Readonly<Record<string, Record<string, unknown>>> = {
   weblate_changes_list: { project: "app" },
   weblate_screenshots_list: {},
   weblate_screenshot_get: { screenshotId: 3 },
+  directus_collections_list: { instance: "demo" },
+  directus_items_list: { instance: "demo", collection: "demo_records" },
+  directus_item_get: { instance: "demo", collection: "demo_records", id: 1 },
+  directus_items_count: { instance: "demo", collection: "demo_records" },
+  directus_items_scan: {},
+  directus_items_scan_start: {
+    instance: "demo",
+    collection: "demo_records",
+    filters: [{ field: "id", op: "eq", value: 1 }],
+  },
+  directus_file_get: {
+    instance: "demo",
+    collection: "demo_records",
+    id: 1,
+    field: "file",
+  },
 };
 
 function buildTools(options: { readonly owned: boolean }) {
@@ -188,7 +205,14 @@ function buildTools(options: { readonly owned: boolean }) {
       request: { readonly operation: string },
     ) => {
       operations.push(`${principal.userId}:${request.operation}`);
-      return { provider: "acme", operation: request.operation, data: {} };
+      return {
+        provider: "acme",
+        operation: request.operation,
+        data:
+          request.operation === "items.list"
+            ? { items: [], nextOffset: null }
+            : {},
+      };
     },
   };
   const tools = createIntegrationTools({
@@ -201,7 +225,34 @@ function buildTools(options: { readonly owned: boolean }) {
 
 function context(sessionId: string): ToolRunContext {
   return {
-    agent: { session: { header: { id: sessionId } } },
+    agent: {
+      session: {
+        header: { id: sessionId },
+        snapshotEvents: () => [
+          {
+            type: "tool/result",
+            surfaceOp: "append",
+            data: {
+              message: { isError: false },
+              meta: {
+                kind: "directus-scan-v1",
+                sessionId,
+                owner: "alice",
+                query: {
+                  instance: "demo",
+                  collection: "demo_records",
+                  filters: [{ field: "id", op: "eq", value: 2 }],
+                },
+                nextOffset: 25,
+                rowsRead: 25,
+                scanLimited: false,
+              },
+            },
+          },
+        ],
+      },
+    },
+    signal: new AbortController().signal,
   } as unknown as ToolRunContext;
 }
 
@@ -252,7 +303,8 @@ describe("model-visible integration tools", () => {
           TEAMCITY_OPERATIONS[operation] ??
           JIRA_OPERATIONS[operation] ??
           TESTIT_OPERATIONS[operation] ??
-          WEBLATE_OPERATIONS[operation],
+          WEBLATE_OPERATIONS[operation] ??
+          DIRECTUS_OPERATIONS[operation as keyof typeof DIRECTUS_OPERATIONS],
         operation,
       ).toBeDefined();
     }

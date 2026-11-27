@@ -59,6 +59,9 @@ export class ServiceCredentialRegistry {
           authType: profile.authType,
           secretRef: profile.secretRef,
           enabled: profile.enabled,
+          ...(profile.requiredQaSubrole === undefined
+            ? {}
+            : { requiredQaSubrole: profile.requiredQaSubrole }),
           resources: profile.resources,
           policy: profile.policy,
           policyRevision: profilePolicyRevision(profile),

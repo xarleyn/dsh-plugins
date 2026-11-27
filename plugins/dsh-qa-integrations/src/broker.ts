@@ -59,6 +59,9 @@ import type {
 } from "./types.js";
 
 export interface BrokerOptions {
+  readonly serviceCredentialRoleForSession?: (
+    sessionId: string,
+  ) => string | undefined;
   /** Absent in deployments that configure no managed credential at all. */
   readonly serviceCredentials?: ServiceCredentialRegistry | undefined;
   /** Whether a new connection starts in service mode when a profile exists. */
@@ -75,6 +78,7 @@ export class IntegrationBroker {
   private serviceCredentials: ServiceCredentialRegistry | undefined;
   private defaultForNewConnections: boolean;
   private readonly rateLimits: ServiceRateLimiter;
+  private readonly serviceCredentialRoleForSession: BrokerOptions["serviceCredentialRoleForSession"];
 
   constructor(
     private readonly repository: IntegrationRepository,
@@ -85,6 +89,8 @@ export class IntegrationBroker {
   ) {
     this.serviceCredentials = options.serviceCredentials;
     this.defaultForNewConnections = options.defaultForNewConnections ?? true;
+    this.serviceCredentialRoleForSession =
+      options.serviceCredentialRoleForSession;
     this.rateLimits =
       options.rateLimits ?? new ServiceRateLimiter(DEFAULT_SERVICE_RATE_LIMIT);
   }
@@ -199,13 +205,21 @@ export class IntegrationBroker {
     const provider = this.providers.get(providerId);
     const instanceId = String(input.options?.["instanceId"] ?? "").trim();
     const profile = this.profileFor(providerId, instanceId);
+    if (
+      options.useServiceCredential === true &&
+      profile?.requiredQaSubrole !== undefined
+    ) {
+      throw this.serviceRoleDenied();
+    }
     const existing = this.repository.find(principal, providerId);
     // The client may ask for either mode; when it does not, service mode is the
     // default only for a *new* connection. An existing binding keeps the source
     // it stored, which is what makes an upgrade unable to move a user silently.
     const wantsService =
       options.useServiceCredential ??
-      (existing === undefined && this.defaultForNewConnections);
+      (existing === undefined &&
+        this.defaultForNewConnections &&
+        profile?.requiredQaSubrole === undefined);
 
     if (
       options.useServiceCredential === true &&
@@ -294,6 +308,15 @@ export class IntegrationBroker {
     providerId: IntegrationProviderId,
   ): Promise<IntegrationSummary> {
     const integration = this.requireConnected(principal, providerId);
+    if (
+      integration.credentialSource === "service" &&
+      this.serviceCredentials?.find(
+        providerId,
+        integration.externalTenantId ?? "",
+      )?.requiredQaSubrole !== undefined
+    ) {
+      throw this.serviceRoleDenied();
+    }
     try {
       if (integration.credentialSource === "service") {
         const resolved = this.resolveService(principal, integration);
@@ -716,7 +739,11 @@ export class IntegrationBroker {
       readonly sourceSessionId: string;
     },
   ): Promise<IntegrationToolResult> {
-    this.ensureDefaultServiceBinding(principal, request.provider);
+    this.ensureDefaultServiceBinding(
+      principal,
+      request.provider,
+      request.sourceSessionId,
+    );
     const integration = this.requireConnected(principal, request.provider);
     const provider = this.providers.get(request.provider);
     const capability = provider.operationCapability(request.operation);
@@ -980,7 +1007,11 @@ export class IntegrationBroker {
   ): ResolvedServiceCredential {
     let resolved: ResolvedServiceCredential;
     try {
-      resolved = this.resolveService(principal, integration);
+      resolved = this.resolveService(
+        principal,
+        integration,
+        query.sourceSessionId,
+      );
     } catch (error) {
       // A deployment credential that vanished or was retired is a denial like
       // any other, and the trail has to show it as one.
@@ -1042,6 +1073,7 @@ export class IntegrationBroker {
   private ensureDefaultServiceBinding(
     principal: IntegrationPrincipal,
     providerId: IntegrationProviderId,
+    sourceSessionId?: string,
   ): void {
     if (!this.defaultForNewConnections) return;
     if (this.repository.find(principal, providerId) !== undefined) return;
@@ -1056,6 +1088,10 @@ export class IntegrationBroker {
     // deployment boundary the settings form exists to make explicit.
     if (profiles.length !== 1) return;
     const profile = profiles[0]!;
+    if (!this.serviceRoleAllowed(profile, sourceSessionId)) {
+      if (sourceSessionId !== undefined) throw this.serviceRoleDenied();
+      return;
+    }
     this.repository.connect({
       principal,
       provider: providerId,
@@ -1076,6 +1112,7 @@ export class IntegrationBroker {
   private resolveService(
     principal: IntegrationPrincipal,
     integration: StoredIntegration,
+    sourceSessionId?: string,
   ): ResolvedServiceCredential {
     const registry = this.serviceCredentials;
     const portal = integration.externalTenantId ?? "";
@@ -1092,6 +1129,9 @@ export class IntegrationBroker {
         "The service credential is disabled",
       );
     }
+    if (!this.serviceRoleAllowed(profile, sourceSessionId)) {
+      throw this.serviceRoleDenied();
+    }
     if (integration.servicePolicyRevision !== profile.policyRevision) {
       // A profile changed, or a secret was rotated: record which revision this
       // binding now runs under, so the change is visible and nothing derived
@@ -1103,6 +1143,25 @@ export class IntegrationBroker {
       );
     }
     return registry.readSecret(profile);
+  }
+
+  private serviceRoleAllowed(
+    profile: ServiceCredentialProfile,
+    sessionId?: string,
+  ): boolean {
+    return (
+      profile.requiredQaSubrole === undefined ||
+      (sessionId !== undefined &&
+        this.serviceCredentialRoleForSession?.(sessionId) ===
+          profile.requiredQaSubrole)
+    );
+  }
+
+  private serviceRoleDenied(): IntegrationError {
+    return new IntegrationError(
+      "OperationDeniedByPolicy",
+      "This service connection is available only in a chat with the assigned QA role",
+    );
   }
 
   /**

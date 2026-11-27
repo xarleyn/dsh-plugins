@@ -58,6 +58,7 @@ export function qaNativeEndpointDenied(endpoint: string): boolean {
         "Jira",
         "Testit",
         "Weblate",
+        "Directus",
       ].flatMap((provider) => [
         `get${provider}`,
         `put${provider}Credential`,

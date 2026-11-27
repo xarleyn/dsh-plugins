@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import z from "@deepseek-ai/schemastery";
 import { scopedConfigError } from "../errors.js";
+import { isDirectusProviderId } from "../providers/directus/identity.js";
 import type { ServiceRateLimitConfig } from "./types.js";
 
 /**
@@ -22,6 +23,8 @@ export interface ManagedServiceCredentialProfileInput {
   readonly label?: string;
   /** Set to false to retire a profile without deleting its configuration. */
   readonly enabled?: boolean;
+  /** Current QA chat role required for this deployment-managed credential. */
+  readonly requiredQaSubrole?: string;
   readonly credential?: {
     readonly type?: string;
     readonly secretFile?: string;
@@ -64,6 +67,7 @@ export interface ManagedServiceCredentialProfileConfig {
   readonly instance: string;
   readonly label: string;
   readonly enabled: boolean;
+  readonly requiredQaSubrole?: string;
   readonly authType: string;
   readonly secretRef: string;
   readonly resources: Readonly<Record<string, readonly string[]>>;
@@ -297,10 +301,23 @@ function normalizeProfile(
   seen.add(id);
 
   const provider = nonEmpty(input.provider, "provider", index);
-  if (!PROVIDER_ID.test(provider)) {
+  const directus = isDirectusProviderId(provider);
+  if (!PROVIDER_ID.test(provider) && !directus) {
     throw configError(`profiles[${index}].provider must be a provider id`);
   }
   const instance = nonEmpty(input.instance, "instance", index);
+  const role = input.requiredQaSubrole;
+  if (
+    (role !== undefined &&
+      (typeof role !== "string" || !PROFILE_ID.test(role))) ||
+    (directus && role === undefined)
+  ) {
+    throw configError(`profile ${id} needs a valid requiredQaSubrole`);
+  }
+  const resources = normalizeResources(input.resources, id);
+  if (directus && resources["collections"] === undefined) {
+    throw configError(`profile ${id} must define resources.collections`);
+  }
 
   const secretFile =
     typeof input.credential?.secretFile === "string"
@@ -339,9 +356,10 @@ function normalizeProfile(
     instance,
     label: label === "" ? id : label,
     enabled: input.enabled ?? true,
+    ...(role === undefined ? {} : { requiredQaSubrole: role }),
     authType,
     secretRef: secretFile === "" ? `env:${secretEnv}` : `file:${secretFile}`,
-    resources: normalizeResources(input.resources, id),
+    resources,
     policy: normalizePolicy(input.policy, id),
   });
 }
@@ -383,6 +401,7 @@ export function profilePolicyRevision(
       provider: profile.provider,
       portal: profile.instance,
       enabled: profile.enabled,
+      requiredQaSubrole: profile.requiredQaSubrole,
       resources: profile.resources,
       policy: profile.policy,
     }),

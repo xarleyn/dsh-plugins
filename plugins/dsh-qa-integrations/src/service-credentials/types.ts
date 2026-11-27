@@ -114,6 +114,8 @@ export interface ServiceCredentialProfile {
   readonly secretRef: string;
   /** Set to false to retire a profile without deleting its configuration. */
   readonly enabled: boolean;
+  /** When present, only an admitted chat in this current QA role can use it. */
+  readonly requiredQaSubrole?: string;
   readonly resources: ServiceResourceBoundary;
   /** Operator decisions for classified reads; denies take precedence. */
   readonly policy: Readonly<Record<string, "allow" | "deny">>;

@@ -44,6 +44,18 @@ describe("native operator boundary in accounts mode", () => {
     );
   });
   it.each([
+    "getDirectus",
+    "putDirectusCredential",
+    "testDirectus",
+    "patchDirectusPolicy",
+    "disconnectDirectus",
+  ])("admits the token-authenticated %s Directus method", (method) => {
+    expect(qaNativeEndpointDenied(`qaIntegrations/${method}`)).toBe(false);
+  });
+  it("refuses an unlisted Directus method", () => {
+    expect(qaNativeEndpointDenied("qaIntegrations/directusAdmin")).toBe(true);
+  });
+  it.each([
     "session/page",
     "session/follow",
     "session/prompt",
